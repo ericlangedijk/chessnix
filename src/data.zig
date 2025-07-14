@@ -99,20 +99,6 @@ pub fn initialize() void
         for (sq.rays(&.{.north_west, .south_east}).slice()) |q| diag_main_masks[sq.u] |= q.to_bitboard();
         for (sq.rays(&.{.north_east, .south_west}).slice()) |q| diag_anti_masks[sq.u] |= q.to_bitboard();
 
-        // raw move masks including border
-        // if (sq.rank() > 0)
-        // {
-        //     if (sq.next(.north))|n| raw_pawn_pushes_white[sq.u] |= n.to_bitboard();
-        //     if (sq.rank() == 1) { if (sq.next_twice(.north, .north)) |n| raw_pawn_pushes_white[sq.u] |= n.to_bitboard(); }
-        // }
-        // if (sq.rank() < 7)
-        // {
-        //     if (sq.next(.south))|n| raw_pawn_pushes_black[sq.u] |= n.to_bitboard();
-        //     if (sq.rank() == 6) { if (sq.next_twice(.south, .south)) |n| raw_pawn_pushes_black[sq.u] |= n.to_bitboard(); }
-        // }
-        // raw_bishop_moves[sq.u] = diag_main_masks[sq.u] | diag_anti_masks[sq.u];
-        // raw_rook_moves[sq.u] = rank_masks[sq.u] | file_masks[sq.u];
-
         // masks exluding border
         rank_masks[sq.u] &= ~(bitboards.bb_file_a | bitboards.bb_file_h);
         file_masks[sq.u] &= ~(bitboards.bb_rank_1 | bitboards.bb_rank_1);
@@ -289,11 +275,6 @@ var file_attacks: [64 * 64]u64 = @splat(0);
 var diag_main_attacks: [64 * 64]u64 = @splat(0);
 var diag_anti_attacks: [64 * 64]u64 = @splat(0);
 
-// var raw_pawn_pushes_white: [64]u64 = @splat(0);
-// var raw_pawn_pushes_black: [64]u64 = @splat(0);
-// var raw_bishop_moves: [64]u64 = @splat(0);
-// var raw_rook_moves: [64]u64 = @splat(0);
-
 // Zig still sucks with array access, hence the pointers. When directly accessing the vars above an enormous amount of @memcpy calls are done.
 const ptr_file_magics: [*]u64 = &file_magics;
 const ptr_diag_main_magics: [*]u64 = &diag_main_magics;
@@ -312,11 +293,6 @@ const ptr_rank_attacks: [*]u64 = &rank_attacks;
 const ptr_file_attacks: [*]u64 = &file_attacks;
 const ptr_diag_main_attacks: [*]u64 = &diag_main_attacks;
 const ptr_diag_anti_attacks: [*]u64 = &diag_anti_attacks;
-
-// const ptr_raw_pawn_pushes_white: [*]u64 = &raw_pawn_pushes_white;
-// const ptr_raw_pawn_pushes_black: [*]u64 = &raw_pawn_pushes_black;
-// const ptr_raw_bishop_moves: [*]u64 = &raw_bishop_moves;
-// const ptr_raw_rook_moves: [*]u64 =  &raw_rook_moves;
 
 /// Returns the raw index. Always <= 255.
 fn index_of(comptime ori: Orientation, sq: Square, occ: u64) u64
@@ -465,52 +441,3 @@ pub fn get_king_attacks(sq: Square) u64
 {
     return ptr_king_attacks[sq.u];
 }
-
-// pub fn get_raw_bishop_moves(sq: Square) u64
-// {
-//     return ptr_raw_bishop_moves[sq.u];
-// }
-
-// pub fn get_raw_rook_moves(sq: Square) u64
-// {
-//     return ptr_raw_rook_moves[sq.u];
-// }
-
-// pub fn get_raw_queen_moves(sq: Square) u64
-// {
-//     return ptr_raw_bishop_moves[sq.u] | ptr_raw_rook_moves;
-// }
-
-// pub fn get_raw_moves(pc: Piece, sq: Square) u64
-// {
-//     _ = pc;
-//     _ = sq;
-//     return 0;
-// }
-
-// pub fn get_raw_moves()
-
-// /// not yet used
-// pub fn get_piece_attacks(pt: PieceType, sq: Square, occ: u64)  u64
-// {
-//     return switch(pt)
-//     {
-//         .knight => get_knight_attacks(sq, occ),
-//         .bishop => get_bishop_attacks(sq, occ),
-//         .rook => get_rook_attacks(sq, occ),
-//         .queen => get_queen_attacks(sq, occ),
-//         .king => get_king_attacks(sq, occ),
-//         else => unreachable,
-//     };
-// }
-
-// /// not yet used
-// pub fn get_attacks(comptime piecetypes: []PieceType, sq: Square, occ: u64)  u64
-// {
-//     var result: u64 = 0;
-//     inline for (piecetypes) |pt|
-//     {
-//         result |= get_piece_attacks(pt, sq, occ);
-//     }
-//     return result;
-// }
