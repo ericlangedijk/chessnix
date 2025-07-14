@@ -659,8 +659,11 @@ pub const Position = struct
                     if (from_sq.u ^ to_sq.u == 16)
                     {
                         const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        st.ep_square = ep;
-                        key ^= zobrist.enpassant(ep.file());
+                        //if (data.get_adjacent_ep_masks(ep) & self.pawns(them) != 0)
+                        //{
+                            st.ep_square = ep;
+                            key ^= zobrist.enpassant(ep.file());
+                        //}
                     }
                 }
             },
@@ -1013,6 +1016,7 @@ pub const Position = struct
 
                     b1 = funcs.pawns_shift(pawns_not_on_seventh, us, .up) & empty_squares; // single push
                     b2 = funcs.pawns_shift(b1 & funcs.relative_rank_3_bitboard(us), us, .up) & empty_squares; // double push
+                    // Pawn push check interpolation
                     if (check)
                     {
                         b1 &= target;
@@ -1023,14 +1027,14 @@ pub const Position = struct
                     {
                         to_sq = funcs.pop_square(&b1);
                         from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                     }
                     // double
                     while (b2 != 0)
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(16) else to_sq.plus(16);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                     }
                 }
 
@@ -1041,27 +1045,30 @@ pub const Position = struct
                     b3 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
                     b1 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
                     // Pawn push check interpolation
-                    if (check) b1 &= target;
+                    if (check)
+                    {
+                        b1 &= target;
+                    }
                     // north west
                     while (b2 != 0)
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                     // north east
                     while (b3 != 0)
                     {
                         to_sq = funcs.pop_square(&b3);
                         from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                     // push
                     while (b1 != 0)
                     {
                         to_sq = funcs.pop_square(&b1);
                         from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                 }
 
@@ -1075,14 +1082,14 @@ pub const Position = struct
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                     }
                     // north east
                     while (b3 != 0)
                     {
                         to_sq = funcs.pop_square(&b3);
                         from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                     }
                     // enpassant
                     if (st.ep_square) |ep|
@@ -1098,7 +1105,8 @@ pub const Position = struct
             }
 
             // Knight.
-            bb_from = self.knights(us) & ~st.pinned; // a knight can never go out of a pin.
+            bb_from = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
+            if (cpt.pins) bb_from &= ~st.pinned; // a knight can never escape a pin.
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
@@ -1111,7 +1119,7 @@ pub const Position = struct
             }
 
             // Bishop.
-            bb_from = self.bishops(us);
+            bb_from = self.bb_by_type[PieceType.BISHOP.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
@@ -1119,12 +1127,12 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                 }
             }
 
             // Rook.
-            bb_from = self.rooks(us);
+            bb_from = self.bb_by_type[PieceType.ROOK.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
@@ -1132,12 +1140,12 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                 }
             }
 
             // Queen.
-            bb_from = self.queens(us);
+            bb_from = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
@@ -1145,7 +1153,7 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
                 }
             }
         }
@@ -1198,17 +1206,23 @@ pub const Position = struct
         }
     }
 
-    // TODO: finetune pins with direction.
-    fn is_legal_check_pins(self: *const Position, comptime skip: bool, king_sq: Square, from_sq: Square, to_sq: Square) bool
+    /// Checks if the piece is pinned and if we can move it.
+    /// * If we move in the same direction as the pin-direction it is legal.
+    /// * Orientation known: sometimes (like with pawn moves) we know up-front (hard-coded) in which direction we are moving and use this info.
+    /// * Orientation null: it needs to be retrieved. NOTE: in this case we definitely have a slider pin or otherwise a bug.
+    /// * skip is known at comptime. There are no pins at all.
+    fn is_legal_check_pins(self: *const Position, comptime skip: bool, comptime orientation: ?Orientation, king_sq: Square, from_sq: Square, to_sq: Square) bool
     {
         if (skip) return true;
-        // Check if there are pins.
         if (!funcs.contains_square(self.current_state.pinned, from_sq)) return true;
-        // If we move in the same direction as the pin-direction it is legal.
-        const p1 = squarepairs.get(king_sq, from_sq);
-        if (!p1.is_slider) return false;
-        const p2 = squarepairs.get(king_sq, to_sq);
-        return (p1.orientation == p2.orientation);
+        if (orientation) |ori|
+        {
+            return ori == squarepairs.get(king_sq, to_sq).orientation;
+        }
+        else
+        {
+            return squarepairs.get(king_sq, from_sq).orientation == squarepairs.get(king_sq, to_sq).orientation;
+        }
     }
 
     fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from_sq: Square, to_sq: Square) bool
