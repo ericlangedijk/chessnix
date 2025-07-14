@@ -40,6 +40,17 @@ pub const ci_white_long: u4 = 1;
 pub const ci_black_short: u4 = 2;
 pub const ci_black_long: u4 = 3;
 
+const castling_flags: [4]u4 = .{ cf_white_short, cf_white_long, cf_black_short, cf_black_long };
+const king_castle_destination_squares: [4]Square = .{ Square.G1, Square.C1, Square.G8, Square.C8 };
+const rook_castle_destination_squares: [4]Square = .{ Square.F1, Square.D1, Square.F8, Square.D8 };
+
+const CastlingInformation = struct
+{
+    sq_start_rook_left: Square,
+    sq_start_rook_right: Square,
+    sq_start_king_start: Square,
+};
+
 pub const StateList = std.ArrayListUnmanaged(StateInfo);
 
 pub const StateInfo = struct
@@ -190,10 +201,10 @@ pub const Position = struct
         for (backrow, 0..) |pt, i|
         {
             const sq: Square = Square.from_usize(i);
-            self.add_piece(sq, Piece.init(pt, Color.WHITE));
+            self.add_piece(sq, Piece.make(pt, Color.WHITE));
             self.add_piece(sq.plus(8), Piece.W_PAWN);
             self.add_piece(sq.plus(48), Piece.B_PAWN);
-            self.add_piece(sq.plus(56), Piece.init(pt, Color.BLACK));
+            self.add_piece(sq.plus(56), Piece.make(pt, Color.BLACK));
         }
     }
 
@@ -330,14 +341,14 @@ pub const Position = struct
         return self.current_state.checkers > 0;
     }
 
-    /// Lazy function.
-    pub fn lazy_is_mate(self: *const Position) bool
-    {
-        if (self.current_state.checkers == 0) return false;
-        var any_storage: Any = .init();
-        self.lazy_generate_moves(&any_storage);
-        return !store.has_moves;
-    }
+    // /// Lazy function.
+    // pub fn lazy_is_mate(self: *const Position) bool
+    // {
+    //     if (self.current_state.checkers == 0) return false;
+    //     var any_storage: Any = .init();
+    //     self.lazy_generate_moves(&any_storage);
+    //     return !any_store.has_moves;
+    // }
 
     pub fn by_type(self: *const Position, pt: PieceType) u64
     {
@@ -725,7 +736,7 @@ pub const Position = struct
             .promotion =>
             {
                 self.remove_piece(to_sq);
-                self.add_piece(from_sq, Piece.init(PieceType.PAWN, us));
+                self.add_piece(from_sq, Piece.make(PieceType.PAWN, us));
                 if (capt.is_piece()) self.add_piece(to_sq, capt);
             },
             .enpassant =>
@@ -869,20 +880,20 @@ pub const Position = struct
 
     fn is_castling_allowed(self: *const Position, comptime castletype: CastleType, comptime us: Color) bool
     {
-        const bit: u2 = index_of(castletype, us);
+        const bit: u2 = comptime index_of(castletype, us);
         return bits.test_bit_u8(self.current_state.castling_rights, bit);
     }
 
     fn is_castlingpath_empty(self: *const Position, comptime castletype: CastleType, comptime us: Color) bool
     {
-        const bit: u2 = index_of(castletype, us);
+        const bit: u2 = comptime index_of(castletype, us);
         const path: u64 = self.castling_between_bitboards[bit];
         return path & self.all() == 0;
     }
 
     fn rook_castle_startsquare(self: *const Position, comptime castletype: CastleType, comptime us: Color) Square
     {
-        const bit: u2 = index_of(castletype, us);
+        const bit: u2 = comptime index_of(castletype, us);
         return self.rook_start_squares[bit];
     }
 
@@ -893,6 +904,16 @@ pub const Position = struct
             .short => if (us.e == .white) ci_white_short else ci_black_short,
             .long => if (us.e == .white) ci_white_long else ci_black_long,
         };
+    }
+
+    // TODO: move to some debug unit.
+    pub fn very_lazy_generate_moves(self: *const Position) std.BoundedArray(Move, 218)
+    {
+        var moves: std.BoundedArray(Move, 218) = .{};
+        var st: MoveStorage = .init();
+        self.lazy_generate_moves(&st);
+        moves.appendSliceAssumeCapacity(st.slice());
+        return moves;
     }
 
     pub fn lazy_generate_moves(self: *const Position, noalias storage: anytype) void
@@ -922,19 +943,30 @@ pub const Position = struct
     fn gen(self: *const Position, comptime cpt: Params, noalias storage: anytype) void
     {
         const st = self.current_state;
-
-        const us = cpt.us;
+        const us = comptime cpt.us;
         const them = comptime us.opp();
         const check: bool = comptime cpt.gentype == .evasions;
+
+        const do_all_promotions = comptime cpt.gentype != .captures;
         const doublecheck: bool = check and @popCount(st.checkers) > 1;
         const bb_us = self.by_side(us);
         const bb_them = self.by_side(them);
         const king_sq: Square = self.king_square(us);
+        const bb_not_us: u64 = ~bb_us;
 
-        // We start with a bitboard with all empty squares + the squares occupied by them.
-        var target: u64 = ~bb_us;
+        // We start with a bitboard with all empty squares + them squares.
+        var target: u64 = bb_not_us;
 
-        // When doing captures the target bitboard is adjusted.
+        // Some reusable vars.
+        var bb_from: u64 = 0;
+        var bb_to: u64 = 0;
+        var from_sq: Square = Square.zero;
+        var to_sq: Square = Square.zero;
+        var b1: u64 = 0;
+        var b2: u64 = 0;
+        var b3: u64 = 0;
+
+        // When doing only captures the target bitboard is adjusted.
         if (cpt.gentype == .captures)
         {
             target &= bb_them;
@@ -947,15 +979,164 @@ pub const Position = struct
             target = st.checkers | interpolationmask;
         }
 
-        // TODO: maybe the branch prediction is messed up by the different methods here?? slower. (since king and knight)
-        // If double check, do not generate piece moves, but only king moves.
-        if (!doublecheck and target != 0)
+        // All pieces except the king, if we have a target. In case of a doublecheck we can only move the king.
+        if (!doublecheck)
         {
-            self.do_pawns(cpt, target, storage);
-            self.do_knight(us, target, storage);
-            self.do_slider(us, PieceType.BISHOP, target, storage);
-            self.do_slider(us, PieceType.ROOK, target, storage);
-            self.do_slider(us, PieceType.QUEEN, target, storage);
+            // Pawns
+            const pawns_us = self.pawns(us);
+            if (pawns_us != 0)
+            {
+                const empty_squares: u64 = ~self.all();
+                const enemies: u64 = if (cpt.gentype == .evasions) st.checkers else bb_them;
+                const pawns_on_seventh: u64 = pawns_us & funcs.relative_rank_7_bitboard(us);
+                const pawns_not_on_seventh: u64 = pawns_us & ~pawns_on_seventh;
+
+                // Pawn pushes, no promotions.
+                if (cpt.gentype != .captures)
+                {
+                    b1 = funcs.pawns_shift(pawns_not_on_seventh, us, .up) & empty_squares; // single push
+                    b2 = funcs.pawns_shift(b1 & funcs.relative_rank_3_bitboard(us), us, .up) & empty_squares; // double push
+                    if (check)
+                    {
+                        b1 &= target;
+                        b2 &= target;
+                    }
+                    while (b1 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b1);
+                        from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    }
+                    while (b2 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b2);
+                        from_sq = if (us.e == .white) to_sq.minus(16) else to_sq.plus(16);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    }
+                }
+
+                // Promotions (including captures) are always generated. When captures then only queen promotions.
+                if (pawns_on_seventh != 0)
+                {
+
+                    b2 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
+                    b3 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
+                    b1 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
+
+                    // Pawn push check interpolation
+                    if (check) b1 &= target;
+
+                    // north west
+                    while (b2 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b2);
+                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                    }
+
+                    // north east
+                    while (b3 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b3);
+                        from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                    }
+
+                    // push
+                    while (b1 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b1);
+                        from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                    }
+                }
+
+                // Captures, no promotions.
+                if (cpt.gentype == .captures or cpt.gentype == .all or cpt.gentype == .evasions)
+                {
+                    b2 = funcs.pawns_shift(pawns_not_on_seventh, us, .northwest) & enemies;
+                    b3 = funcs.pawns_shift(pawns_not_on_seventh, us, .northeast) & enemies;
+
+                    // north west
+                    while (b2 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b2);
+                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    }
+
+                    // north east
+                    while (b3 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b3);
+                        from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
+                        if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    }
+
+                    // enpassant
+                    if (st.ep_square) |ep|
+                    {
+                        b1 = data.get_pawn_attacks(ep, them) & pawns_us; // inversion trick.
+                        while (b1 != 0)
+                        {
+                            from_sq = funcs.pop_square(&b1);
+                            if (self.is_legal_enpassant(us, king_sq, from_sq, ep)) do_store(Move.create_enpassant(from_sq, ep), storage);
+                        }
+                    }
+                }
+            }
+
+            // Knight.
+            bb_from = self.knights(us) & ~st.pinned; // a knight can never go out of a pin.
+            while (bb_from != 0)
+            {
+                from_sq = funcs.pop_square(&bb_from);
+                bb_to = data.get_knight_attacks(from_sq) & target;
+                while (bb_to != 0)
+                {
+                    to_sq = funcs.pop_square(&bb_to);
+                    do_store(Move.create(from_sq, to_sq), storage);
+                }
+            }
+
+            // Bishop.
+            bb_from = self.bishops(us);
+            while (bb_from != 0)
+            {
+                from_sq = funcs.pop_square(&bb_from);
+                bb_to = self.get_piece_attacks_from(PieceType.BISHOP, from_sq) & target;
+                while (bb_to != 0)
+                {
+                    to_sq = funcs.pop_square(&bb_to);
+                    if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                }
+            }
+
+            // Rook.
+            bb_from = self.rooks(us);
+            while (bb_from != 0)
+            {
+                from_sq = funcs.pop_square(&bb_from);
+                bb_to = self.get_piece_attacks_from(PieceType.ROOK, from_sq) & target;
+                while (bb_to != 0)
+                {
+                    to_sq = funcs.pop_square(&bb_to);
+                    if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                }
+            }
+
+            // Queen.
+            bb_from = self.queens(us);
+            while (bb_from != 0)
+            {
+                from_sq = funcs.pop_square(&bb_from);
+                bb_to = self.get_piece_attacks_from(PieceType.QUEEN, from_sq) & target;
+                while (bb_to != 0)
+                {
+                    to_sq = funcs.pop_square(&bb_to);
+                    if (self.is_legal_check_pins(king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                }
+            }
         }
 
         // And now the king.
@@ -965,12 +1146,19 @@ pub const Position = struct
         }
         else
         {
-            target |= ~bb_us;
+            target |= bb_not_us;
         }
-        self.do_king(us, king_sq, target, storage);
+
+        // Normal king moves.
+        bb_to = target & data.get_king_attacks(king_sq);
+        while (bb_to != 0)
+        {
+            to_sq = funcs.pop_square(&bb_to);
+            if (is_legal_kingmove(self, us, to_sq)) do_store(Move.create(king_sq, to_sq), storage);
+        }
 
         // And finally castling.
-        if (!check and cpt.gentype != .captures)
+        if (!check and cpt.gentype != .captures and st.castling_rights != 0)
         {
             if (self.is_castling_allowed(.short, us) and self.is_castlingpath_empty(.short, us) and self.is_legal_castle(.short, us, king_sq))
             {
@@ -983,259 +1171,61 @@ pub const Position = struct
         }
     }
 
-    /// The pawn handler. Generate all pawn moves to the target bitboard.\
-    /// When in check, the target is always checkers + interpolations.
-    fn do_pawns(self: *const Position, comptime cpt: Params, target: u64, noalias storage: anytype) void
-    {
-        const us: Color = comptime cpt.us;
-        const them = comptime us.opp();
-
-        const pawns_us: u64 = self.pawns(us);
-        if (pawns_us == 0) return;
-
-        const st = self.current_state;
-        const check: bool = cpt.gentype == .evasions;
-        const empty_squares: u64 = ~self.all();
-        const enemies: u64 = if (cpt.gentype == .evasions) st.checkers else self.by_side(them);
-        const pawns_on_seventh: u64 = pawns_us & funcs.relative_rank_7_bitboard(us);
-        const pawns_not_on_seventh: u64 = pawns_us & ~pawns_on_seventh;
-
-        var b1: u64 = 0;
-        var b2: u64 = 0;
-        var b3: u64 = 0;
-
-        // Pawn pushes, no promotions.
-        if (cpt.gentype != .captures)
-        {
-            b1 = funcs.pawns_shift(pawns_not_on_seventh, us, .up) & empty_squares; // single push
-            b2 = funcs.pawns_shift(b1 & funcs.relative_rank_3_bitboard(us), us, .up) & empty_squares; // double push
-            if (check)
-            {
-                b1 &= target;
-                b2 &= target;
-            }
-            while (b1 != 0)
-            {
-                const to_sq = funcs.pop_square(&b1);
-                const from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                self.store(.normal, PieceType.PAWN, us, Move.create(from_sq, to_sq), storage);
-            }
-            while (b2 != 0)
-            {
-                const to_sq = funcs.pop_square(&b2);
-                const from_sq = if (us.e == .white) to_sq.minus(16) else to_sq.plus(16);
-                self.store(.normal, PieceType.PAWN, us, Move.create(from_sq, to_sq), storage);
-            }
-        }
-
-        // Promotions (including captures) are always generated. When captures then only queen promotions.
-        if (pawns_on_seventh != 0)
-        {
-            b2 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
-            b3 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
-            b1 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
-
-            // Pawn push check interpolation
-            if (check) b1 &= target;
-
-            // TODO: symmetry check.
-
-            // north west
-            while (b2 != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&b2);
-                const from_sq: Square = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                self.store_promotions(cpt, from_sq, to_sq, storage);
-            }
-
-            // north east
-            while (b3 != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&b3);
-                const from_sq: Square = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                self.store_promotions(cpt, from_sq, to_sq, storage);
-            }
-
-            // push
-            while (b1 != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&b1);
-                const from_sq: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                self.store_promotions(cpt, from_sq, to_sq, storage);
-            }
-        }
-
-        // Captures, no promotions.
-        if (cpt.gentype == .captures or cpt.gentype == .all or cpt.gentype == .evasions)
-        {
-            b2 = funcs.pawns_shift(pawns_not_on_seventh, us, .northwest) & enemies;
-            b3 = funcs.pawns_shift(pawns_not_on_seventh, us, .northeast) & enemies;
-
-            // north west
-            while (b2 != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&b2);
-                const from_sq: Square = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                self.store(.normal, PieceType.PAWN, us, Move.create(from_sq, to_sq), storage);
-            }
-
-            // north east
-            while (b3 != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&b3);
-                const from_sq: Square = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                self.store(.normal, PieceType.PAWN, us, Move.create(from_sq, to_sq), storage);
-            }
-
-            // enpassant
-            if (st.ep_square) |ep|
-            {
-                var b: u64 = data.get_pawn_attacks(ep, them) & pawns_us;
-                while (b != 0)
-                {
-                    const from_sq: Square = funcs.pop_square(&b);
-                    self.store(.enpassant, PieceType.PAWN, us, Move.create_enpassant(from_sq, ep), storage);
-                }
-            }
-        }
-    }
-
-    fn do_knight(self: *const Position, comptime us: Color, target: u64, noalias storage: anytype) void
-    {
-        var from_bb: u64 = self.knights(us);
-        while (from_bb != 0)
-        {
-            const from_sq: Square = funcs.pop_square(&from_bb);
-            var to_bb: u64 = data.get_knight_attacks(from_sq) & target;
-            while (to_bb != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&to_bb);
-                //if (self.is_legal(.normal, PieceType.KNIGHT, us, from_sq, to_sq))
-                {
-                    self.store(.normal, PieceType.KNIGHT, us, Move.create(from_sq, to_sq), storage);
-                }
-            }
-        }
-    }
-
-    fn do_slider(self: *const Position, comptime us: Color, comptime pt: PieceType, target: u64, noalias storage: anytype) void
-    {
-        assert(pt.e == .bishop or pt.e == .rook or pt.e == .queen);
-        var from_bb: u64 = self.by_type(pt) & self.by_side(us);
-        while (from_bb != 0)
-        {
-            const from_sq: Square = funcs.pop_square(&from_bb);
-            var to_bb: u64 = self.get_piece_attacks_from(pt, from_sq) & target;
-            while (to_bb != 0)
-            {
-                const to_sq: Square = funcs.pop_square(&to_bb);
-                self.store(.normal, pt, us, Move.create(from_sq, to_sq), storage);
-            }
-        }
-    }
-
-    fn do_king(self: *const Position, comptime us: Color, king_sq: Square, target: u64, noalias storage: anytype) void
-    {
-        var to_bb: u64 = data.get_king_attacks(king_sq) & target;
-        while (to_bb != 0)
-        {
-            const to_sq: Square = funcs.pop_square(&to_bb);
-            if (is_legal_kingmove(self, us, king_sq, to_sq))
-            {
-                do_store(Move.create(king_sq, to_sq), storage);
-            }
-        }
-    }
-
-    /// Check legal and store.
-    /// * Castling is pre-checked
-    fn store(self: *const Position, comptime movetype: MoveType, comptime pt: PieceType, comptime us: Color, move: Move, noalias storage: anytype) void
-    {
-        if (self.is_legal(movetype, pt, us, move))
-        {
-            do_store(move, storage);
-        }
-    }
-
-    fn do_store(move: Move, noalias storage: anytype) void
+    inline fn do_store(move: Move, noalias storage: anytype) void
     {
         storage.store(move);
     }
 
-    fn store_promotions(self: *const Position, comptime cpt: Params, from: Square, to: Square, noalias storage: anytype) void
+    inline fn do_store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
     {
-        // If queen promotion is illegal, other promotions are.
-        const move = Move.create_promotion(from, to, .queen);
-        if (!self.is_legal(.promotion, PieceType.PAWN, cpt.us, move)) return;
-
-        do_store(Move.create_promotion(from, to, .queen), storage);
-        if (cpt.gentype != .captures)
+        do_store(Move.create_promotion(from_sq, to_sq, .queen), storage);
+        if (all_prom)
         {
-            do_store(Move.create_promotion(from, to, .rook), storage);
-            do_store(Move.create_promotion(from, to, .bishop), storage);
-            do_store(Move.create_promotion(from, to, .knight), storage);
+            do_store(Move.create_promotion(from_sq, to_sq, .rook), storage);
+            do_store(Move.create_promotion(from_sq, to_sq, .bishop), storage);
+            do_store(Move.create_promotion(from_sq, to_sq, .knight), storage);
         }
     }
 
-    fn is_legal(self: *const Position, comptime movetype: MoveType, comptime piecetype: PieceType, comptime us: Color, move: Move) bool
+    // TODO: finetune pins with direction.
+    fn is_legal_check_pins(self: *const Position, king_sq: Square, from_sq: Square, to_sq: Square) bool
     {
-        // TODO: make legal testing even more dedicated (like castling)
-        assert(movetype != .castle and piecetype.e != .king);
-
-        const them = comptime us.opp();
-        const from_sq = move.from;
-        const to_sq = move.to;
-
-        // A normal king move must not walk into a check. Emulate the move and test.
-        // if (movetype == .normal and piecetype.e == .king)
-        // {
-        //     const occ: u64 = self.all() ^ from_sq.to_bitboard();
-        //     return !self.is_square_attacked_by_for_occ(occ, to_sq, them);
-        // }
-        //Normal move or promotion.
-        //else
-        if (movetype == .normal or movetype == .promotion)
-        {
-            // Check if there are pins.
-            if (!funcs.contains_square(self.current_state.pinned, from_sq)) return true;
-            // A pinned knight can never move out of any pin.
-            if (piecetype.e == .knight) return false;
-            // If we move in the same direction as the pin-direction it is legal.
-            const king_sq = self.king_square(us);
-            const p1 = squarepairs.get(king_sq, from_sq);
-            const p2 = squarepairs.get(king_sq, to_sq);
-            return (p1.orientation == p2.orientation);
-        }
-        // Emulate enpassant move and check for attacks. A tricky one.
-        else if (movetype == .enpassant)
-        {
-            const king_sq = self.king_square(us);
-            const capt_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-            const occ: u64 = (self.all() ^ from_sq.to_bitboard() ^ capt_sq.to_bitboard()) | to_sq.to_bitboard();
-            const att: u64 =
-                (data.get_rook_attacks(king_sq, occ) & self.queens_rooks(them)) |
-                (data.get_bishop_attacks(king_sq, occ) & self.queens_bishops(them));
-            return att == 0;
-        }
-        unreachable;
+        // Check if there are pins.
+        if (!funcs.contains_square(self.current_state.pinned, from_sq)) return true;
+        // If we move in the same direction as the pin-direction it is legal.
+        const p1 = squarepairs.get(king_sq, from_sq);
+        if (!p1.is_slider) return false;
+        const p2 = squarepairs.get(king_sq, to_sq);
+        return (p1.orientation == p2.orientation);
     }
 
-    fn is_legal_kingmove(self: *const Position, comptime us: Color, from_sq: Square, to_sq: Square) bool
+    fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from_sq: Square, to_sq: Square) bool
+    {
+        const them: Color = comptime us.opp();
+        const capt_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
+        const occ: u64 = (self.all() ^ from_sq.to_bitboard() ^ capt_sq.to_bitboard()) | to_sq.to_bitboard();
+        const att: u64 =
+            (data.get_rook_attacks(king_sq, occ) & self.queens_rooks(them)) |
+            (data.get_bishop_attacks(king_sq, occ) & self.queens_bishops(them));
+        return att == 0;
+    }
+
+    fn is_legal_kingmove(self: *const Position, comptime us: Color, to_sq: Square) bool
     {
         const them = comptime us.opp();
-        const occ: u64 = self.all() ^ from_sq.to_bitboard();
+        const occ: u64 = self.all() ^ self.kings(us);
         return !self.is_square_attacked_by_for_occ(occ, to_sq, them);
     }
 
-    fn is_legal_castle(self: *const Position, comptime castletype: CastleType, comptime us: Color, king_from: Square) bool
+    fn is_legal_castle(self: *const Position, comptime castletype: CastleType, comptime us: Color, king_sq: Square) bool
     {
         // Check kingpath for attacks when castling. (except the king-square, king in check should be pre-checked).
         // * Tricky place for neverending loops.
         // * Remember that castling moves are internally encoded as "king takes rook".
-        assert(self.current_state.checkers == 0);
         const them = comptime us.opp();
-        var sq: Square = king_from;
-        const king_to: Square = funcs.king_castle_to_square(us, castletype);
+        const idx = comptime index_of(castletype, us);
+        var sq: Square = king_sq;
+        const king_to: Square = king_castle_destination_squares[idx];//  comptime funcs.king_castle_to_square(us, castletype);
         switch (castletype)
         {
             .short =>
