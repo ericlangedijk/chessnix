@@ -517,7 +517,7 @@ pub const Move = packed struct(u16)
     /// Encoded promotion piece
     pub const Prom = enum(u2)
     {
-        const empty: Prom = .knight; // we do not have more bits :)
+        pub const no_prom: Prom = .knight; // we do not have more bits :)
 
         knight,
         bishop,
@@ -552,7 +552,7 @@ pub const Move = packed struct(u16)
 
     pub fn create(from: Square, to: Square) Move
     {
-        return .{ .from = from, .to = to, .prom = .empty, .movetype = .normal};
+        return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .normal};
     }
 
     pub fn create_promotion(from: Square, to: Square, prom: Prom) Move
@@ -562,12 +562,12 @@ pub const Move = packed struct(u16)
 
     pub fn create_enpassant(from: Square, to: Square) Move
     {
-        return .{ .from = from, .to = to, .prom = .empty, .movetype = .enpassant};
+        return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .enpassant};
     }
 
     pub fn create_castle(from: Square, to: Square) Move
     {
-        return .{ .from = from, .to = to, .prom = .empty, .movetype = .castle};
+        return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .castle};
     }
 
     pub fn from_u16(u: u16) Move
