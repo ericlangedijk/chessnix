@@ -597,9 +597,9 @@ pub const Position = struct
 
         const st: *StateInfo = self.push_state();
         const them: Color = comptime us.opp();
-        const from_sq = m.from;
-        const to_sq = m.to;
-        const movetype = m.movetype;
+        const from_sq: Square = m.from;
+        const to_sq: Square = m.to;
+        const movetype: MoveType = m.movetype;
         const pc: Piece = self.board[from_sq.u];
         const capt: Piece = if(movetype != .enpassant) self.board[to_sq.u] else pc.opp();
         const is_pawnmove: bool = pc.is_pawn();
@@ -655,15 +655,12 @@ pub const Position = struct
                 if (is_pawnmove)
                 {
                     st.pawnkey ^= hash_delta;
-                    // Double pawn push
+                    // Double pawn push. We always set the ep-square.
                     if (from_sq.u ^ to_sq.u == 16)
                     {
                         const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        //if (data.get_adjacent_ep_masks(ep) & self.pawns(them) != 0)
-                        //{
-                            st.ep_square = ep;
-                            key ^= zobrist.enpassant(ep.file());
-                        //}
+                        st.ep_square = ep;
+                        key ^= zobrist.enpassant(ep.file());
                     }
                 }
             },
@@ -1000,8 +997,8 @@ pub const Position = struct
         // All pieces except the king, if we have a target. In case of a doublecheck we can only move the king.
         if (!doublecheck)
         {
-            // Pawns
-            const pawns_us = self.pawns(us);
+            // Pawns.
+            const pawns_us = self.bb_by_type[PieceType.PAWN.u] & bb_us;
             if (pawns_us != 0)
             {
                 const skip_pawn_pins: bool = skip_pins or (st.pinned & pawns_us == 0);
@@ -1027,14 +1024,14 @@ pub const Position = struct
                     {
                         to_sq = funcs.pop_square(&b1);
                         from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                     // double
                     while (b2 != 0)
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(16) else to_sq.plus(16);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                 }
 
@@ -1054,21 +1051,21 @@ pub const Position = struct
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                     // north east
                     while (b3 != 0)
                     {
                         to_sq = funcs.pop_square(&b3);
                         from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                     // push
                     while (b1 != 0)
                     {
                         to_sq = funcs.pop_square(&b1);
                         from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) do_store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                 }
 
@@ -1082,14 +1079,14 @@ pub const Position = struct
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                     // north east
                     while (b3 != 0)
                     {
                         to_sq = funcs.pop_square(&b3);
                         from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                     // enpassant
                     if (st.ep_square) |ep|
@@ -1098,7 +1095,7 @@ pub const Position = struct
                         while (b1 != 0)
                         {
                             from_sq = funcs.pop_square(&b1);
-                            if (self.is_legal_enpassant(us, king_sq, from_sq, ep)) do_store(Move.create_enpassant(from_sq, ep), storage);
+                            if (self.is_legal_enpassant(us, king_sq, from_sq, ep)) store(from_sq, ep, .enpassant, .no_prom, storage);
                         }
                     }
                 }
@@ -1114,7 +1111,7 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    do_store(Move.create(from_sq, to_sq), storage);
+                    store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
             }
 
@@ -1127,7 +1124,7 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
             }
 
@@ -1140,7 +1137,7 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
             }
 
@@ -1153,7 +1150,7 @@ pub const Position = struct
                 while (bb_to != 0)
                 {
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) do_store(Move.create(from_sq, to_sq), storage);
+                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
             }
         }
@@ -1173,7 +1170,7 @@ pub const Position = struct
         while (bb_to != 0)
         {
             to_sq = funcs.pop_square(&bb_to);
-            if (is_legal_kingmove(self, us, to_sq)) do_store(Move.create(king_sq, to_sq), storage);
+            if (is_legal_kingmove(self, us, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
         }
 
         // And finally castling.
@@ -1181,28 +1178,36 @@ pub const Position = struct
         {
             if (self.is_castling_allowed(.short, us) and self.is_castlingpath_empty(.short, us) and self.is_legal_castle(.short, us, king_sq))
             {
-                do_store(Move.create_castle(king_sq, self.rook_castle_startsquare(.short, us)), storage);
+                to_sq = self.rook_castle_startsquare(.short, us);
+                store(king_sq, to_sq, .castle, .no_prom, storage);
             }
             if (self.is_castling_allowed(.long, us) and self.is_castlingpath_empty(.long, us) and self.is_legal_castle(.long, us, king_sq))
             {
-                do_store(Move.create_castle(king_sq, self.rook_castle_startsquare(.long, us)), storage);
+                to_sq = self.rook_castle_startsquare(.long, us);
+                store(king_sq, to_sq, .castle, .no_prom, storage);
             }
         }
     }
 
-    inline fn do_store(move: Move, noalias storage: anytype) void
+    inline fn store(from_sq: Square, to_sq: Square, comptime movetype: MoveType, comptime prom: Move.Prom, noalias storage: anytype) void
     {
-        storage.store(move);
+        switch (movetype)
+        {
+            .normal => storage.store(Move.create(from_sq, to_sq)),
+            .promotion => storage.store(Move.create_promotion(from_sq, to_sq, prom)),
+            .enpassant => storage.store(Move.create_enpassant(from_sq, to_sq)),
+            .castle => storage.store(Move.create_castle(from_sq, to_sq)),
+        }
     }
 
-    inline fn do_store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
+    inline fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
     {
-        do_store(Move.create_promotion(from_sq, to_sq, .queen), storage);
+        store(from_sq, to_sq, .promotion, .queen, storage);
         if (all_prom)
         {
-            do_store(Move.create_promotion(from_sq, to_sq, .rook), storage);
-            do_store(Move.create_promotion(from_sq, to_sq, .bishop), storage);
-            do_store(Move.create_promotion(from_sq, to_sq, .knight), storage);
+            store(from_sq, to_sq, .promotion, .rook, storage);
+            store(from_sq, to_sq, .promotion, .bishop, storage);
+            store(from_sq, to_sq, .promotion, .knight, storage);
         }
     }
 
