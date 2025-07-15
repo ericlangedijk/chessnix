@@ -1190,7 +1190,7 @@ pub const Position = struct
         }
     }
 
-    inline fn store(from_sq: Square, to_sq: Square, comptime movetype: MoveType, comptime prom: Move.Prom, noalias storage: anytype) void
+    fn store(from_sq: Square, to_sq: Square, comptime movetype: MoveType, comptime prom: Move.Prom, noalias storage: anytype) void
     {
         switch (movetype)
         {
@@ -1201,7 +1201,7 @@ pub const Position = struct
         }
     }
 
-    inline fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
+    fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
     {
         //if (true) return;
         store(from_sq, to_sq, .promotion, .queen, storage);
