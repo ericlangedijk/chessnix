@@ -201,10 +201,15 @@ pub const Position = struct
         for (backrow, 0..) |pt, i|
         {
             const sq: Square = Square.from_usize(i);
-            self.add_piece(sq, Piece.make(pt, Color.WHITE));
-            self.add_piece(sq.plus(8), Piece.W_PAWN);
-            self.add_piece(sq.plus(48), Piece.B_PAWN);
-            self.add_piece(sq.plus(56), Piece.make(pt, Color.BLACK));
+            // self.add_piece(sq, Piece.make(pt, Color.WHITE));
+            // self.add_piece(sq.plus(8), Piece.W_PAWN);
+            // self.add_piece(sq.plus(48), Piece.B_PAWN);
+            // self.add_piece(sq.plus(56), Piece.make(pt, Color.BLACK));
+
+            self.add_piece_ext(Color.WHITE, Piece.make(pt, Color.WHITE), sq);
+            self.add_piece_ext(Color.WHITE, Piece.W_PAWN, sq.plus(8));
+            self.add_piece_ext(Color.BLACK, Piece.B_PAWN, sq.plus(48));
+            self.add_piece_ext(Color.BLACK, Piece.make(pt, Color.BLACK), sq.plus(56));
         }
     }
 
@@ -482,6 +487,7 @@ pub const Position = struct
         self.bb_by_side[us.u] |= mask;
     }
 
+    /// Fast comptime version.
     fn add_piece_ext(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
     {
         assert(self.get(sq).is_empty());
@@ -506,6 +512,7 @@ pub const Position = struct
         self.bb_by_side[us.u] &= mask;
     }
 
+    /// Fast comptime version.
     fn remove_piece_ext(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
     {
         assert(self.get(sq).e == pc.e);
@@ -531,6 +538,7 @@ pub const Position = struct
         self.bb_by_side[us.u] ^= mask;
     }
 
+    /// Fast comptime version.
     fn move_piece_ext(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void
     {
         assert(self.get(from).e == pc.e);
@@ -663,7 +671,10 @@ pub const Position = struct
         // Update the castling rights.
         if (st.castling_rights != 0)
         {
-            const mask: u4 = self.castling_masks[from_sq.u] | self.castling_masks[to_sq.u];
+            // EXPERIMENTAL. The direct array access maybe also here has a @memcpy impact.
+            const ptr: [*]u4 = &self.castling_masks;
+            const mask: u4 = ptr[from_sq.u] | ptr[to_sq.u];
+            //const mask: u4 = self.castling_masks[from_sq.u] | self.castling_masks[to_sq.u];
             if (mask != 0)
             {
                 key ^= zobrist.castling(st.castling_rights);
@@ -699,33 +710,38 @@ pub const Position = struct
             .promotion =>
             {
                 const prom: Piece = m.prom.to_piece(us);
+                const pawn_us: Piece = comptime Piece.create_pawn(us);
                 if (is_capture)
                 {
                     self.remove_piece_ext(them, capt, to_sq);
                     key ^= zobrist.piece_square(capt, to_sq);
                 }
-                self.remove_piece_ext(us, pc, from_sq);
+                self.remove_piece_ext(us, pawn_us, from_sq);
                 self.add_piece_ext(us, prom, to_sq);
-                key ^= zobrist.piece_square(pc, from_sq) ^ zobrist.piece_square(prom, to_sq);
+                key ^= zobrist.piece_square(pawn_us, from_sq) ^ zobrist.piece_square(prom, to_sq);
                 st.pawnkey ^= zobrist.piece_square(pc, from_sq);
             },
             .enpassant =>
             {
+                const pawn_us: Piece = comptime Piece.create_pawn(us);
+                const pawn_them: Piece = comptime Piece.create_pawn(them);
                 const capt_sq: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                self.remove_piece_ext(them, capt, capt_sq);
-                self.move_piece_ext(us, pc, from_sq, to_sq);
-                key ^= hash_delta ^ zobrist.piece_square(capt, capt_sq);
-                st.pawnkey ^= hash_delta ^ zobrist.piece_square(capt, capt_sq);
+                self.remove_piece_ext(them, pawn_them, capt_sq);
+                self.move_piece_ext(us, pawn_us, from_sq, to_sq);
+                key ^= hash_delta ^ zobrist.piece_square(pawn_them, capt_sq);
+                st.pawnkey ^= hash_delta ^ zobrist.piece_square(pawn_them, capt_sq);
             },
             .castle =>
             {
-                //Castle moves are encoded as "king takes rook".
+                // Castling is encoded as "king takes rook".
+                const king: Piece = comptime Piece.create_king(us);
+                const rook: Piece = comptime Piece.create_rook(us);
                 const castletype: CastleType = m.castle_type();
                 const king_to: Square = funcs.king_castle_to_square(us, castletype);
                 const rook_to: Square = funcs.rook_castle_to_square(us, castletype);
-                self.move_piece_ext(us, pc, from_sq, king_to);
-                self.move_piece_ext(us, capt, to_sq, rook_to);
-                key ^= zobrist.piece_square(pc, from_sq) ^ zobrist.piece_square(capt, to_sq) ^ zobrist.piece_square(pc, king_to) ^ zobrist.piece_square(capt, rook_to);
+                self.move_piece_ext(us, king, from_sq, king_to);
+                self.move_piece_ext(us, rook, to_sq, rook_to);
+                key ^= zobrist.piece_square(king, from_sq) ^ zobrist.piece_square(rook, to_sq) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, rook_to);
             },
         }
 
@@ -757,6 +773,7 @@ pub const Position = struct
         const m: Move = st.last_move;
         const pc: Piece = st.moved_piece;
         const capt: Piece = st.captured_piece;
+        const is_capture: bool = capt.is_piece();
         const to_sq: Square = m.to;
         const from_sq: Square = m.from;
 
@@ -765,28 +782,34 @@ pub const Position = struct
             .normal =>
             {
                 self.move_piece_ext(us, pc, to_sq, from_sq);
-                if (capt.is_piece()) self.add_piece(to_sq, capt);
+                if (is_capture) self.add_piece(to_sq, capt);
             },
             .promotion =>
             {
+                const pawn: Piece = comptime Piece.create_pawn(us);
                 const prom: Piece = m.prom.to_piece(us);
                 self.remove_piece_ext(us, prom, to_sq);
-                self.add_piece_ext(us, pc, from_sq);
-                if (capt.is_piece()) self.add_piece_ext(them, capt, to_sq);
+                self.add_piece_ext(us, pawn, from_sq);
+                if (is_capture) self.add_piece_ext(them, capt, to_sq);
             },
             .enpassant =>
             {
-                self.move_piece_ext(us, pc, to_sq, from_sq);
+                const pawn_us: Piece = comptime Piece.create_pawn(us);
+                const pawn_them: Piece = comptime Piece.create_pawn(them);
+                self.move_piece_ext(us, pawn_us, to_sq, from_sq);
                 const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                self.add_piece_ext(them, capt, ep);
+                self.add_piece_ext(them, pawn_them, ep);
             },
             .castle =>
             {
+                // Castling is encoded as "king takes rook".
+                const king: Piece = comptime Piece.create_king(us);
+                const rook: Piece = comptime Piece.create_rook(us);
                 const castletype: CastleType = m.castle_type();
                 const rook_to: Square = funcs.rook_castle_to_square(us, castletype);
                 const king_to: Square = funcs.king_castle_to_square(us, castletype);
-                self.move_piece_ext(us, capt, rook_to, to_sq);
-                self.move_piece_ext(us, pc, king_to, from_sq);
+                self.move_piece_ext(us, rook, rook_to, to_sq);
+                self.move_piece_ext(us, king, king_to, from_sq);
             },
         }
 
@@ -874,7 +897,7 @@ pub const Position = struct
     }
 
     /// Do not call for pawns.
-    pub fn get_piece_attacks_from(self: *const Position, pt: PieceType, from_sq: Square) u64
+    pub fn get_piece_attacks_from(self: *const Position, comptime pt: PieceType, from_sq: Square) u64
     {
         return switch(pt.e)
         {
@@ -997,6 +1020,7 @@ pub const Position = struct
         const check: bool = comptime cpt.gentype == .evasions;
         const skip_pins: bool = comptime !cpt.pins;
 
+        const typed: [*]const u64 = &self.bb_by_type; // EXPERIMENTAL
         const do_all_promotions = comptime cpt.gentype != .captures;
         const doublecheck: bool = check and @popCount(st.checkers) > 1;
         const bb_us = self.by_side(us);
@@ -1033,7 +1057,8 @@ pub const Position = struct
         if (!doublecheck)
         {
             // Pawns.
-            const pawns_us = self.bb_by_type[PieceType.PAWN.u] & bb_us;
+            //const pawns_us = self.bb_by_type[PieceType.PAWN.u] & bb_us;
+            const pawns_us = typed[PieceType.PAWN.u] & bb_us;
             if (pawns_us != 0)
             {
                 const skip_pawn_pins: bool = skip_pins or (st.pinned & pawns_us == 0);
@@ -1137,58 +1162,104 @@ pub const Position = struct
             }
 
             // Knight.
-            bb_from = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
+            //bb_from = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
+            bb_from = typed[PieceType.KNIGHT.u] & bb_us;
             if (cpt.pins) bb_from &= ~st.pinned; // a knight can never escape a pin.
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = data.get_knight_attacks(from_sq) & target;
-                while (bb_to != 0)
+                inline for (0..8) |_| // EXPERIMENTAL
                 {
+                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
                     store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
+                // while (bb_to != 0)
+                // {
+                //     to_sq = funcs.pop_square(&bb_to);
+                //     store(from_sq, to_sq, .normal, .no_prom, storage);
+                // }
             }
 
             // Bishop.
-            bb_from = self.bb_by_type[PieceType.BISHOP.u] & bb_us;
+            //bb_from = self.bb_by_type[PieceType.BISHOP.u] & bb_us;
+            bb_from = typed[PieceType.BISHOP.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = self.get_piece_attacks_from(PieceType.BISHOP, from_sq) & target;
-                while (bb_to != 0)
+                inline for (0..13) |_| // EXPERIMENTAL
                 {
+                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
                     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
+                // while (bb_to != 0)
+                // {
+                //     to_sq = funcs.pop_square(&bb_to);
+                //     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                // }
             }
 
             // Rook.
-            bb_from = self.bb_by_type[PieceType.ROOK.u] & bb_us;
+            //bb_from = self.bb_by_type[PieceType.ROOK.u] & bb_us;
+            bb_from = typed[PieceType.ROOK.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = self.get_piece_attacks_from(PieceType.ROOK, from_sq) & target;
-                while (bb_to != 0)
+                inline for (0..14) |_| // EXPERIMENTAL
                 {
+                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
                     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
+                // while (bb_to != 0)
+                // {
+                //     to_sq = funcs.pop_square(&bb_to);
+                //     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                // }
             }
 
             // Queen.
-            bb_from = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
+            //bb_from = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
+            bb_from = typed[PieceType.QUEEN.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = self.get_piece_attacks_from(PieceType.QUEEN, from_sq) & target;
-                while (bb_to != 0)
+                inline for (0..30) |_| // EXPERIMENTAL
                 {
+                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
                     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
+                // while (bb_to != 0)
+                // {
+                //     to_sq = funcs.pop_square(&bb_to);
+                //     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                // }
             }
-        }
+
+            // // Queen. EXPERIMENT SLOWER
+            // bb_from = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
+            // while (bb_from != 0)
+            // {
+            //     from_sq = funcs.pop_square(&bb_from);
+            //     inline for (&.{ Orientation.horizontal, Orientation.vertical, Orientation.diagmain, Orientation.diaganti }) |ori|
+            //     {
+            //         bb_to = data.attacks_of(ori, from_sq, self.all()) & target;
+            //         inline for (0..8) |_| // EXPERIMENTAL
+            //         {
+            //             if (bb_to == 0) break;
+            //             to_sq = funcs.pop_square(&bb_to);
+            //             if (self.is_legal_check_pins(skip_pins, ori, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+            //         }
+            //     }
+            // }
+
+        } // if (!doublecheck)
 
         // And now the king.
         if (cpt.gentype == .captures)
@@ -1202,12 +1273,17 @@ pub const Position = struct
 
         // Normal king moves.
         bb_to = target & data.get_king_attacks(king_sq);
-        while (bb_to != 0)
+        inline for (0..8) |_| // EXPERIMENTAL
         {
+            if (bb_to == 0) break;
             to_sq = funcs.pop_square(&bb_to);
             if (is_legal_kingmove(self, us, to_sq)) store(king_sq, to_sq, .normal, .no_prom, storage);
         }
-
+        // while (bb_to != 0)
+        // {
+        //     to_sq = funcs.pop_square(&bb_to);
+        //     if (is_legal_kingmove(self, us, to_sq)) store(king_sq, to_sq, .normal, .no_prom, storage);
+        // }
 
         // And finally castling.
         if (!check and cpt.gentype != .captures and st.castling_rights != 0)
@@ -1222,6 +1298,16 @@ pub const Position = struct
                 to_sq = self.rook_castle_startsquare(.long, us);
                 store(king_sq, to_sq, .castle, .no_prom, storage);
             }
+        }
+    }
+
+    inline fn unroll_moves(comptime max: u4, from_sq: Square, bb_to: *u64, noalias storage: anytype) void
+    {
+        inline for (0..max) |_|
+        {
+            if (bb_to.* == 0) break;
+            const to_sq: Square = funcs.pop_square(bb_to);
+            store(from_sq, to_sq, .normal, .no_prom, storage);
         }
     }
 
