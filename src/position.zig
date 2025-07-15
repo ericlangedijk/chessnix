@@ -597,9 +597,9 @@ pub const Position = struct
 
         const st: *StateInfo = self.push_state();
         const them: Color = comptime us.opp();
-        const from_sq: Square = m.from;
-        const to_sq: Square = m.to;
-        const movetype: MoveType = m.movetype;
+        const from_sq = m.from;
+        const to_sq = m.to;
+        const movetype = m.movetype;
         const pc: Piece = self.board[from_sq.u];
         const capt: Piece = if(movetype != .enpassant) self.board[to_sq.u] else pc.opp();
         const is_pawnmove: bool = pc.is_pawn();
@@ -655,7 +655,7 @@ pub const Position = struct
                 if (is_pawnmove)
                 {
                     st.pawnkey ^= hash_delta;
-                    // Double pawn push. We always set the ep-square.
+                    // Double pawn push
                     if (from_sq.u ^ to_sq.u == 16)
                     {
                         const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
@@ -1170,8 +1170,9 @@ pub const Position = struct
         while (bb_to != 0)
         {
             to_sq = funcs.pop_square(&bb_to);
-            if (is_legal_kingmove(self, us, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+            if (is_legal_kingmove(self, us, to_sq)) store(king_sq, to_sq, .normal, .no_prom, storage);
         }
+
 
         // And finally castling.
         if (!check and cpt.gentype != .captures and st.castling_rights != 0)
@@ -1202,6 +1203,7 @@ pub const Position = struct
 
     inline fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
     {
+        //if (true) return;
         store(from_sq, to_sq, .promotion, .queen, storage);
         if (all_prom)
         {
