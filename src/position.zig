@@ -248,13 +248,12 @@ pub const Position = struct
         {
             result.ply = 0;
             result.state_list = create_statelist();
-            result.current_state = result.get_actual_state();
-            result.current_state.* = src.current_state.*;
+            result.current_state = result.get_actual_state_ptr();
         }
         else
         {
             result.state_list = src.state_list.clone(ctx.galloc) catch wtf();
-            result.current_state = result.get_actual_state();
+            result.current_state = result.get_actual_state_ptr();
         }
         return result;
     }
@@ -483,6 +482,17 @@ pub const Position = struct
         self.bb_by_side[us.u] |= mask;
     }
 
+    fn add_piece_ext(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
+    {
+        assert(self.get(sq).is_empty());
+        assert(pc.is_piece());
+        const mask: u64 = sq.to_bitboard();
+        self.board[sq.idx()] = pc;
+        self.bb_by_type[0] |= mask;
+        self.bb_by_type[pc.piecetype.u] |= mask;
+        self.bb_by_side[us.u] |= mask;
+    }
+
     pub fn remove_piece(self: *Position, sq: Square) void
     {
         assert(self.get(sq).is_piece());
@@ -492,6 +502,16 @@ pub const Position = struct
         const us: Color = pc.color();
         self.board[sq.u] = Piece.NO_PIECE;
         self.bb_by_type[pt.u] &= mask;
+        self.bb_by_type[0] &= mask;
+        self.bb_by_side[us.u] &= mask;
+    }
+
+    fn remove_piece_ext(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
+    {
+        assert(self.get(sq).e == pc.e);
+        const mask: u64 = ~sq.to_bitboard();
+        self.board[sq.u] = Piece.NO_PIECE;
+        self.bb_by_type[pc.piecetype.u] &= mask;
         self.bb_by_type[0] &= mask;
         self.bb_by_side[us.u] &= mask;
     }
@@ -507,6 +527,18 @@ pub const Position = struct
         self.board[from.u] = Piece.NO_PIECE;
         self.board[to.u] = pc;
         self.bb_by_type[pt.u] ^= mask;
+        self.bb_by_type[0] ^= mask;
+        self.bb_by_side[us.u] ^= mask;
+    }
+
+    fn move_piece_ext(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void
+    {
+        assert(self.get(from).e == pc.e);
+        assert(self.get(to).is_empty());
+        const mask: u64 = from.to_bitboard() | to.to_bitboard();
+        self.board[from.u] = Piece.NO_PIECE;
+        self.board[to.u] = pc;
+        self.bb_by_type[pc.piecetype.u] ^= mask;
         self.bb_by_type[0] ^= mask;
         self.bb_by_side[us.u] ^= mask;
     }
@@ -535,7 +567,7 @@ pub const Position = struct
     }
 
     /// Returns the actual pointer the the last item in the statelist.
-    fn get_actual_state(self: *Position) *StateInfo
+    fn get_actual_state_ptr(self: *Position) *StateInfo
     {
         assert(self.ply + 1 == self.state_list.items.len);
         return &self.state_list.items[self.ply];
@@ -616,19 +648,19 @@ pub const Position = struct
         self.to_move = them;
 
         // Reset drawcounter by default.
-        if (is_pawnmove and movetype == .normal or is_capture)
+        if (is_pawnmove or is_capture)
         {
             st.rule50 = 0;
         }
 
-        // Clear ep by default if it is set
+        // Clear ep by default if it is set.
         if (st.ep_square) |ep|
         {
             key ^= zobrist.enpassant(ep.file());
             st.ep_square = null;
         }
 
-        // Update the castling rights
+        // Update the castling rights.
         if (st.castling_rights != 0)
         {
             const mask: u4 = self.castling_masks[from_sq.u] | self.castling_masks[to_sq.u];
@@ -646,16 +678,16 @@ pub const Position = struct
             {
                 if (is_capture)
                 {
-                    self.remove_piece(to_sq);
+                    self.remove_piece_ext(them, capt, to_sq);
                     key ^= zobrist.piece_square(capt, to_sq);
                     if (capt.is_pawn()) st.pawnkey ^= zobrist.piece_square(capt, to_sq);
                 }
-                self.move_piece(from_sq, to_sq);
+                self.move_piece_ext(us, pc, from_sq, to_sq);
                 key ^= hash_delta;
                 if (is_pawnmove)
                 {
                     st.pawnkey ^= hash_delta;
-                    // Double pawn push
+                    // Double pawn push.
                     if (from_sq.u ^ to_sq.u == 16)
                     {
                         const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
@@ -669,30 +701,30 @@ pub const Position = struct
                 const prom: Piece = m.prom.to_piece(us);
                 if (is_capture)
                 {
-                    self.remove_piece(to_sq);
+                    self.remove_piece_ext(them, capt, to_sq);
                     key ^= zobrist.piece_square(capt, to_sq);
                 }
-                self.remove_piece(from_sq);
-                self.add_piece(to_sq, prom);
+                self.remove_piece_ext(us, pc, from_sq);
+                self.add_piece_ext(us, prom, to_sq);
                 key ^= zobrist.piece_square(pc, from_sq) ^ zobrist.piece_square(prom, to_sq);
                 st.pawnkey ^= zobrist.piece_square(pc, from_sq);
             },
             .enpassant =>
             {
                 const capt_sq: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                self.remove_piece(capt_sq);
-                self.move_piece(from_sq, to_sq);
+                self.remove_piece_ext(them, capt, capt_sq);
+                self.move_piece_ext(us, pc, from_sq, to_sq);
                 key ^= hash_delta ^ zobrist.piece_square(capt, capt_sq);
                 st.pawnkey ^= hash_delta ^ zobrist.piece_square(capt, capt_sq);
             },
             .castle =>
             {
-                // Be aware of the fact that castle moves are encoded as "king takes rook".
+                //Castle moves are encoded as "king takes rook".
                 const castletype: CastleType = m.castle_type();
                 const king_to: Square = funcs.king_castle_to_square(us, castletype);
                 const rook_to: Square = funcs.rook_castle_to_square(us, castletype);
-                self.move_piece(from_sq, king_to);
-                self.move_piece(to_sq, rook_to);
+                self.move_piece_ext(us, pc, from_sq, king_to);
+                self.move_piece_ext(us, capt, to_sq, rook_to);
                 key ^= zobrist.piece_square(pc, from_sq) ^ zobrist.piece_square(capt, to_sq) ^ zobrist.piece_square(pc, king_to) ^ zobrist.piece_square(capt, rook_to);
             },
         }
@@ -721,7 +753,9 @@ pub const Position = struct
         self.ply -= 1;
         self.game_ply -= 1;
 
+        const them: Color = comptime us.opp();
         const m: Move = st.last_move;
+        const pc: Piece = st.moved_piece;
         const capt: Piece = st.captured_piece;
         const to_sq: Square = m.to;
         const from_sq: Square = m.from;
@@ -730,28 +764,29 @@ pub const Position = struct
         {
             .normal =>
             {
-                self.move_piece(to_sq, from_sq);
+                self.move_piece_ext(us, pc, to_sq, from_sq);
                 if (capt.is_piece()) self.add_piece(to_sq, capt);
             },
             .promotion =>
             {
-                self.remove_piece(to_sq);
-                self.add_piece(from_sq, Piece.make(PieceType.PAWN, us));
-                if (capt.is_piece()) self.add_piece(to_sq, capt);
+                const prom: Piece = m.prom.to_piece(us);
+                self.remove_piece_ext(us, prom, to_sq);
+                self.add_piece_ext(us, pc, from_sq);
+                if (capt.is_piece()) self.add_piece_ext(them, capt, to_sq);
             },
             .enpassant =>
             {
-                self.move_piece(to_sq, from_sq);
+                self.move_piece_ext(us, pc, to_sq, from_sq);
                 const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                self.add_piece(ep, capt);
+                self.add_piece_ext(them, capt, ep);
             },
             .castle =>
             {
                 const castletype: CastleType = m.castle_type();
                 const rook_to: Square = funcs.rook_castle_to_square(us, castletype);
                 const king_to: Square = funcs.king_castle_to_square(us, castletype);
-                self.move_piece(rook_to, to_sq);
-                self.move_piece(king_to, from_sq);
+                self.move_piece_ext(us, capt, rook_to, to_sq);
+                self.move_piece_ext(us, pc, king_to, from_sq);
             },
         }
 
@@ -780,7 +815,7 @@ pub const Position = struct
         const st: *StateInfo = self.current_state;
         const king_sq: Square = self.king_square(us);
 
-        // Checkers
+        // Checkers.
         st.checkers = self.get_attackers_to(king_sq) & self.by_side(them);
 
         // Pins.
@@ -812,9 +847,9 @@ pub const Position = struct
         return
             (data.get_pawn_attacks(sq, Color.WHITE) & self.black_pawns()) |
             (data.get_pawn_attacks(sq, Color.BLACK) & self.white_pawns()) |
+            (data.get_knight_attacks(sq) & self.all_knights()) |
             (data.get_bishop_attacks(sq, self.all()) & self.all_queens_bishops()) |
             (data.get_rook_attacks(sq, self.all()) & self.all_queens_rooks()) |
-            (data.get_knight_attacks(sq) & self.all_knights()) |
             (data.get_king_attacks(sq) & self.all_kings());
     }
 
@@ -823,9 +858,9 @@ pub const Position = struct
         return
             (data.get_pawn_attacks(sq, Color.WHITE) & self.black_pawns()) |
             (data.get_pawn_attacks(sq, Color.BLACK) & self.white_pawns()) |
+            (data.get_knight_attacks(sq) & self.all_knights()) |
             (data.get_bishop_attacks(sq, occ) & self.all_queens_bishops()) |
             (data.get_rook_attacks(sq, occ) & self.all_queens_rooks()) |
-            (data.get_knight_attacks(sq) & self.all_knights()) |
             (data.get_king_attacks(sq) & self.all_kings());
     }
 
@@ -1225,10 +1260,12 @@ pub const Position = struct
         if (orientation) |ori|
         {
             return ori == squarepairs.get(king_sq, to_sq).orientation;
+            //return ori == squarepairs.get_ori(king_sq, to_sq);
         }
         else
         {
             return squarepairs.get(king_sq, from_sq).orientation == squarepairs.get(king_sq, to_sq).orientation;
+            //return squarepairs.get_ori(king_sq, from_sq) == squarepairs.get_ori(king_sq, to_sq);
         }
     }
 
