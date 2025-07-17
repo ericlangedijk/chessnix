@@ -3,6 +3,9 @@ const funcs = @import("funcs.zig");
 
 const assert = std.debug.assert;
 
+pub const Value = i16;
+pub const Float = f32;
+
 pub const Orientation = enum(u2)
 {
     horizontal,
@@ -60,6 +63,8 @@ pub const Direction = enum(i8)
 
 pub const CastleType = enum(u1)
 {
+    pub const all: [2]CastleType = .{.short, .long };
+
     short, long,
 
     pub fn idx(self: CastleType) usize
@@ -249,6 +254,13 @@ pub const Square = packed union
         self.u -= d;
     }
 
+    pub fn relative(self: Square, comptime us: Color) Square
+    {
+        // TODO: use a simpler statement.
+        const side: u6 = us.u;// @as(u6, us.u) * 56;
+        return .{ .u = self.u ^ side * 56 };
+    }
+
     /// Only used during initialization.
     pub fn next(self: Square, dir: Direction) ?Square
     {
@@ -354,9 +366,21 @@ pub const PieceType = packed union
         return self.u;
     }
 
-    pub fn value(self: PieceType) i16
+    pub fn value(self: PieceType) Value
     {
-        return piecetype_values[self.u];
+        return piece_values[self.u];
+    }
+
+    pub fn bitmask(self: PieceType) u6
+    {
+        assert(self.u != 0);
+        return @as(u6, 1) << (self.u - 1);
+    }
+
+    /// Returns the material code.
+    pub fn material(self: PieceType) Value
+    {
+        return piece_material_values[self.u];
     }
 
     pub fn to_char(self: PieceType) u8
@@ -423,9 +447,29 @@ pub const Piece = packed union
         return .{ .u = p | c << 3 };
     }
 
-    pub fn value(self: Piece) i16
+    pub fn create_pawn(us: Color) Piece
+    {
+        return make(PieceType.PAWN, us);
+    }
+
+    pub fn create_rook(us: Color) Piece
+    {
+        return make(PieceType.ROOK, us);
+    }
+
+    pub fn create_king(us: Color) Piece
+    {
+        return make(PieceType.KING, us);
+    }
+
+    pub fn value(self: Piece) Value
     {
         return piece_values[self.u];
+    }
+
+    pub fn material(self: Piece) Value
+    {
+        return piece_material_values[self.u];
     }
 
     // pub fn bitcast(self: Piece) u4
@@ -619,25 +663,97 @@ pub const Move = packed struct(u16)
 
 };
 
-pub const Value = i16;
+
 
 pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128;
 
-pub const infinity: Value = 30000;
-pub const mate: Value = 25000;
+pub const infinity: Value = 32000;
+pub const mate: Value = 28000;
 pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
-const piece_values: [15]i16 =
+const value_pawn: Value = 100;
+const value_knight: Value = 300;
+const value_bishop: Value = 300;
+const value_rook: Value = 500;
+const value_queen: Value = 900;
+
+pub const material_pawn: Value = 126;
+pub const material_knight: Value = 781;
+pub const material_bishop: Value = 825;
+pub const material_rook: Value = 1276;
+pub const material_queen: Value = 2538;
+
+//  no_piece = 0,
+//         w_pawn = 1,
+//         w_knight = 2,
+//         w_bishop = 3,
+//         w_rook = 4,
+//         w_queen = 5,
+//         w_king = 6,
+
+//         b_pawn = 9,
+//         b_knight = 10,
+//         b_bishop = 11,
+//         b_rook = 12,
+//         b_queen = 13,
+//         b_king = 14,
+
+const piece_values: [15]Value =
 .{
-    0, 100, 300, 300, 500, 900, 0,
+    0,  // no_piece
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
     0, 0,
-    0, 100, 300, 300, 500, 900, 0,
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
 };
 
-const piecetype_values: [6]i16 =
+const piece_material_values: [15]Value =
 .{
-    0, 100, 300, 300, 500, 900, 0,
+    0,
+    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
+    0, 0,
+    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
+
+// Values used in Position::MaterialBySide. 'borrowed' from stockfish.
+//
+// pub const MATERIAL_CODE_PAWN: i16 = 126;
+// pub const MATERIAL_CODE_KNIGHT: i16 = 781;
+// pub const MATERIAL_CODE_BISHOP: i16 = 825;
+// pub const MATERIAL_CODE_ROOK: i16 = 1276;
+// pub const MATERIAL_CODE_QUEEN: i16 = 2538;
+
+// startvalue: 18620 WITH pawns
+// startvalue: 16604 WITHOUT pawns
+pub const max_material_value_threshold: Value = 18620;
+//pub const MIDGAME_THRESHOLD: i16 = 15258;
+//pub const ENDGAME_THRESHOLD: i16 = 3915;
+
+// pub const MATERIAL_CODES: [i16; 8] =
+// [
+//     0,
+//     MATERIAL_CODE_PAWN, MATERIAL_CODE_KNIGHT, MATERIAL_CODE_BISHOP, MATERIAL_CODE_ROOK, MATERIAL_CODE_QUEEN,
+//     0, 0,
+// ];
+
+
+pub const MovType = enum(u2)
+{
+    n = 0,
+    p = 1,
+    e = 2,
+    c = 3,
+};
+
+pub const Mov = union (MovType)
+{
+    n: struct { from: Square, to: Square,  },
+    p: struct { from: Square, to: Square, },
+    e: struct { from: Square, to: Square, ep: Square },
+    c: struct { from: Square, to: Square, castle: CastleType },
+};
+
+
+
