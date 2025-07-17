@@ -1,11 +1,13 @@
 const std = @import("std");
 const lib = @import("lib.zig");
+const data = @import("data.zig");
 const funcs = @import("funcs.zig");
 const console = @import("console.zig");
 const position = @import("position.zig");
 const notation = @import("notation.zig");
 
 const Color = position.Color;
+const Square = position.Square;
 const Move = position.Move;
 const Position = position.Position;
 const Storage = position.MoveStorage;
@@ -56,7 +58,6 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
         else
         {
             pos.make_move(us, m);
-
             if (is_leaf)
             {
                 var counter: JustCount = .init();
@@ -69,7 +70,6 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
                 count = do_run(output, false, them, depth - 1, pos); // go recursive
                 nodes += count;
             }
-
             pos.unmake_move(us);
         }
 
@@ -80,3 +80,44 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     }
     return nodes;
 }
+
+// WIP EXPERIMENTAL -> it sould be possible to not store the moves first, but directly make the moves in Perft.
+pub const TestReceiver = struct
+{
+
+    pos: *Position,
+
+    pub fn init(pos: *Position) TestReceiver
+    {
+        return TestReceiver
+        {
+            .pos = pos,
+        };
+    }
+
+    /// Required funnction.
+    pub fn reset(self: *TestReceiver) void
+    {
+        _ = self;
+        //self.moves = 0;
+    }
+
+    /// Required funnction.
+    pub fn store(self: *TestReceiver, move: Move) void
+    {
+        self.pos.lazy_make_move(move);
+        std.debug.print("make move {s}\n", .{move.to_string().slice()});
+        //if (self.pos.ply == 1) self.run()
+
+        self.pos.lazy_unmake_move();
+    }
+
+    pub fn run(self: *TestReceiver, comptime output: bool, comptime is_root: bool, comptime us: Color, depth: u8) void
+    {
+        self.pos.generate_moves(us, self);
+        _ = output;
+        _ = is_root;
+        _ = depth;
+    }
+
+};
