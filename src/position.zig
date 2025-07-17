@@ -17,6 +17,7 @@ const assert = std.debug.assert;
 const ctx = lib.ctx;
 const wtf = lib.wtf;
 
+pub const Value = types.Value;
 pub const Orientation = types.Orientation;
 pub const Direction = types.Direction;
 pub const Color = types.Color;
@@ -32,7 +33,7 @@ pub const cf_white_short: u4 = 0b0001;
 pub const cf_white_long: u4 = 0b0010;
 pub const cf_black_short: u4 = 0b0100;
 pub const cf_black_long: u4 = 0b1000;
-//const cf_all =
+pub const cf_all: u4 = 0b1111;
 
 // the (bit) indexes of the castling flags.
 pub const ci_white_short: u4 = 0;
@@ -103,6 +104,9 @@ pub const Position = struct
     /// * (0) white pieces.
     /// * (1) black pieces.
     bb_by_side: [2]u64,
+
+    // EXPERIMENTAL. A bitmask for the available pieces.  available_pieces: [2]u6,
+
     /// Supporting Chess960, the startfiles of:
     /// * (0) a-rook file or 'left' rook
     /// * (1) h-rook file or 'right' rook
@@ -122,7 +126,7 @@ pub const Position = struct
     /// * Initialized in constructors.
     rook_start_squares: [4]Square,
     /// Supporting Chess960, deduced from startFiles.
-    /// The castling bitboard *between* king and rook.
+    /// The castling bitboard in between king and rook.
     /// * (0) `ci_white_short` white e1-h1 (short)
     /// * (1) `ci_white_long` white e1-a1 (long)
     /// * (2) `ci_black_short` black e8-h8 (short)
@@ -132,6 +136,10 @@ pub const Position = struct
     /// Supporting Chess960, deduced from `start_files`.\
     /// Used for quick updates of castling rights during make move.
     castling_masks: [64]u4,
+    /// Piece values sum.
+    values:[2]Value,
+    /// Material values sum.
+    materials: [2]Value,
     /// The current side to move.
     to_move: Color,
     /// Depth during search.
@@ -156,11 +164,14 @@ pub const Position = struct
             .board = @splat(Piece.NO_PIECE),
             .bb_by_type = @splat(0),
             .bb_by_side = @splat(0),
+            //.available_pieces = @splat(0),
             .start_files = @splat(0),
             .king_start_squares = @splat(Square.A1),
             .rook_start_squares = @splat(Square.A1),
             .castling_between_bitboards = @splat(0),
             .castling_masks = @splat(0),
+            .values = @splat(0),
+            .materials = @splat(0),
             .to_move = Color.WHITE,
             .ply = 0,
             .game_ply = 0,
@@ -201,11 +212,6 @@ pub const Position = struct
         for (backrow, 0..) |pt, i|
         {
             const sq: Square = Square.from_usize(i);
-            // self.add_piece(sq, Piece.make(pt, Color.WHITE));
-            // self.add_piece(sq.plus(8), Piece.W_PAWN);
-            // self.add_piece(sq.plus(48), Piece.B_PAWN);
-            // self.add_piece(sq.plus(56), Piece.make(pt, Color.BLACK));
-
             self.add_piece_ext(Color.WHITE, Piece.make(pt, Color.WHITE), sq);
             self.add_piece_ext(Color.WHITE, Piece.W_PAWN, sq.plus(8));
             self.add_piece_ext(Color.BLACK, Piece.B_PAWN, sq.plus(48));
@@ -254,6 +260,7 @@ pub const Position = struct
             result.ply = 0;
             result.state_list = create_statelist();
             result.current_state = result.get_actual_state_ptr();
+            result.current_state.* = src.current_state.*;
         }
         else
         {
@@ -459,6 +466,11 @@ pub const Position = struct
         return self.pawns(Color.WHITE);
     }
 
+    // pub fn white_knights(self: *const Position) u64
+    // {
+    //     return self.knights(Color.WHITE);
+    // }
+
     pub fn black_pawns(self: *const Position) u64
     {
         return self.pawns(Color.BLACK);
@@ -469,10 +481,22 @@ pub const Position = struct
         return funcs.first_square(self.kings(us));
     }
 
-    pub fn sliders(self: *const Position, us: Color) u64
+    pub fn sliders(self: *const Position, comptime us: Color) u64
     {
         return (self.by_type(PieceType.QUEEN) | self.by_type(PieceType.ROOK) | self.by_type(PieceType.BISHOP)) & self.by_side(us);
     }
+
+    /// Returns the sum of the white + black materials.
+    pub fn material(self: *const Position) Value
+    {
+        return self.materials[0] + self.materials[1];
+    }
+
+    pub fn non_pawn_material(self: *const Position) Value
+    {
+        return (self.materials[0] + self.materials[1]) - (PieceType.PAWN.material() * @popCount(self.all_pawns()));
+    }
+
 
     pub fn add_piece(self: *Position, sq: Square, pc: Piece) void
     {
@@ -485,6 +509,9 @@ pub const Position = struct
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pt.u] |= mask;
         self.bb_by_side[us.u] |= mask;
+        //self.available_pieces[us.u] |= pc.piecetype.bitmask();
+        self.values[us.u] += pc.value();
+        self.materials[us.u] += pc.material();
     }
 
     /// Fast comptime version.
@@ -492,11 +519,15 @@ pub const Position = struct
     {
         assert(self.get(sq).is_empty());
         assert(pc.is_piece());
+        assert(pc.color().e == us.e);
         const mask: u64 = sq.to_bitboard();
         self.board[sq.idx()] = pc;
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pc.piecetype.u] |= mask;
         self.bb_by_side[us.u] |= mask;
+        //self.available_pieces[us.u] |= pc.piecetype.bitmask();
+        self.values[us.u] += pc.value();
+        self.materials[us.u] += pc.material();
     }
 
     pub fn remove_piece(self: *Position, sq: Square) void
@@ -510,17 +541,24 @@ pub const Position = struct
         self.bb_by_type[pt.u] &= mask;
         self.bb_by_type[0] &= mask;
         self.bb_by_side[us.u] &= mask;
+        //if (self.bb_by_side[us.u] == 0) self.available_pieces[us.u] &= ~pc.piecetype.bitmask();
+        self.values[us.u] -= pc.value();
+        self.materials[us.u] -= pc.material();
     }
 
     /// Fast comptime version.
     fn remove_piece_ext(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
     {
         assert(self.get(sq).e == pc.e);
+        assert(pc.color().e == us.e);
         const mask: u64 = ~sq.to_bitboard();
         self.board[sq.u] = Piece.NO_PIECE;
         self.bb_by_type[pc.piecetype.u] &= mask;
         self.bb_by_type[0] &= mask;
         self.bb_by_side[us.u] &= mask;
+        //if (self.bb_by_side[us.u] == 0) self.available_pieces[us.u] &= ~pc.piecetype.bitmask();
+        self.values[us.u] -= pc.value();
+        self.materials[us.u] -= pc.material();
     }
 
     pub fn move_piece(self: *Position, from: Square, to: Square) void
@@ -543,6 +581,7 @@ pub const Position = struct
     {
         assert(self.get(from).e == pc.e);
         assert(self.get(to).is_empty());
+        assert(pc.color().e == us.e);
         const mask: u64 = from.to_bitboard() | to.to_bitboard();
         self.board[from.u] = Piece.NO_PIECE;
         self.board[to.u] = pc;
@@ -618,8 +657,8 @@ pub const Position = struct
     {
         switch (self.to_move.e)
         {
-            .white => self.make_move(Color.BLACK),
-            .black => self.make_move(Color.WHITE),
+            .white => self.unmake_move(Color.BLACK),
+            .black => self.unmake_move(Color.WHITE),
         }
     }
 
@@ -641,7 +680,7 @@ pub const Position = struct
         const to_sq = m.to;
         const movetype = m.movetype;
         const pc: Piece = self.board[from_sq.u];
-        const capt: Piece = if(movetype != .enpassant) self.board[to_sq.u] else pc.opp();
+        const capt: Piece = if(movetype != .enpassant) self.board[to_sq.u] else Piece.create_pawn(them);
         const is_pawnmove: bool = pc.is_pawn();
         const is_capture: bool = capt.is_piece();
         const hash_delta = zobrist.piece_square(pc, from_sq) ^ zobrist.piece_square(pc, to_sq);
@@ -671,8 +710,8 @@ pub const Position = struct
         // Update the castling rights.
         if (st.castling_rights != 0)
         {
-            // EXPERIMENTAL. The direct array access maybe also here has a @memcpy impact.
-            const ptr: [*]u4 = &self.castling_masks;
+            // EXPERIMENTAL. The direct array access may have a @memcpy impact.
+            const ptr: [*]const u4 = &self.castling_masks;
             const mask: u4 = ptr[from_sq.u] | ptr[to_sq.u];
             //const mask: u4 = self.castling_masks[from_sq.u] | self.castling_masks[to_sq.u];
             if (mask != 0)
@@ -710,15 +749,15 @@ pub const Position = struct
             .promotion =>
             {
                 const prom: Piece = m.prom.to_piece(us);
-                const pawn_us: Piece = comptime Piece.create_pawn(us);
+                const pawn: Piece = comptime Piece.create_pawn(us);
                 if (is_capture)
                 {
                     self.remove_piece_ext(them, capt, to_sq);
                     key ^= zobrist.piece_square(capt, to_sq);
                 }
-                self.remove_piece_ext(us, pawn_us, from_sq);
+                self.remove_piece_ext(us, pawn, from_sq);
                 self.add_piece_ext(us, prom, to_sq);
-                key ^= zobrist.piece_square(pawn_us, from_sq) ^ zobrist.piece_square(prom, to_sq);
+                key ^= zobrist.piece_square(pawn, from_sq) ^ zobrist.piece_square(prom, to_sq);
                 st.pawnkey ^= zobrist.piece_square(pc, from_sq);
             },
             .enpassant =>
@@ -741,7 +780,7 @@ pub const Position = struct
                 const rook_to: Square = funcs.rook_castle_to_square(us, castletype);
                 self.move_piece_ext(us, king, from_sq, king_to);
                 self.move_piece_ext(us, rook, to_sq, rook_to);
-                key ^= zobrist.piece_square(king, from_sq) ^ zobrist.piece_square(rook, to_sq) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, rook_to);
+                key ^= zobrist.piece_square(king, from_sq) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to_sq) ^ zobrist.piece_square(rook, rook_to);
             },
         }
 
@@ -755,7 +794,7 @@ pub const Position = struct
         }
     }
 
-    /// This should be called with us == the color that moved the previous ply!
+    /// This should be called with us is the color that moved on the previous ply!
     pub fn unmake_move(self: *Position, comptime us: Color) void
     {
         if (comptime lib.is_paranoid)
@@ -844,23 +883,21 @@ pub const Position = struct
         // Pins.
         st.pinned = 0;
         st.pinners = 0;
-        const bb_us: u64 = self.by_side(us);
+        const bb_us: u64 = self.bb_by_side[us.u];
         const bb_occupation_without_us: u64 = self.all() & ~bb_us;
         var pseudo_attackers: u64 = self.get_sliding_attackers_to_for_occupation(king_sq, bb_occupation_without_us) & self.sliders(them);
         while (pseudo_attackers != 0)
         {
-            const sq: Square = funcs.pop_square(&pseudo_attackers);
-            const pair = squarepairs.get(sq, king_sq);
+            const attacker_sq: Square = funcs.pop_square(&pseudo_attackers);
+            const pair = squarepairs.get(king_sq, attacker_sq);
             const bb_test: u64 = pair.in_between_bitboard & bb_us;
             // We can only have a pin when exactly 1 bit is set.
             if (@popCount(bb_test) != 1) continue;
             // Now we have a pinner + pinned piece for sure.
-            const pt: PieceType = self.board[sq.u].piecetype;
+            const pt: PieceType = self.board[attacker_sq.u].piecetype;
             st.pinned |= bb_test;
-            if (pt.e == .queen or pt.e == .bishop and pair.is_diagonal or pt.e == .rook and pair.is_straight)
-            {
-                st.pinners |= sq.to_bitboard();
-            }
+            // This mask check is the same as: pt.e == .queen or pt.e == .bishop and pair.is_diagonal or pt.e == .rook and pair.is_straight
+            if (pt.u & pair.mask != 0) st.pinners |= attacker_sq.to_bitboard();
         }
     }
 
@@ -889,7 +926,7 @@ pub const Position = struct
 
     /// Returns a bitboard with all sliding pieces which are attacking square `sq` for a certain occupation.
     /// * For both colors.
-    fn get_sliding_attackers_to_for_occupation(self: *const Position, sq: Square, occ: u64) u64
+    pub fn get_sliding_attackers_to_for_occupation(self: *const Position, sq: Square, occ: u64) u64
     {
         return
             (data.get_bishop_attacks(sq, occ) & self.all_queens_bishops()) |
@@ -913,6 +950,14 @@ pub const Position = struct
     pub fn is_square_attacked_by_for_occ(self: *const Position, occ: u64, to_sq: Square, comptime attacker: Color) bool
     {
         const inverted = comptime attacker.opp();
+
+        // const mask: u6 = self.available_pieces[attacker.u];
+        // if (mask & 0b000010 != 0 and data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
+        // if (mask & 0b100000 != 0 and data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
+        // if (mask & 0b000001 != 0 and data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) return true;
+        // if (mask & 0b100100 != 0 and data.get_bishop_attacks(to_sq, occ) & self.queens_bishops(attacker) != 0) return true;
+        // if (mask & 0b011000 != 0 and data.get_rook_attacks(to_sq, occ) & self.queens_rooks(attacker) != 0) return true;
+
         if (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
         if (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
         if (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) return true;
@@ -927,6 +972,13 @@ pub const Position = struct
     pub fn is_square_attacked_by(self: *const Position, to_sq: Square, comptime attacker: Color) bool
     {
         const them = comptime attacker.opp();
+
+        // const mask: u6 = self.available_pieces[attacker.u];
+        // if (mask & 0b000010 != 0 and data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
+        // if (mask & 0b100000 != 0 and data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
+        // if (mask & 0b000001 != 0 and data.get_pawn_attacks(to_sq, them) & self.pawns(attacker) != 0) return true;
+        // if (mask & 0b100100 != 0 and data.get_bishop_attacks(to_sq, self.all()) & self.queens_bishops(attacker) != 0) return true;
+        // if (mask & 0b011000 != 0 and data.get_rook_attacks(to_sq, self.all()) & self.queens_rooks(attacker) != 0) return true;
 
         if (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
         if (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
@@ -964,16 +1016,6 @@ pub const Position = struct
         };
     }
 
-    // TODO: move to some debug unit.
-    pub fn very_lazy_generate_moves(self: *const Position) std.BoundedArray(Move, 218)
-    {
-        var moves: std.BoundedArray(Move, 218) = .{};
-        var st: MoveStorage = .init();
-        self.lazy_generate_moves(&st);
-        moves.appendSliceAssumeCapacity(st.slice());
-        return moves;
-    }
-
     pub fn lazy_generate_moves(self: *const Position, noalias storage: anytype) void
     {
         switch(self.to_move.e)
@@ -983,9 +1025,20 @@ pub const Position = struct
         }
     }
 
+    // fn get_experimental_mask(self: *const Position, comptime us: Color) u5
+    // {
+    //     var mask = 0;
+    //     if (self.pawns(us) != 0)   mask |= 0b00001;
+    //     if (self.knights(us) != 0) mask |= 0b00010;
+    //     if (self.bishops(us) != 0) mask |= 0b00100;
+    //     if (self.rooks(us) != 0)   mask |= 0b01000;
+    //     if (self.queens(us) != 0)  mask |= 0b10000;
+    //     return 0;
+    // }
+
     pub fn generate_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void
     {
-        if (lib.is_paranoid)
+        if (comptime lib.is_paranoid)
         {
             assert(self.to_move.e == us.e);
         }
@@ -1012,6 +1065,35 @@ pub const Position = struct
         }
     }
 
+    pub fn generate_captures(self: *const Position, comptime us: Color, noalias storage: anytype) void
+    {
+        if (comptime lib.is_paranoid)
+        {
+            assert(self.to_move.e == us.e);
+        }
+
+        const pins: bool = self.current_state.pinners != 0;
+
+        storage.reset();
+        switch(self.in_check())
+        {
+            false =>
+            {
+                if (pins)
+                    self.gen(Params.create(us, .captures, true), storage)
+                else
+                    self.gen(Params.create(us, .captures, false), storage);
+            },
+            true =>
+            {
+                if (pins)
+                    self.gen(Params.create(us, .evasions, true), storage)
+                else
+                    self.gen(Params.create(us, .evasions, false), storage);
+            },
+        }
+    }
+
     fn gen(self: *const Position, comptime cpt: Params, noalias storage: anytype) void
     {
         const st = self.current_state;
@@ -1023,22 +1105,21 @@ pub const Position = struct
         const typed: [*]const u64 = &self.bb_by_type; // EXPERIMENTAL
         const do_all_promotions = comptime cpt.gentype != .captures;
         const doublecheck: bool = check and @popCount(st.checkers) > 1;
-        const bb_us = self.by_side(us);
-        const bb_them = self.by_side(them);
+        const bb_us = self.bb_by_side[us.u];
+        const bb_them = self.bb_by_side[them.u];
         const king_sq: Square = self.king_square(us);
         const bb_not_us: u64 = ~bb_us;
 
         // We start with a bitboard with all empty squares + them squares.
         var target: u64 = bb_not_us;
 
-        // Some reusable vars.
-        var bb_from: u64 = 0;
-        var bb_to: u64 = 0;
-        var from_sq: Square = Square.zero;
-        var to_sq: Square = Square.zero;
-        var b1: u64 = 0;
-        var b2: u64 = 0;
-        var b3: u64 = 0;
+        var bb_from: u64 = undefined;
+        var bb_to: u64 = undefined;
+        var from_sq: Square = undefined;
+        var to_sq: Square = undefined;
+        var b1: u64 = undefined;
+        var b2: u64 = undefined;
+        var b3: u64 = undefined;
 
         // When doing only captures the target bitboard is adjusted.
         if (cpt.gentype == .captures)
@@ -1053,11 +1134,13 @@ pub const Position = struct
             target = st.checkers | interpolationmask;
         }
 
-        // All pieces except the king, if we have a target. In case of a doublecheck we can only move the king.
+        // TODO we could do here one more comptime skip: the target can be empty, but only in the case of generating captures.
+        // Otherwise there is always a target.
+
+        // All pieces except the king. In case of a doublecheck we can only move the king.
         if (!doublecheck)
         {
             // Pawns.
-            //const pawns_us = self.bb_by_type[PieceType.PAWN.u] & bb_us;
             const pawns_us = typed[PieceType.PAWN.u] & bb_us;
             if (pawns_us != 0)
             {
@@ -1084,77 +1167,77 @@ pub const Position = struct
                     {
                         to_sq = funcs.pop_square(&b1);
                         from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                     // double
                     while (b2 != 0)
                     {
                         to_sq = funcs.pop_square(&b2);
                         from_sq = if (us.e == .white) to_sq.minus(16) else to_sq.plus(16);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                 }
 
                 // Promotions (including captures) are always generated. When captures then only queen promotions.
                 if (pawns_on_seventh != 0)
                 {
-                    b2 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
-                    b3 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
-                    b1 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
+                    b1 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
+                    b2 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
+                    b3 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
                     // Pawn push check interpolation
                     if (check)
                     {
-                        b1 &= target;
+                        b3 &= target;
                     }
                     // north west
-                    while (b2 != 0)
-                    {
-                        to_sq = funcs.pop_square(&b2);
-                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
-                    }
-                    // north east
-                    while (b3 != 0)
-                    {
-                        to_sq = funcs.pop_square(&b3);
-                        from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
-                    }
-                    // push
                     while (b1 != 0)
                     {
                         to_sq = funcs.pop_square(&b1);
+                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                    }
+                    // north east
+                    while (b2 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b2);
+                        from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                    }
+                    // push
+                    while (b3 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b3);
                         from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .vertical, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .vertical, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
                     }
                 }
 
                 // Captures, no promotions.
                 if (cpt.gentype == .captures or cpt.gentype == .all or cpt.gentype == .evasions)
                 {
-                    b2 = funcs.pawns_shift(pawns_not_on_seventh, us, .northwest) & enemies;
-                    b3 = funcs.pawns_shift(pawns_not_on_seventh, us, .northeast) & enemies;
+                    b1 = funcs.pawns_shift(pawns_not_on_seventh, us, .northwest) & enemies;
+                    b2 = funcs.pawns_shift(pawns_not_on_seventh, us, .northeast) & enemies;
                     // north west
+                    while (b1 != 0)
+                    {
+                        to_sq = funcs.pop_square(&b1);
+                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    }
+                    // north east
                     while (b2 != 0)
                     {
                         to_sq = funcs.pop_square(&b2);
-                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
-                    }
-                    // north east
-                    while (b3 != 0)
-                    {
-                        to_sq = funcs.pop_square(&b3);
                         from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pins(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                     }
                     // enpassant
                     if (st.ep_square) |ep|
                     {
-                        b1 = data.get_pawn_attacks(ep, them) & pawns_us; // inversion trick.
-                        while (b1 != 0)
+                        b3 = data.get_pawn_attacks(ep, them) & pawns_us; // inversion trick.
+                        while (b3 != 0)
                         {
-                            from_sq = funcs.pop_square(&b1);
+                            from_sq = funcs.pop_square(&b3);
                             if (self.is_legal_enpassant(us, king_sq, from_sq, ep)) store(from_sq, ep, .enpassant, .no_prom, storage);
                         }
                     }
@@ -1162,104 +1245,61 @@ pub const Position = struct
             }
 
             // Knight.
-            //bb_from = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
             bb_from = typed[PieceType.KNIGHT.u] & bb_us;
             if (cpt.pins) bb_from &= ~st.pinned; // a knight can never escape a pin.
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = data.get_knight_attacks(from_sq) & target;
-                inline for (0..8) |_| // EXPERIMENTAL
+                // This inline loop for knights is somewhat faster than a while loop.
+                inline for (0..8) |_|
                 {
                     if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
                     store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
-                // while (bb_to != 0)
-                // {
-                //     to_sq = funcs.pop_square(&bb_to);
-                //     store(from_sq, to_sq, .normal, .no_prom, storage);
-                // }
             }
 
             // Bishop.
-            //bb_from = self.bb_by_type[PieceType.BISHOP.u] & bb_us;
             bb_from = typed[PieceType.BISHOP.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = self.get_piece_attacks_from(PieceType.BISHOP, from_sq) & target;
-                inline for (0..13) |_| // EXPERIMENTAL
+                while (bb_to != 0)
                 {
-                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    if (self.is_legal_check_pin(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
-                // while (bb_to != 0)
-                // {
-                //     to_sq = funcs.pop_square(&bb_to);
-                //     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
-                // }
             }
 
             // Rook.
-            //bb_from = self.bb_by_type[PieceType.ROOK.u] & bb_us;
             bb_from = typed[PieceType.ROOK.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = self.get_piece_attacks_from(PieceType.ROOK, from_sq) & target;
-                inline for (0..14) |_| // EXPERIMENTAL
+                while (bb_to != 0)
                 {
-                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    if (self.is_legal_check_pin(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
-                // while (bb_to != 0)
-                // {
-                //     to_sq = funcs.pop_square(&bb_to);
-                //     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
-                // }
             }
 
             // Queen.
-            //bb_from = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
             bb_from = typed[PieceType.QUEEN.u] & bb_us;
             while (bb_from != 0)
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = self.get_piece_attacks_from(PieceType.QUEEN, from_sq) & target;
-                inline for (0..30) |_| // EXPERIMENTAL
+                while (bb_to != 0)
                 {
-                    if (bb_to == 0) break;
                     to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    if (self.is_legal_check_pin(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
                 }
-                // while (bb_to != 0)
-                // {
-                //     to_sq = funcs.pop_square(&bb_to);
-                //     if (self.is_legal_check_pins(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
-                // }
             }
 
-            // // Queen. EXPERIMENT SLOWER
-            // bb_from = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
-            // while (bb_from != 0)
-            // {
-            //     from_sq = funcs.pop_square(&bb_from);
-            //     inline for (&.{ Orientation.horizontal, Orientation.vertical, Orientation.diagmain, Orientation.diaganti }) |ori|
-            //     {
-            //         bb_to = data.attacks_of(ori, from_sq, self.all()) & target;
-            //         inline for (0..8) |_| // EXPERIMENTAL
-            //         {
-            //             if (bb_to == 0) break;
-            //             to_sq = funcs.pop_square(&bb_to);
-            //             if (self.is_legal_check_pins(skip_pins, ori, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
-            //         }
-            //     }
-            // }
-
-        } // if (!doublecheck)
+        } // <-- if (!doublecheck)
 
         // And now the king.
         if (cpt.gentype == .captures)
@@ -1273,58 +1313,33 @@ pub const Position = struct
 
         // Normal king moves.
         bb_to = target & data.get_king_attacks(king_sq);
-        inline for (0..8) |_| // EXPERIMENTAL
+        while (bb_to != 0)
         {
-            if (bb_to == 0) break;
             to_sq = funcs.pop_square(&bb_to);
             if (is_legal_kingmove(self, us, to_sq)) store(king_sq, to_sq, .normal, .no_prom, storage);
         }
-        // while (bb_to != 0)
-        // {
-        //     to_sq = funcs.pop_square(&bb_to);
-        //     if (is_legal_kingmove(self, us, to_sq)) store(king_sq, to_sq, .normal, .no_prom, storage);
-        // }
 
         // And finally castling.
-        if (!check and cpt.gentype != .captures and st.castling_rights != 0)
+        if (!check and cpt.gentype != .captures)
         {
-            if (self.is_castling_allowed(.short, us) and self.is_castlingpath_empty(.short, us) and self.is_legal_castle(.short, us, king_sq))
+            inline for (CastleType.all) |ct|
             {
-                to_sq = self.rook_castle_startsquare(.short, us);
-                store(king_sq, to_sq, .castle, .no_prom, storage);
+                if (self.is_castling_allowed(ct, us) and self.is_castlingpath_empty(ct, us) and self.is_legal_castle(ct, us, king_sq))
+                {
+                    to_sq = self.rook_castle_startsquare(ct, us);
+                    store(king_sq, to_sq, .castle, .no_prom, storage);
+                }
             }
-            if (self.is_castling_allowed(.long, us) and self.is_castlingpath_empty(.long, us) and self.is_legal_castle(.long, us, king_sq))
-            {
-                to_sq = self.rook_castle_startsquare(.long, us);
-                store(king_sq, to_sq, .castle, .no_prom, storage);
-            }
-        }
-    }
-
-    inline fn unroll_moves(comptime max: u4, from_sq: Square, bb_to: *u64, noalias storage: anytype) void
-    {
-        inline for (0..max) |_|
-        {
-            if (bb_to.* == 0) break;
-            const to_sq: Square = funcs.pop_square(bb_to);
-            store(from_sq, to_sq, .normal, .no_prom, storage);
         }
     }
 
     fn store(from_sq: Square, to_sq: Square, comptime movetype: MoveType, comptime prom: Move.Prom, noalias storage: anytype) void
     {
-        switch (movetype)
-        {
-            .normal => storage.store(Move.create(from_sq, to_sq)),
-            .promotion => storage.store(Move.create_promotion(from_sq, to_sq, prom)),
-            .enpassant => storage.store(Move.create_enpassant(from_sq, to_sq)),
-            .castle => storage.store(Move.create_castle(from_sq, to_sq)),
-        }
+        storage.store(Move{.from = from_sq, .to = to_sq, .prom = prom, .movetype = movetype} );
     }
 
     fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
     {
-        //if (true) return;
         store(from_sq, to_sq, .promotion, .queen, storage);
         if (all_prom)
         {
@@ -1337,24 +1352,23 @@ pub const Position = struct
     /// Checks if the piece is pinned and if we can move it.
     /// * If we move in the same direction as the pin-direction it is legal.
     /// * Orientation known: sometimes (like with pawn moves) we know up-front (hard-coded) in which direction we are moving and use this info.
-    /// * Orientation null: it needs to be retrieved. NOTE: in this case we definitely have a slider pin or otherwise a bug.
+    /// * Orientation null: it needs to be retrieved. in this case we definitely should have a slider pin or otherwise a bug.
     /// * skip is known at comptime. There are no pins at all.
-    fn is_legal_check_pins(self: *const Position, comptime skip: bool, comptime orientation: ?Orientation, king_sq: Square, from_sq: Square, to_sq: Square) bool
+    fn is_legal_check_pin(self: *const Position, comptime skip: bool, comptime orientation: ?Orientation, king_sq: Square, from_sq: Square, to_sq: Square) bool
     {
         if (skip) return true;
         if (!funcs.contains_square(self.current_state.pinned, from_sq)) return true;
         if (orientation) |ori|
         {
             return ori == squarepairs.get(king_sq, to_sq).orientation;
-            //return ori == squarepairs.get_ori(king_sq, to_sq);
         }
         else
         {
             return squarepairs.get(king_sq, from_sq).orientation == squarepairs.get(king_sq, to_sq).orientation;
-            //return squarepairs.get_ori(king_sq, from_sq) == squarepairs.get_ori(king_sq, to_sq);
         }
     }
 
+    /// Tricky one. An ep move can uncover a check.
     fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from_sq: Square, to_sq: Square) bool
     {
         const them: Color = comptime us.opp();
@@ -1373,15 +1387,14 @@ pub const Position = struct
         return !self.is_square_attacked_by_for_occ(occ, to_sq, them);
     }
 
+    /// Check king's path for attacks when castling.
+    /// * Ecxcept the king-square. We do not produce castling moves when in check.
     fn is_legal_castle(self: *const Position, comptime castletype: CastleType, comptime us: Color, king_sq: Square) bool
     {
-        // Check kingpath for attacks when castling. (except the king-square, king in check should be pre-checked).
-        // * Tricky place for neverending loops.
-        // * Remember that castling moves are internally encoded as "king takes rook".
         const them = comptime us.opp();
         const idx = comptime index_of(castletype, us);
+        const king_to: Square = king_castle_destination_squares[idx];
         var sq: Square = king_sq;
-        const king_to: Square = king_castle_destination_squares[idx];//  comptime funcs.king_castle_to_square(us, castletype);
         switch (castletype)
         {
             .short =>
@@ -1404,73 +1417,7 @@ pub const Position = struct
         return true;
     }
 
-    // TODO: belongs in eval.
-    fn see(self: *const Position, m: Move) bool
-    {
-        const us: Color = self.to_move;
-        var side: Color = us;
-        const from_sq = m.from;
-        const to_sq = m.to;
-        const value_them = self.get(to_sq).value();
-        const value_us = self.get(from_sq).value();
-        if (value_them - value_us > 100)
-        {
-            return true;
-        }
-        var gain: [24]i16 = @splat(0);
-        gain[0] = value_them;
-        gain[1] = value_us - value_them;
-        var depth: usize = 1;
-        const queens_or_bishops = self.all_queens_bishops();
-        const queens_or_rooks = self.all.queens_rooks();
-        var occupation = self.all() ^ to_sq.to_bitboard() ^ from_sq.to_bitboard();
-        var attackers: u64 = self.get_attackers_to_for_occupation(to_sq, occupation);
-        var bb: u64 = 0;
-
-        while (true)
-        {
-            attackers &= occupation;
-            if (attackers == 0) break;
-            side = side.opp();
-
-            // Pawn.
-            bb = attackers & self.pawns(side);
-            if (bb != 0)
-            {
-                depth += 1;
-                gain[depth] = PieceType.PAWN.value() - gain[depth - 1];
-                if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-                funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 pawn
-                attackers |= data.get_bishop_attacks(to_sq, occupation) & queens_or_bishops; // reveal next diagonal attacker.
-                continue;
-            }
-
-            // Rook.
-            bb = attackers & self.rooks(side);
-            if (bb != 0)
-            {
-                depth += 1;
-                gain[depth] = PieceType.ROOK.value() - gain[depth - 1];
-                if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-                funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 pawn
-                attackers |= data.get_rook_attacks(to_sq, occupation) & queens_or_rooks; // reveal next diagonal attacker.
-                continue;
-            }
-        }
-
-        // Bubble up the score
-        depth -= 1;
-        while (depth > 0) : (depth -= 1)
-        {
-            if (gain[depth] > -gain[depth - 1])
-            {
-                gain[depth - 1] = -gain[depth];
-            }
-        }
-        return gain[0] >= 0;
-    }
-
-    fn pos_ok(self: *const Position) bool
+    pub fn pos_ok(self: *const Position) bool
     {
         lib.not_in_release();
 
@@ -1488,6 +1435,18 @@ pub const Position = struct
             std.debug.print("TOO MANY PIECES", .{});
             return false;
         }
+
+        // if (self.knights(Color.WHITE) != 0 and self.available_pieces[Color.WHITE.u] & PieceType.KNIGHT.bitmask() == 0)
+        // {
+        //     std.debug.print("BITMASK WHITE KNIGHTS {b:>6}", .{self.available_pieces[Color.WHITE.u]});
+        //     return false;
+        // }
+
+        // if (self.knights(Color.BLACK) != 0 and self.available_pieces[Color.BLACK.u] & PieceType.KNIGHT.bitmask() == 0)
+        // {
+        //     std.debug.print("BITMASK BLACK KNIGHTS {b:>6}", .{self.available_pieces[Color.BLACK.u]});
+        //     return false;
+        // }
 
         const a, const b = self.compute_hashkeys();
         if (a != self.current_state.key)
@@ -1526,10 +1485,23 @@ pub const Position = struct
 /// 4 bits comptime struct for generating moves.
 pub const Params = packed struct
 {
-    pub const GenType = enum(u2) { all, captures, quiets, evasions };
+    pub const GenType = enum(u2)
+    {
+        /// Generate all moves.
+        all,
+        /// Generate captures only.
+        captures,
+        /// Generate quiet moves only.
+        quiets,
+        /// Generate check evasions.
+        evasions
+    };
 
+    /// The color for which we are generating.
     us: Color,
+    /// Which moves are we generating?
     gentype: GenType,
+    /// There are pins. If not we can comptime skip all pin checks.
     pins: bool,
 
     inline fn create(comptime us: Color, comptime gentype: GenType, comptime pins: bool) Params
@@ -1544,7 +1516,7 @@ pub const Params = packed struct
 /// Basic storage of moves.
 pub const MoveStorage = struct
 {
-    moves: [218]Move,
+    moves: [types.max_move_count]Move,
     ptr: [*]Move,
 
     pub fn init() MoveStorage
@@ -1563,7 +1535,7 @@ pub const MoveStorage = struct
     /// Required funnction.
     pub fn store(self: *MoveStorage, move: Move) void
     {
-        assert(self.len() < 218);
+        assert(self.len() < types.max_move_count);
         self.ptr[0] = move;
         self.ptr += 1;
     }
