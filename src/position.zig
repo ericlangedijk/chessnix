@@ -52,7 +52,7 @@ const CastlingInformation = struct
     sq_start_king_start: Square,
 };
 
-pub const StateList = std.ArrayListUnmanaged(StateInfo);
+pub const StateInfoList = std.ArrayListUnmanaged(StateInfo);
 
 pub const StateInfo = struct
 {
@@ -149,8 +149,8 @@ pub const Position = struct
     // Is this chess960?
     is_960: bool,
     /// Moves and state-information history.
-    state_list: StateList,
-    /// For performance reasons we keep this pointer to the actual current state: the last item in the state_list.
+    statelist: StateInfoList,
+    /// For performance reasons we keep this pointer to the actual current state: the last item in the statelist.
     /// * It is always synchronized.
     /// * Use with care. It is writable even for a *const Position.
     current_state: *StateInfo,
@@ -158,7 +158,7 @@ pub const Position = struct
     /// Creates an empty (invalid) board with one empty state.
     fn create() Position
     {
-        const list: StateList = create_statelist();
+        const list: StateInfoList = create_statelist();
         return Position
         {
             .board = @splat(Piece.NO_PIECE),
@@ -176,22 +176,22 @@ pub const Position = struct
             .ply = 0,
             .game_ply = 0,
             .is_960 = false,
-            .state_list = list,
+            .statelist = list,
             .current_state = &list.items[0],
         };
     }
 
     /// Creates our statelist with one empty state.
-    fn create_statelist() StateList
+    fn create_statelist() StateInfoList
     {
-        var list: StateList = .empty;
+        var list: StateInfoList = .empty;
         list.append(ctx.galloc, StateInfo.empty) catch wtf();
         return list;
     }
 
     pub fn deinit(self: *Position) void
     {
-        self.state_list.deinit(ctx.galloc);
+        self.statelist.deinit(ctx.galloc);
     }
 
     /// Returns the classic startposition.
@@ -224,7 +224,7 @@ pub const Position = struct
         const backrow: [8]PieceType = @import("chess960.zig").decode(nr);
         var pos: Position = .create();
         pos.is_960 = true;
-        pos.state_list = std.ArrayListUnmanaged(StateInfo).initCapacity(ctx.galloc, 32) catch wtf();
+        pos.statelist = std.ArrayListUnmanaged(StateInfo).initCapacity(ctx.galloc, 32) catch wtf();
         pos.init_pieces_from_backrow(backrow);
         pos.start_files = .{ bitboards.file_a, bitboards.file_h, bitboards.file_e };
         pos.current_state.st.castling_rights = 0b1111;
@@ -258,13 +258,13 @@ pub const Position = struct
         if (!including_history)
         {
             result.ply = 0;
-            result.state_list = create_statelist();
+            result.statelist = create_statelist();
             result.current_state = result.get_actual_state_ptr();
             result.current_state.* = src.current_state.*;
         }
         else
         {
-            result.state_list = src.state_list.clone(ctx.galloc) catch wtf();
+            result.statelist = src.statelist.clone(ctx.galloc) catch wtf();
             result.current_state = result.get_actual_state_ptr();
         }
         return result;
@@ -593,9 +593,9 @@ pub const Position = struct
     /// Only used in make move. This must be called *before* incrementing the ply.
     fn push_state(self: *Position) *StateInfo
     {
-        assert(self.ply + 1 == self.state_list.items.len);
-        const st: *StateInfo = self.state_list.addOne(ctx.galloc) catch wtf();
-        const old: *const StateInfo = &self.state_list.items[self.ply];
+        assert(self.ply + 1 == self.statelist.items.len);
+        const st: *StateInfo = self.statelist.addOne(ctx.galloc) catch wtf();
+        const old: *const StateInfo = &self.statelist.items[self.ply];
         // Copy some stuff. The reset is updated in make move.
         // Until then the rest of the new state is undefined.
         st.pawnkey = old.pawnkey;
@@ -609,15 +609,15 @@ pub const Position = struct
     // Only used in ummake move.
     fn pop_state(self: *Position) void
     {
-        self.state_list.items.len -= 1;
+        self.statelist.items.len -= 1;
         self.current_state = funcs.ptr_sub(StateInfo, self.current_state, 1);
     }
 
     /// Returns the actual pointer the the last item in the statelist.
     fn get_actual_state_ptr(self: *Position) *StateInfo
     {
-        assert(self.ply + 1 == self.state_list.items.len);
-        return &self.state_list.items[self.ply];
+        assert(self.ply + 1 == self.statelist.items.len);
+        return &self.statelist.items[self.ply];
     }
 
     pub fn is_threefold_repetition(self: *const Position) bool
@@ -1025,17 +1025,6 @@ pub const Position = struct
         }
     }
 
-    // fn get_experimental_mask(self: *const Position, comptime us: Color) u5
-    // {
-    //     var mask = 0;
-    //     if (self.pawns(us) != 0)   mask |= 0b00001;
-    //     if (self.knights(us) != 0) mask |= 0b00010;
-    //     if (self.bishops(us) != 0) mask |= 0b00100;
-    //     if (self.rooks(us) != 0)   mask |= 0b01000;
-    //     if (self.queens(us) != 0)  mask |= 0b10000;
-    //     return 0;
-    // }
-
     pub fn generate_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void
     {
         if (comptime lib.is_paranoid)
@@ -1094,6 +1083,7 @@ pub const Position = struct
         }
     }
 
+    /// See `MoveStorage` for the interface of storage.
     fn gen(self: *const Position, comptime cpt: Params, noalias storage: anytype) void
     {
         const st = self.current_state;
@@ -1134,7 +1124,7 @@ pub const Position = struct
             target = st.checkers | interpolationmask;
         }
 
-        // TODO we could do here one more comptime skip: the target can be empty, but only in the case of generating captures.
+        // TODO: we could do here one more comptime skip: the target bitboard can be empty, but only in the case of generating captures.
         // Otherwise there is always a target.
 
         // All pieces except the king. In case of a doublecheck we can only move the king.
@@ -1251,7 +1241,7 @@ pub const Position = struct
             {
                 from_sq = funcs.pop_square(&bb_from);
                 bb_to = data.get_knight_attacks(from_sq) & target;
-                // This inline loop for knights is somewhat faster than a while loop.
+                // This inline loop for knights seems somewhat faster than a while loop.
                 inline for (0..8) |_|
                 {
                     if (bb_to == 0) break;
@@ -1421,7 +1411,7 @@ pub const Position = struct
     {
         lib.not_in_release();
 
-        assert(self.current_state == &self.state_list.items[self.ply]);
+        assert(self.current_state == &self.statelist.items[self.ply]);
 
         // An extra test on the kings bitboard.
         if (@popCount(self.all_kings()) != 2)
@@ -1540,7 +1530,6 @@ pub const MoveStorage = struct
         self.ptr += 1;
     }
 
-    /// Required function.
     pub fn len(self: *const MoveStorage) usize
     {
         return self.ptr - &self.moves;
@@ -1567,18 +1556,18 @@ pub const JustCount = struct
         self.moves = 0;
     }
 
-    /// Required function.
-    pub fn len(self: *const JustCount) usize
-    {
-        return self.moves;
-    }
-
     /// Required funnction.
     pub fn store(self: *JustCount, move: Move) void
     {
         _ = move;
         self.moves += 1;
     }
+
+    pub fn len(self: *const JustCount) usize
+    {
+        return self.moves;
+    }
+
 };
 
 pub const Any = struct
@@ -1638,7 +1627,7 @@ pub fn print_pos(pos: *const Position) void
     const lastmove = pos.current_state.last_move;
     console.print("\n", .{});
     console.print("incheck {}, last move {s}, key {x:0>16}\n", .{pos.in_check(), if (lastmove == Move.empty) "none" else lastmove.to_string().slice(), pos.current_state.key});
-    for (pos.state_list.items[1..]) |*st|
+    for (pos.statelist.items[1..]) |*st|
     {
         console.print("{s} {s}, ", .{@tagName(st.last_move.movetype), st.last_move.to_string().slice()});
     }
