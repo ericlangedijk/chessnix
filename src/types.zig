@@ -3,7 +3,9 @@ const funcs = @import("funcs.zig");
 
 const assert = std.debug.assert;
 
+/// Used for evaluation.
 pub const Value = i16;
+/// Used for evaluation.
 pub const Float = f32;
 
 pub const Orientation = enum(u2)
