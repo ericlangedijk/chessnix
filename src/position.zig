@@ -1,6 +1,3 @@
-// TODO: checkout if we can use this file as a struct. handy for privates!
-// TODO: use classic castle stuff for normal chess and monomorphize.
-
 const std = @import("std");
 const types = @import("types.zig");
 const lib = @import("lib.zig");
@@ -41,16 +38,8 @@ pub const ci_white_long: u4 = 1;
 pub const ci_black_short: u4 = 2;
 pub const ci_black_long: u4 = 3;
 
-const castling_flags: [4]u4 = .{ cf_white_short, cf_white_long, cf_black_short, cf_black_long };
 const king_castle_destination_squares: [4]Square = .{ Square.G1, Square.C1, Square.G8, Square.C8 };
 const rook_castle_destination_squares: [4]Square = .{ Square.F1, Square.D1, Square.F8, Square.D8 };
-
-const CastlingInformation = struct
-{
-    sq_start_rook_left: Square,
-    sq_start_rook_right: Square,
-    sq_start_king_start: Square,
-};
 
 pub const StateInfoList = std.ArrayListUnmanaged(StateInfo);
 
@@ -104,9 +93,6 @@ pub const Position = struct
     /// * (0) white pieces.
     /// * (1) black pieces.
     bb_by_side: [2]u64,
-
-    // EXPERIMENTAL. A bitmask for the available pieces.  available_pieces: [2]u6,
-
     /// Supporting Chess960, the startfiles of:
     /// * (0) a-rook file or 'left' rook
     /// * (1) h-rook file or 'right' rook
@@ -164,7 +150,6 @@ pub const Position = struct
             .board = @splat(Piece.NO_PIECE),
             .bb_by_type = @splat(0),
             .bb_by_side = @splat(0),
-            //.available_pieces = @splat(0),
             .start_files = @splat(0),
             .king_start_squares = @splat(Square.A1),
             .rook_start_squares = @splat(Square.A1),
@@ -509,7 +494,6 @@ pub const Position = struct
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pt.u] |= mask;
         self.bb_by_side[us.u] |= mask;
-        //self.available_pieces[us.u] |= pc.piecetype.bitmask();
         self.values[us.u] += pc.value();
         self.materials[us.u] += pc.material();
     }
@@ -525,7 +509,6 @@ pub const Position = struct
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pc.piecetype.u] |= mask;
         self.bb_by_side[us.u] |= mask;
-        //self.available_pieces[us.u] |= pc.piecetype.bitmask();
         self.values[us.u] += pc.value();
         self.materials[us.u] += pc.material();
     }
@@ -541,7 +524,6 @@ pub const Position = struct
         self.bb_by_type[pt.u] &= mask;
         self.bb_by_type[0] &= mask;
         self.bb_by_side[us.u] &= mask;
-        //if (self.bb_by_side[us.u] == 0) self.available_pieces[us.u] &= ~pc.piecetype.bitmask();
         self.values[us.u] -= pc.value();
         self.materials[us.u] -= pc.material();
     }
@@ -556,7 +538,6 @@ pub const Position = struct
         self.bb_by_type[pc.piecetype.u] &= mask;
         self.bb_by_type[0] &= mask;
         self.bb_by_side[us.u] &= mask;
-        //if (self.bb_by_side[us.u] == 0) self.available_pieces[us.u] &= ~pc.piecetype.bitmask();
         self.values[us.u] -= pc.value();
         self.materials[us.u] -= pc.material();
     }
@@ -876,16 +857,24 @@ pub const Position = struct
         const them: Color = comptime us.opp();
         const st: *StateInfo = self.current_state;
         const king_sq: Square = self.king_square(us);
+        const bb_all: u64 = self.all();
 
         // Checkers.
-        st.checkers = self.get_attackers_to(king_sq) & self.by_side(them);
+        st.checkers =
+            (data.get_pawn_attacks(king_sq, us) & self.pawns(them)) |
+            (data.get_knight_attacks(king_sq) & self.knights(them)) |
+            (data.get_bishop_attacks(king_sq, bb_all) & self.queens_bishops(them)) |
+            (data.get_rook_attacks(king_sq, bb_all) & self.queens_rooks(them));
 
         // Pins.
         st.pinned = 0;
         st.pinners = 0;
         const bb_us: u64 = self.bb_by_side[us.u];
-        const bb_occupation_without_us: u64 = self.all() & ~bb_us;
-        var pseudo_attackers: u64 = self.get_sliding_attackers_to_for_occupation(king_sq, bb_occupation_without_us) & self.sliders(them);
+        const bb_occupation_without_us: u64 = bb_all & ~bb_us;
+        var pseudo_attackers: u64 =
+            (data.get_bishop_attacks(king_sq, bb_occupation_without_us) & self.queens_bishops(them)) |
+            (data.get_rook_attacks(king_sq, bb_occupation_without_us) & self.queens_rooks(them));
+
         while (pseudo_attackers != 0)
         {
             const attacker_sq: Square = funcs.pop_square(&pseudo_attackers);
@@ -901,91 +890,30 @@ pub const Position = struct
         }
     }
 
-    /// Returns a bitboard of all attackers (both colors) to a square. For pawns we use an inversion trick.
-    pub fn get_attackers_to(self: *const Position, sq: Square) u64
-    {
-        return
-            (data.get_pawn_attacks(sq, Color.WHITE) & self.black_pawns()) |
-            (data.get_pawn_attacks(sq, Color.BLACK) & self.white_pawns()) |
-            (data.get_knight_attacks(sq) & self.all_knights()) |
-            (data.get_bishop_attacks(sq, self.all()) & self.all_queens_bishops()) |
-            (data.get_rook_attacks(sq, self.all()) & self.all_queens_rooks()) |
-            (data.get_king_attacks(sq) & self.all_kings());
-    }
-
-    pub fn get_attackers_to_for_occupation(self: *const Position, sq: Square, occ: u64) u64
-    {
-        return
-            (data.get_pawn_attacks(sq, Color.WHITE) & self.black_pawns()) |
-            (data.get_pawn_attacks(sq, Color.BLACK) & self.white_pawns()) |
-            (data.get_knight_attacks(sq) & self.all_knights()) |
-            (data.get_bishop_attacks(sq, occ) & self.all_queens_bishops()) |
-            (data.get_rook_attacks(sq, occ) & self.all_queens_rooks()) |
-            (data.get_king_attacks(sq) & self.all_kings());
-    }
-
-    /// Returns a bitboard with all sliding pieces which are attacking square `sq` for a certain occupation.
-    /// * For both colors.
-    pub fn get_sliding_attackers_to_for_occupation(self: *const Position, sq: Square, occ: u64) u64
-    {
-        return
-            (data.get_bishop_attacks(sq, occ) & self.all_queens_bishops()) |
-            (data.get_rook_attacks(sq, occ) & self.all_queens_rooks());
-    }
-
-    /// Do not call for pawns.
-    pub fn get_piece_attacks_from(self: *const Position, comptime pt: PieceType, from_sq: Square) u64
-    {
-        return switch(pt.e)
-        {
-            .knight => data.get_knight_attacks(from_sq),
-            .bishop => data.get_bishop_attacks(from_sq, self.all()),
-            .rook => data.get_rook_attacks(from_sq, self.all()),
-            .queen => data.get_queen_attacks(from_sq, self.all()),
-            .king => data.get_king_attacks(from_sq),
-            else => unreachable,
-        };
-    }
-
-    pub fn is_square_attacked_by_for_occ(self: *const Position, occ: u64, to_sq: Square, comptime attacker: Color) bool
-    {
-        const inverted = comptime attacker.opp();
-
-        // const mask: u6 = self.available_pieces[attacker.u];
-        // if (mask & 0b000010 != 0 and data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
-        // if (mask & 0b100000 != 0 and data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
-        // if (mask & 0b000001 != 0 and data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) return true;
-        // if (mask & 0b100100 != 0 and data.get_bishop_attacks(to_sq, occ) & self.queens_bishops(attacker) != 0) return true;
-        // if (mask & 0b011000 != 0 and data.get_rook_attacks(to_sq, occ) & self.queens_rooks(attacker) != 0) return true;
-
-        if (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
-        if (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
-        if (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) return true;
-        if (data.get_bishop_attacks(to_sq, occ) & self.queens_bishops(attacker) != 0) return true;
-        if (data.get_rook_attacks(to_sq, occ) & self.queens_rooks(attacker) != 0) return true;
-        return false;
-    }
-
-    /// Returns true if square [sq] is attacked by any piece of [attacker].\
-    /// We start with the easiest ones, to gain a little bit of speed.\
-    /// For pawns we use an inversion trick.
+    /// Returns true if square `sq` is attacked by any piece of `attacker`.
     pub fn is_square_attacked_by(self: *const Position, to_sq: Square, comptime attacker: Color) bool
     {
-        const them = comptime attacker.opp();
+        // We start with the easiest ones, to gain a little bit of speed. For pawns we use an inversion trick.
+        const inverted = comptime attacker.opp();
+        return
+            (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) or
+            (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) or
+            (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) or
+            (data.get_bishop_attacks(to_sq, self.all()) & self.queens_bishops(attacker) != 0) or
+            (data.get_rook_attacks(to_sq, self.all()) & self.queens_rooks(attacker) != 0);
+    }
 
-        // const mask: u6 = self.available_pieces[attacker.u];
-        // if (mask & 0b000010 != 0 and data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
-        // if (mask & 0b100000 != 0 and data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
-        // if (mask & 0b000001 != 0 and data.get_pawn_attacks(to_sq, them) & self.pawns(attacker) != 0) return true;
-        // if (mask & 0b100100 != 0 and data.get_bishop_attacks(to_sq, self.all()) & self.queens_bishops(attacker) != 0) return true;
-        // if (mask & 0b011000 != 0 and data.get_rook_attacks(to_sq, self.all()) & self.queens_rooks(attacker) != 0) return true;
-
-        if (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) return true;
-        if (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) return true;
-        if (data.get_pawn_attacks(to_sq, them) & self.pawns(attacker) != 0) return true;
-        if (data.get_bishop_attacks(to_sq, self.all()) & self.queens_bishops(attacker) != 0) return true;
-        if (data.get_rook_attacks(to_sq, self.all()) & self.queens_rooks(attacker) != 0) return true;
-        return false;
+    /// Returns true if square `sq` is attacked by any piece of `attacker` for a certain occupation `occ`.
+    pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to_sq: Square, comptime attacker: Color) bool
+    {
+        // We start with the easiest ones, to gain a little bit of speed. For pawns we use an inversion trick.
+        const inverted = comptime attacker.opp();
+        return
+            (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) or
+            (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) or
+            (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) or
+            (data.get_bishop_attacks(to_sq, occ) & self.queens_bishops(attacker) != 0) or
+            (data.get_rook_attacks(to_sq, occ) & self.queens_rooks(attacker) != 0);
     }
 
     fn is_castling_allowed(self: *const Position, comptime castletype: CastleType, comptime us: Color) bool
@@ -1032,25 +960,26 @@ pub const Position = struct
             assert(self.to_move.e == us.e);
         }
 
-        const pins: bool = self.current_state.pinners != 0;
-
         storage.reset();
-        switch(self.in_check())
+
+        const check: bool = self.current_state.checkers != 0;
+        const pins: bool = self.current_state.pinners != 0;
+        switch (check)
         {
             false =>
             {
-                if (pins)
-                    self.gen(Params.create(us, .all, true), storage)
-                else
-                    self.gen(Params.create(us, .all, false), storage);
+                switch (pins)
+                {
+                    false => self.gen(Params.create(us, .all, false), storage),
+                    true => self.gen(Params.create(us, .all, true), storage),
+                }
             },
             true =>
-            {
-                if (pins)
-                    self.gen(Params.create(us, .evasions, true), storage)
-                else
-                    self.gen(Params.create(us, .evasions, false), storage);
-            },
+                switch (pins)
+                {
+                    false => self.gen(Params.create(us, .evasions, false), storage),
+                    true => self.gen(Params.create(us, .evasions, true), storage),
+                },
         }
     }
 
@@ -1061,10 +990,11 @@ pub const Position = struct
             assert(self.to_move.e == us.e);
         }
 
-        const pins: bool = self.current_state.pinners != 0;
-
         storage.reset();
-        switch(self.in_check())
+
+        const check: bool = self.current_state.checkers != 0;
+        const pins: bool = self.current_state.pinners != 0;
+        switch(check)
         {
             false =>
             {
@@ -1084,248 +1014,250 @@ pub const Position = struct
     }
 
     /// See `MoveStorage` for the interface of storage.
-    fn gen(self: *const Position, comptime cpt: Params, noalias storage: anytype) void
+    fn gen(self: *const Position, comptime ctp: Params, noalias storage: anytype) void
     {
-        const st = self.current_state;
-        const us = comptime cpt.us;
+        // Comptimes.
+        const us = comptime ctp.us;
         const them = comptime us.opp();
-        const check: bool = comptime cpt.gentype == .evasions;
-        const skip_pins: bool = comptime !cpt.pins;
+        const skip_pins: bool = comptime !ctp.pins;
 
-        const typed: [*]const u64 = &self.bb_by_type; // EXPERIMENTAL
-        const do_all_promotions = comptime cpt.gentype != .captures;
-        const doublecheck: bool = check and @popCount(st.checkers) > 1;
+        // Some locals.
+        const st: StateInfo = self.current_state.*; // copying the struct is strangely enough somewhat faster.
+        const do_all_promotions = comptime ctp.gentype != .captures;
+        const doublecheck: bool = ctp.check() and @popCount(st.checkers) > 1;
+        const bb_all = self.all();
         const bb_us = self.bb_by_side[us.u];
         const bb_them = self.bb_by_side[them.u];
-        const king_sq: Square = self.king_square(us);
         const bb_not_us: u64 = ~bb_us;
+        const king_sq: Square = self.king_square(us);
 
         // We start with a bitboard with all empty squares + them squares.
         var target: u64 = bb_not_us;
 
-        var bb_from: u64 = undefined;
-        var bb_to: u64 = undefined;
-        var from_sq: Square = undefined;
-        var to_sq: Square = undefined;
-        var b1: u64 = undefined;
-        var b2: u64 = undefined;
-        var b3: u64 = undefined;
-
         // When doing only captures the target bitboard is adjusted.
-        if (cpt.gentype == .captures)
+        if (ctp.captures())
         {
             target &= bb_them;
         }
 
         // When in check update target again for the pieces: only interpolation or capture checker
-        if (check)
+        if (ctp.check())
         {
             const interpolationmask: u64 = if (doublecheck) 0 else squarepairs.in_between_bitboard(king_sq, funcs.first_square(st.checkers));
             target = st.checkers | interpolationmask;
         }
 
-        // TODO: we could do here one more comptime skip: the target bitboard can be empty, but only in the case of generating captures.
-        // Otherwise there is always a target.
+        // TODO: we could do here one more comptime skip: the target bitboard can be empty, but only in the case of generating captures. Otherwise there is always a target.
 
-        // All pieces except the king. In case of a doublecheck we can only move the king.
+        // In case of a doublecheck we can only move the king.
         if (!doublecheck)
         {
             // Pawns.
-            const pawns_us = typed[PieceType.PAWN.u] & bb_us;
-            if (pawns_us != 0)
+            const bb_pawns = self.bb_by_type[PieceType.PAWN.u] & bb_us;// typed[PieceType.PAWN.u] & bb_us;
+            if (bb_pawns != 0)
             {
-                const skip_pawn_pins: bool = skip_pins or (st.pinned & pawns_us == 0);
-                const empty_squares: u64 = ~self.all();
-                const enemies: u64 = if (cpt.gentype == .evasions) st.checkers else bb_them;
-                const pawns_on_seventh: u64 = pawns_us & funcs.relative_rank_7_bitboard(us);
-                const pawns_not_on_seventh: u64 = pawns_us & ~pawns_on_seventh;
+                const skip_pawn_pins: bool = skip_pins or (st.pinned & bb_pawns == 0);
+                const empty_squares: u64 = ~bb_all;
+                const enemies: u64 = if (ctp.gentype == .evasions) st.checkers else bb_them;
+                const pawns_on_seventh: u64 = bb_pawns & funcs.relative_rank_7_bitboard(us);
+                const pawns_not_on_seventh: u64 = bb_pawns & ~pawns_on_seventh;
 
                 // Pawn pushes, no promotions.
-                if (cpt.gentype != .captures)
+                if (!ctp.captures())
                 {
-
-                    b1 = funcs.pawns_shift(pawns_not_on_seventh, us, .up) & empty_squares; // single push
-                    b2 = funcs.pawns_shift(b1 & funcs.relative_rank_3_bitboard(us), us, .up) & empty_squares; // double push
+                    var bb_single_push: u64 = funcs.pawns_shift(pawns_not_on_seventh, us, .up) & empty_squares; // single push
+                    var bb_double_push: u64 = funcs.pawns_shift(bb_single_push & funcs.relative_rank_3_bitboard(us), us, .up) & empty_squares; // double push
                     // Pawn push check interpolation
-                    if (check)
+                    if (ctp.check())
                     {
-                        b1 &= target;
-                        b2 &= target;
+                        bb_single_push &= target;
+                        bb_double_push &= target;
                     }
                     // single
-                    while (b1 != 0)
+                    while (bb_single_push != 0)
                     {
-                        to_sq = funcs.pop_square(&b1);
-                        from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        const to: Square = funcs.pop_square(&bb_single_push);
+                        const from: Square = if (us.e == .white) to.minus(8) else to.plus(8);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.vertical, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
                     }
                     // double
-                    while (b2 != 0)
+                    while (bb_double_push != 0)
                     {
-                        to_sq = funcs.pop_square(&b2);
-                        from_sq = if (us.e == .white) to_sq.minus(16) else to_sq.plus(16);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .vertical, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        const to: Square = funcs.pop_square(&bb_double_push);
+                        const from: Square = if (us.e == .white) to.minus(16) else to.plus(16);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.vertical, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
                     }
                 }
 
                 // Promotions (including captures) are always generated. When captures then only queen promotions.
                 if (pawns_on_seventh != 0)
                 {
-                    b1 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
-                    b2 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
-                    b3 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
+                    var bb_northwest: u64 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
+                    var bb_norhteast: u64 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
+                    var bb_push: u64 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
                     // Pawn push check interpolation
-                    if (check)
+                    if (ctp.check())
                     {
-                        b3 &= target;
+                        bb_push &= target;
                     }
                     // north west
-                    while (b1 != 0)
+                    while (bb_northwest != 0)
                     {
-                        to_sq = funcs.pop_square(&b1);
-                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        const to: Square = funcs.pop_square(&bb_northwest);
+                        const from: Square = if (us.e == .white) to.minus(7) else to.plus(7);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.diagmain, king_sq, from, to)) store_promotions(do_all_promotions, from, to, storage);
                     }
                     // north east
-                    while (b2 != 0)
+                    while (bb_norhteast != 0)
                     {
-                        to_sq = funcs.pop_square(&b2);
-                        from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        const to: Square = funcs.pop_square(&bb_norhteast);
+                        const from: Square = if (us.e == .white) to.minus(9) else to.plus(9);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.diaganti, king_sq, from, to)) store_promotions(do_all_promotions, from, to, storage);
                     }
                     // push
-                    while (b3 != 0)
+                    while (bb_push != 0)
                     {
-                        to_sq = funcs.pop_square(&b3);
-                        from_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .vertical, king_sq, from_sq, to_sq)) store_promotions(do_all_promotions, from_sq, to_sq, storage);
+                        const to: Square = funcs.pop_square(&bb_push);
+                        const from: Square = if (us.e == .white) to.minus(8) else to.plus(8);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.vertical, king_sq, from, to)) store_promotions(do_all_promotions, from, to, storage);
                     }
                 }
 
                 // Captures, no promotions.
-                if (cpt.gentype == .captures or cpt.gentype == .all or cpt.gentype == .evasions)
+                if (ctp.captures() or ctp.all() or ctp.check())
                 {
-                    b1 = funcs.pawns_shift(pawns_not_on_seventh, us, .northwest) & enemies;
-                    b2 = funcs.pawns_shift(pawns_not_on_seventh, us, .northeast) & enemies;
+                    var bb_northwest: u64 = funcs.pawns_shift(pawns_not_on_seventh, us, .northwest) & enemies;
+                    var bb_northeast: u64 = funcs.pawns_shift(pawns_not_on_seventh, us, .northeast) & enemies;
                     // north west
-                    while (b1 != 0)
+                    while (bb_northwest != 0)
                     {
-                        to_sq = funcs.pop_square(&b1);
-                        from_sq = if (us.e == .white) to_sq.minus(7) else to_sq.plus(7);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diagmain, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        const to: Square = funcs.pop_square(&bb_northwest);
+                        const from: Square = if (us.e == .white) to.minus(7) else to.plus(7);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.diagmain, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
                     }
                     // north east
-                    while (b2 != 0)
+                    while (bb_northeast != 0)
                     {
-                        to_sq = funcs.pop_square(&b2);
-                        from_sq = if (us.e == .white) to_sq.minus(9) else to_sq.plus(9);
-                        if (skip_pawn_pins or self.is_legal_check_pin(skip_pins, .diaganti, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                        const to: Square = funcs.pop_square(&bb_northeast);
+                        const from: Square = if (us.e == .white) to.minus(9) else to.plus(9);
+                        if (skip_pawn_pins or self.is_legal_check_pin(.diaganti, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
                     }
                     // enpassant
                     if (st.ep_square) |ep|
                     {
-                        b3 = data.get_pawn_attacks(ep, them) & pawns_us; // inversion trick.
-                        while (b3 != 0)
+                        var bb_enpassant: u64 = data.get_pawn_attacks(ep, them) & bb_pawns; // inversion trick.
+                        while (bb_enpassant != 0)
                         {
-                            from_sq = funcs.pop_square(&b3);
-                            if (self.is_legal_enpassant(us, king_sq, from_sq, ep)) store(from_sq, ep, .enpassant, .no_prom, storage);
+                            const from: Square = funcs.pop_square(&bb_enpassant);
+                            if (self.is_legal_enpassant(us, king_sq, from, ep)) store(from, ep, .enpassant, .no_prom, storage);
                         }
                     }
                 }
             }
 
-            // Knight.
-            bb_from = typed[PieceType.KNIGHT.u] & bb_us;
-            if (cpt.pins) bb_from &= ~st.pinned; // a knight can never escape a pin.
-            while (bb_from != 0)
+            // Knights.
             {
-                from_sq = funcs.pop_square(&bb_from);
-                bb_to = data.get_knight_attacks(from_sq) & target;
-                // This inline loop for knights seems somewhat faster than a while loop.
-                inline for (0..8) |_|
+                var bb_from: u64 = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
+                if (ctp.pins) bb_from &= ~st.pinned; // a knight can never escape a pin.
+                while (bb_from != 0)
                 {
-                    if (bb_to == 0) break;
-                    to_sq = funcs.pop_square(&bb_to);
-                    store(from_sq, to_sq, .normal, .no_prom, storage);
+                    const from: Square = funcs.pop_square(&bb_from);
+                    var bb_to: u64 = data.get_knight_attacks(from) & target;
+                    // This inline loop is somewhat faster for knights than the default while loop. I don't know why.
+                    inline for (0..8) |_|
+                    {
+                        if (bb_to == 0) break;
+                        const to: Square = funcs.pop_square(&bb_to);
+                        store(from, to, .normal, .no_prom, storage);
+                    }
                 }
             }
 
-            // Bishop.
-            bb_from = typed[PieceType.BISHOP.u] & bb_us;
-            while (bb_from != 0)
+            // Bishops.
             {
-                from_sq = funcs.pop_square(&bb_from);
-                bb_to = self.get_piece_attacks_from(PieceType.BISHOP, from_sq) & target;
-                while (bb_to != 0)
+                var bb_from: u64 = self.bb_by_type[PieceType.BISHOP.u] & bb_us;
+                while (bb_from != 0)
                 {
-                    to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pin(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    const from: Square = funcs.pop_square(&bb_from);
+                    var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target;
+                    while (bb_to != 0)
+                    {
+                        const to: Square = funcs.pop_square(&bb_to);
+                        if (skip_pins or self.is_legal_check_pin(null, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
+                    }
                 }
             }
 
-            // Rook.
-            bb_from = typed[PieceType.ROOK.u] & bb_us;
-            while (bb_from != 0)
+            // Rooks.
             {
-                from_sq = funcs.pop_square(&bb_from);
-                bb_to = self.get_piece_attacks_from(PieceType.ROOK, from_sq) & target;
-                while (bb_to != 0)
+                var bb_from: u64 = self.bb_by_type[PieceType.ROOK.u] & bb_us;
+                while (bb_from != 0)
                 {
-                    to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pin(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    const from: Square = funcs.pop_square(&bb_from);
+                    var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target;
+                    while (bb_to != 0)
+                    {
+                        const to: Square = funcs.pop_square(&bb_to);
+                        if (skip_pins or self.is_legal_check_pin(null, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
+                    }
                 }
             }
 
-            // Queen.
-            bb_from = typed[PieceType.QUEEN.u] & bb_us;
-            while (bb_from != 0)
+            // Queens.
             {
-                from_sq = funcs.pop_square(&bb_from);
-                bb_to = self.get_piece_attacks_from(PieceType.QUEEN, from_sq) & target;
-                while (bb_to != 0)
+                var bb_from: u64 = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
+                while (bb_from != 0)
                 {
-                    to_sq = funcs.pop_square(&bb_to);
-                    if (self.is_legal_check_pin(skip_pins, null, king_sq, from_sq, to_sq)) store(from_sq, to_sq, .normal, .no_prom, storage);
+                    const from: Square = funcs.pop_square(&bb_from);
+                    var bb_to: u64 = data.get_queen_attacks(from, bb_all) & target;
+                    while (bb_to != 0)
+                    {
+                        const to: Square = funcs.pop_square(&bb_to);
+                        if (skip_pins or self.is_legal_check_pin(null, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
+                    }
                 }
             }
 
         } // <-- if (!doublecheck)
 
         // And now the king.
-        if (cpt.gentype == .captures)
+        if (ctp.captures())
         {
             target &= bb_them;
         }
         else
         {
-            target |= bb_not_us;
+            target = bb_not_us;
         }
 
         // Normal king moves.
-        bb_to = target & data.get_king_attacks(king_sq);
-        while (bb_to != 0)
         {
-            to_sq = funcs.pop_square(&bb_to);
-            if (is_legal_kingmove(self, us, to_sq)) store(king_sq, to_sq, .normal, .no_prom, storage);
+            var bb_to = target & data.get_king_attacks(king_sq);
+            while (bb_to != 0)
+            {
+                const to: Square = funcs.pop_square(&bb_to);
+                if (is_legal_kingmove(self, us, to)) store(king_sq, to, .normal, .no_prom, storage);
+            }
         }
 
-        // And finally castling.
-        if (!check and cpt.gentype != .captures)
+        // Castling moves.
+        if (!ctp.check() and !ctp.captures())
         {
             inline for (CastleType.all) |ct|
             {
                 if (self.is_castling_allowed(ct, us) and self.is_castlingpath_empty(ct, us) and self.is_legal_castle(ct, us, king_sq))
                 {
-                    to_sq = self.rook_castle_startsquare(ct, us);
-                    store(king_sq, to_sq, .castle, .no_prom, storage);
+                    // Castling is encoded as "king takes rook".
+                    const to: Square = self.rook_castle_startsquare(ct, us);
+                    store(king_sq, to, .castle, .no_prom, storage);
                 }
             }
         }
     }
 
-    fn store(from_sq: Square, to_sq: Square, comptime movetype: MoveType, comptime prom: Move.Prom, noalias storage: anytype) void
+    fn store(from: Square, to: Square, comptime movetype: MoveType, comptime prom: Move.Prom, noalias storage: anytype) void
     {
-        storage.store(Move{.from = from_sq, .to = to_sq, .prom = prom, .movetype = movetype} );
+        storage.store(Move{ .from = from, .to = to, .prom = prom, .movetype = movetype} );
     }
 
     fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
@@ -1344,9 +1276,8 @@ pub const Position = struct
     /// * Orientation known: sometimes (like with pawn moves) we know up-front (hard-coded) in which direction we are moving and use this info.
     /// * Orientation null: it needs to be retrieved. in this case we definitely should have a slider pin or otherwise a bug.
     /// * skip is known at comptime. There are no pins at all.
-    fn is_legal_check_pin(self: *const Position, comptime skip: bool, comptime orientation: ?Orientation, king_sq: Square, from_sq: Square, to_sq: Square) bool
+    fn is_legal_check_pin(self: *const Position, comptime orientation: ?Orientation, king_sq: Square, from_sq: Square, to_sq: Square) bool
     {
-        if (skip) return true;
         if (!funcs.contains_square(self.current_state.pinned, from_sq)) return true;
         if (orientation) |ori|
         {
@@ -1359,11 +1290,11 @@ pub const Position = struct
     }
 
     /// Tricky one. An ep move can uncover a check.
-    fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from_sq: Square, to_sq: Square) bool
+    fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from: Square, to: Square) bool
     {
         const them: Color = comptime us.opp();
-        const capt_sq = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
-        const occ: u64 = (self.all() ^ from_sq.to_bitboard() ^ capt_sq.to_bitboard()) | to_sq.to_bitboard();
+        const capt_sq = if (us.e == .white) to.minus(8) else to.plus(8);
+        const occ: u64 = (self.all() ^ from.to_bitboard() ^ capt_sq.to_bitboard()) | to.to_bitboard();
         const att: u64 =
             (data.get_rook_attacks(king_sq, occ) & self.queens_rooks(them)) |
             (data.get_bishop_attacks(king_sq, occ) & self.queens_bishops(them));
@@ -1374,7 +1305,7 @@ pub const Position = struct
     {
         const them = comptime us.opp();
         const occ: u64 = self.all() ^ self.kings(us);
-        return !self.is_square_attacked_by_for_occ(occ, to_sq, them);
+        return !self.is_square_attacked_by_for_occupation(occ, to_sq, them);
     }
 
     /// Check king's path for attacks when castling.
@@ -1407,6 +1338,7 @@ pub const Position = struct
         return true;
     }
 
+    /// Debug only.
     pub fn pos_ok(self: *const Position) bool
     {
         lib.not_in_release();
@@ -1425,18 +1357,6 @@ pub const Position = struct
             std.debug.print("TOO MANY PIECES", .{});
             return false;
         }
-
-        // if (self.knights(Color.WHITE) != 0 and self.available_pieces[Color.WHITE.u] & PieceType.KNIGHT.bitmask() == 0)
-        // {
-        //     std.debug.print("BITMASK WHITE KNIGHTS {b:>6}", .{self.available_pieces[Color.WHITE.u]});
-        //     return false;
-        // }
-
-        // if (self.knights(Color.BLACK) != 0 and self.available_pieces[Color.BLACK.u] & PieceType.KNIGHT.bitmask() == 0)
-        // {
-        //     std.debug.print("BITMASK BLACK KNIGHTS {b:>6}", .{self.available_pieces[Color.BLACK.u]});
-        //     return false;
-        // }
 
         const a, const b = self.compute_hashkeys();
         if (a != self.current_state.key)
@@ -1488,19 +1408,35 @@ pub const Params = packed struct
     };
 
     /// The color for which we are generating.
-    us: Color,
+    us: Color = Color.WHITE,
     /// Which moves are we generating?
-    gentype: GenType,
+    gentype: GenType = GenType.all,
     /// There are pins. If not we can comptime skip all pin checks.
-    pins: bool,
+    pins: bool = false,
 
-    inline fn create(comptime us: Color, comptime gentype: GenType, comptime pins: bool) Params
+    fn create(comptime us: Color, comptime gentype: GenType, comptime pins: bool) Params
     {
         return Params
         {
             .us = us, .gentype = gentype, .pins = pins
         };
     }
+
+    fn all(comptime self: Params) bool
+    {
+        return self.gentype == .all;
+    }
+
+    fn captures(comptime self: Params) bool
+    {
+        return self.gentype == .captures;
+    }
+
+    fn check(comptime self: Params) bool
+    {
+        return self.gentype == .evasions;
+    }
+
 };
 
 /// Basic storage of moves.
@@ -1585,22 +1521,20 @@ pub const Any = struct
         self.has_moves = false;
     }
 
-    /// Required function.
-    pub fn len(self: *const Any) usize
-    {
-        return @intFromBool(self.has_moves);
-    }
-
     /// Required funnction.
     pub fn store(self: *Any, move: Move) void
     {
         _ = move;
         self.has_moves = true;
     }
+
+    pub fn len(self: *const Any) usize
+    {
+        return @intFromBool(self.has_moves);
+    }
 };
 
-
-
+/// Debug only.
 pub fn print_pos(pos: *const Position) void
 {
     var y: u3 = 7;
