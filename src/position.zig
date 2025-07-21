@@ -657,11 +657,11 @@ pub const Position = struct
 
         const st: *StateInfo = self.push_state();
         const them: Color = comptime us.opp();
-        const from_sq = m.from;
-        const to_sq = m.to;
-        const movetype = m.movetype;
+        const from_sq: Square = m.from;
+        const to_sq: Square = m.to;
+        const movetype: MoveType = m.movetype;
         const pc: Piece = self.board[from_sq.u];
-        const capt: Piece = if(movetype != .enpassant) self.board[to_sq.u] else Piece.create_pawn(them);
+        const capt: Piece = if(movetype != .enpassant) self.board[to_sq.u] else comptime Piece.create_pawn(them);
         const is_pawnmove: bool = pc.is_pawn();
         const is_capture: bool = capt.is_piece();
         const hash_delta = zobrist.piece_square(pc, from_sq) ^ zobrist.piece_square(pc, to_sq);
@@ -775,7 +775,7 @@ pub const Position = struct
         }
     }
 
-    /// This should be called with us is the color that moved on the previous ply!
+    /// This should be called with `us` being the color that moved on the previous ply!
     pub fn unmake_move(self: *Position, comptime us: Color) void
     {
         if (comptime lib.is_paranoid)
@@ -784,7 +784,8 @@ pub const Position = struct
             assert(self.pos_ok());
         }
 
-        const st = self.current_state;
+        const st: *const StateInfo = self.current_state;
+
         self.to_move = us;
         self.ply -= 1;
         self.game_ply -= 1;
@@ -794,30 +795,30 @@ pub const Position = struct
         const pc: Piece = st.moved_piece;
         const capt: Piece = st.captured_piece;
         const is_capture: bool = capt.is_piece();
-        const to_sq: Square = m.to;
-        const from_sq: Square = m.from;
+        const to: Square = m.to;
+        const from: Square = m.from;
 
         switch(m.movetype)
         {
             .normal =>
             {
-                self.move_piece_ext(us, pc, to_sq, from_sq);
-                if (is_capture) self.add_piece(to_sq, capt);
+                self.move_piece_ext(us, pc, to, from);
+                if (is_capture) self.add_piece(to, capt);
             },
             .promotion =>
             {
                 const pawn: Piece = comptime Piece.create_pawn(us);
                 const prom: Piece = m.prom.to_piece(us);
-                self.remove_piece_ext(us, prom, to_sq);
-                self.add_piece_ext(us, pawn, from_sq);
-                if (is_capture) self.add_piece_ext(them, capt, to_sq);
+                self.remove_piece_ext(us, prom, to);
+                self.add_piece_ext(us, pawn, from);
+                if (is_capture) self.add_piece_ext(them, capt, to);
             },
             .enpassant =>
             {
                 const pawn_us: Piece = comptime Piece.create_pawn(us);
                 const pawn_them: Piece = comptime Piece.create_pawn(them);
-                self.move_piece_ext(us, pawn_us, to_sq, from_sq);
-                const ep: Square = if (us.e == .white) to_sq.minus(8) else to_sq.plus(8);
+                self.move_piece_ext(us, pawn_us, to, from);
+                const ep: Square = if (us.e == .white) to.minus(8) else to.plus(8);
                 self.add_piece_ext(them, pawn_them, ep);
             },
             .castle =>
@@ -828,8 +829,8 @@ pub const Position = struct
                 const castletype: CastleType = m.castle_type();
                 const rook_to: Square = funcs.rook_castle_to_square(us, castletype);
                 const king_to: Square = funcs.king_castle_to_square(us, castletype);
-                self.move_piece_ext(us, rook, rook_to, to_sq);
-                self.move_piece_ext(us, king, king_to, from_sq);
+                self.move_piece_ext(us, rook, rook_to, to);
+                self.move_piece_ext(us, king, king_to, from);
             },
         }
 
@@ -885,7 +886,7 @@ pub const Position = struct
             // Now we have a pinner + pinned piece for sure.
             const pt: PieceType = self.board[attacker_sq.u].piecetype;
             st.pinned |= bb_test;
-            // This mask check is the same as: pt.e == .queen or pt.e == .bishop and pair.is_diagonal or pt.e == .rook and pair.is_straight
+            // This mask check is the same as: pt.e == .queen or pt.e == .bishop and pair.is_diagonal or pt.e == .rook and pair.is_orthogonal
             if (pt.u & pair.mask != 0) st.pinners |= attacker_sq.to_bitboard();
         }
     }
@@ -970,15 +971,15 @@ pub const Position = struct
             {
                 switch (pins)
                 {
-                    false => self.gen(Params.create(us, .all, false), storage),
-                    true => self.gen(Params.create(us, .all, true), storage),
+                    false => self.gen(Params.create(.all, us, false), storage),
+                    true  => self.gen(Params.create(.all, us, true), storage),
                 }
             },
             true =>
                 switch (pins)
                 {
-                    false => self.gen(Params.create(us, .evasions, false), storage),
-                    true => self.gen(Params.create(us, .evasions, true), storage),
+                    false => self.gen(Params.create(.evasions, us, false), storage),
+                    true  => self.gen(Params.create(.evasions, us, true), storage),
                 },
         }
     }
@@ -999,16 +1000,16 @@ pub const Position = struct
             false =>
             {
                 if (pins)
-                    self.gen(Params.create(us, .captures, true), storage)
+                    self.gen(Params.create(.captures, us, true), storage)
                 else
-                    self.gen(Params.create(us, .captures, false), storage);
+                    self.gen(Params.create(.captures, us, false), storage);
             },
             true =>
             {
                 if (pins)
-                    self.gen(Params.create(us, .evasions, true), storage)
+                    self.gen(Params.create(.evasions, us, true), storage)
                 else
-                    self.gen(Params.create(us, .evasions, false), storage);
+                    self.gen(Params.create(.evasions, us, false), storage);
             },
         }
     }
@@ -1309,7 +1310,7 @@ pub const Position = struct
     }
 
     /// Check king's path for attacks when castling.
-    /// * Ecxcept the king-square. We do not produce castling moves when in check.
+    /// * Except the king-square. We do not produce castling moves when in check.
     fn is_legal_castle(self: *const Position, comptime castletype: CastleType, comptime us: Color, king_sq: Square) bool
     {
         const them = comptime us.opp();
@@ -1395,6 +1396,7 @@ pub const Position = struct
 /// 4 bits comptime struct for generating moves.
 pub const Params = packed struct
 {
+    // TODO: make flags check, captures
     pub const GenType = enum(u2)
     {
         /// Generate all moves.
@@ -1407,18 +1409,18 @@ pub const Params = packed struct
         evasions
     };
 
-    /// The color for which we are generating.
-    us: Color = Color.WHITE,
     /// Which moves are we generating?
     gentype: GenType = GenType.all,
+    /// The color for which we are generating.
+    us: Color = Color.WHITE,
     /// There are pins. If not we can comptime skip all pin checks.
     pins: bool = false,
 
-    fn create(comptime us: Color, comptime gentype: GenType, comptime pins: bool) Params
+    fn create(comptime gentype: GenType, comptime us: Color, comptime pins: bool) Params
     {
         return Params
         {
-            .us = us, .gentype = gentype, .pins = pins
+            .gentype = gentype, .us = us, .pins = pins
         };
     }
 
