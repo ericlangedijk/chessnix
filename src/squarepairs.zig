@@ -1,6 +1,4 @@
-//! Infomration about each square pair.
-
-// TODO: structure this stuff better / smaller
+//! Information about each square pair.
 
 const std = @import("std");
 const lib = @import("lib.zig");
