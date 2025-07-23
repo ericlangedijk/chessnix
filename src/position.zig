@@ -357,7 +357,7 @@ pub const Position = struct
 
     pub fn all(self: *const Position) u64
     {
-        return self.by_type(PieceType.NONE);
+        return self.by_type(PieceType.NO_PIECETYPE);
     }
 
     pub fn all_pawns(self: *const Position) u64
@@ -440,16 +440,6 @@ pub const Position = struct
         return (self.by_type(PieceType.QUEEN) | self.by_type(PieceType.ROOK)) & self.by_side(us);
     }
 
-    pub fn white_pawns(self: *const Position) u64
-    {
-        return self.pawns(Color.WHITE);
-    }
-
-    pub fn black_pawns(self: *const Position) u64
-    {
-        return self.pawns(Color.BLACK);
-    }
-
     pub fn king_square(self: *const Position, us: Color) Square
     {
         return funcs.first_square(self.kings(us));
@@ -478,7 +468,7 @@ pub const Position = struct
         const mask: u64 = sq.to_bitboard();
         const us: Color = pc.color();
         const pt: PieceType = pc.piecetype;
-        self.board[sq.idx()] = pc;
+        self.board[sq.u] = pc;
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pt.u] |= mask;
         self.bb_by_side[us.u] |= mask;
@@ -493,7 +483,7 @@ pub const Position = struct
         assert(pc.is_piece());
         assert(pc.color().e == us.e);
         const mask: u64 = sq.to_bitboard();
-        self.board[sq.idx()] = pc;
+        self.board[sq.u] = pc;
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pc.piecetype.u] |= mask;
         self.bb_by_side[us.u] |= mask;
@@ -1015,8 +1005,8 @@ pub const Position = struct
         const st: StateInfo = self.current_state.*; // QUESTION: copying the struct seems strangely enough somewhat faster.
         const doublecheck: bool = ctp.check() and @popCount(st.checkers) > 1;
         const bb_all = self.all();
-        const bb_us = self.bb_by_side[us.u];
-        const bb_them = self.bb_by_side[them.u];
+        const bb_us = self.by_side(us);
+        const bb_them = self.by_side(them);
         const bb_not_us: u64 = ~bb_us;
         const king_sq: Square = self.king_square(us);
         const not_pinned: u64 = ~st.pinned;
@@ -1043,7 +1033,7 @@ pub const Position = struct
         if (!doublecheck)
         {
             // Pawns.
-            const bb_pawns = self.bb_by_type[PieceType.PAWN.u] & bb_us;// typed[PieceType.PAWN.u] & bb_us;
+            const bb_pawns = self.pawns(us);// self.bb_by_type[PieceType.PAWN.u] & bb_us;// typed[PieceType.PAWN.u] & bb_us;
             if (bb_pawns != 0)
             {
                 const skip_pawn_pins: bool = skip_pins or (st.pinned & bb_pawns == 0);
@@ -1147,7 +1137,7 @@ pub const Position = struct
 
             // Knights.
             {
-                var bb_from: u64 = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
+                var bb_from: u64 = self.knights(us);
                 if (ctp.pins) bb_from &= not_pinned; // a knight can never escape a pin.
                 while (bb_from != 0)
                 {
@@ -1165,7 +1155,7 @@ pub const Position = struct
 
             // Bishops.
             {
-                var bb_from: u64 = self.bb_by_type[PieceType.BISHOP.u] & bb_us;
+                var bb_from: u64 = self.bishops(us);
                 while (bb_from != 0)
                 {
                     const from: Square = funcs.pop_square(&bb_from);
@@ -1180,7 +1170,7 @@ pub const Position = struct
 
             // Rooks.
             {
-                var bb_from: u64 = self.bb_by_type[PieceType.ROOK.u] & bb_us;
+                var bb_from: u64 = self.rooks(us);
                 while (bb_from != 0)
                 {
                     const from: Square = funcs.pop_square(&bb_from);
@@ -1195,7 +1185,7 @@ pub const Position = struct
 
             // Queens.
             {
-                var bb_from: u64 = self.bb_by_type[PieceType.QUEEN.u] & bb_us;
+                var bb_from: u64 = self.queens(us);
                 while (bb_from != 0)
                 {
                     const from: Square = funcs.pop_square(&bb_from);
