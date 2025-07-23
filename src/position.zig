@@ -1,5 +1,3 @@
-// TODO: try out dedicated piece vars in position instead of combining side + type
-
 const std = @import("std");
 const types = @import("types.zig");
 const lib = @import("lib.zig");
@@ -958,13 +956,13 @@ pub const Position = struct
 
         storage.reset();
 
-// us: Color = Color.WHITE,
-//     /// Are we in check?  (state)
-//     in_check: bool = false,
-//     /// There are pins. If not we can comptime skip all pin checks.  (state)
-//     pins: bool = false,
-//     /// Only produce captures. (option for quiet search)
-//     do_captures: bool = false,
+        // us: Color = Color.WHITE,
+        //     /// Are we in check?  (state)
+        //     in_check: bool = false,
+        //     /// There are pins. If not we can comptime skip all pin checks.  (state)
+        //     pins: bool = false,
+        //     /// Only produce captures. (option for quiet search)
+        //     do_captures: bool = false,
 
         // us, in_check, pins, do_captures
         // EXPERIMENT much slower.
@@ -980,8 +978,6 @@ pub const Position = struct
         //         self.gen(Params.from_flags(comptime_state_int), storage);
         //     }
         // }
-
-
 
         const check: bool = self.current_state.checkers != 0;
         const pins: bool = self.current_state.pinners != 0;
