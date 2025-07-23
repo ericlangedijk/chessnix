@@ -14,16 +14,16 @@ const assert = std.debug.assert;
 const ctx = lib.ctx;
 const wtf = lib.wtf;
 
-pub const Value = types.Value;
-pub const Orientation = types.Orientation;
-pub const Direction = types.Direction;
-pub const Color = types.Color;
-pub const PieceType = types.PieceType;
-pub const Piece = types.Piece;
-pub const Square = types.Square;
-pub const Move = types.Move;
-pub const MoveType = types.MoveType;
-pub const CastleType = types.CastleType;
+const Value = types.Value;
+const Orientation = types.Orientation;
+const Direction = types.Direction;
+const Color = types.Color;
+const PieceType = types.PieceType;
+const Piece = types.Piece;
+const Square = types.Square;
+const Move = types.Move;
+const MoveType = types.MoveType;
+const CastleType = types.CastleType;
 
 // castling flags.
 pub const cf_white_short: u4 = 0b0001;
@@ -679,7 +679,7 @@ pub const Position = struct
             // EXPERIMENTAL. The direct array access may have a @memcpy impact.
             const ptr: [*]const u4 = &self.castling_masks;
             const mask: u4 = ptr[from.u] | ptr[to.u];
-            //const mask: u4 = self.castling_masks[from_sq.u] | self.castling_masks[to_sq.u];
+            //const mask: u4 = self.castling_masks[from.u] | self.castling_masks[to.u];
             if (mask != 0)
             {
                 key ^= zobrist.castling(st.castling_rights);
@@ -757,7 +757,7 @@ pub const Position = struct
         if (comptime lib.is_paranoid) assert(self.pos_ok());
     }
 
-    /// This should be called with `us` being the color that moved on the previous ply!
+    /// This must be called with `us` being the color that moved on the previous ply!
     pub fn unmake_move(self: *Position, comptime us: Color) void
     {
         if (comptime lib.is_paranoid) assert(self.to_move.e != us.e);
@@ -870,41 +870,41 @@ pub const Position = struct
     }
 
     /// Returns true if square `sq` is attacked by any piece of `attacker`.
-    pub fn is_square_attacked_by(self: *const Position, to_sq: Square, comptime attacker: Color) bool
+    pub fn is_square_attacked_by(self: *const Position, to: Square, comptime attacker: Color) bool
     {
         const inverted = comptime attacker.opp();
         // QUESTION: Why is this slower?
         // return
-        //     (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) or
-        //     (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) or
-        //     (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) or
-        //     (data.get_bishop_attacks(to_sq, self.all()) & self.queens_bishops(attacker) != 0) or
-        //     (data.get_rook_attacks(to_sq, self.all()) & self.queens_rooks(attacker) != 0);
+        //     (data.get_knight_attacks(to) & self.knights(attacker) != 0) or
+        //     (data.get_king_attacks(to) & self.kings(attacker) != 0) or
+        //     (data.get_pawn_attacks(to, inverted) & self.pawns(attacker) != 0) or
+        //     (data.get_bishop_attacks(to, self.all()) & self.queens_bishops(attacker) != 0) or
+        //     (data.get_rook_attacks(to, self.all()) & self.queens_rooks(attacker) != 0);
         return
-            (data.get_knight_attacks(to_sq) & self.knights(attacker)) |
-            (data.get_king_attacks(to_sq) & self.kings(attacker)) |
-            (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker)) |
-            (data.get_bishop_attacks(to_sq, self.all()) & self.queens_bishops(attacker)) |
-            (data.get_rook_attacks(to_sq, self.all()) & self.queens_rooks(attacker)) != 0;
+            (data.get_knight_attacks(to) & self.knights(attacker)) |
+            (data.get_king_attacks(to) & self.kings(attacker)) |
+            (data.get_pawn_attacks(to, inverted) & self.pawns(attacker)) |
+            (data.get_bishop_attacks(to, self.all()) & self.queens_bishops(attacker)) |
+            (data.get_rook_attacks(to, self.all()) & self.queens_rooks(attacker)) != 0;
     }
 
     /// Returns true if square `sq` is attacked by any piece of `attacker` for a certain occupation `occ`.
-    pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to_sq: Square, comptime attacker: Color) bool
+    pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to: Square, comptime attacker: Color) bool
     {
         const inverted = comptime attacker.opp();
         // QUESTION: Why is this slower?
         // return
-        //     (data.get_knight_attacks(to_sq) & self.knights(attacker) != 0) or
-        //     (data.get_king_attacks(to_sq) & self.kings(attacker) != 0) or
-        //     (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker) != 0) or
-        //     (data.get_bishop_attacks(to_sq, occ) & self.queens_bishops(attacker) != 0) or
-        //     (data.get_rook_attacks(to_sq, occ) & self.queens_rooks(attacker) != 0);
+        //     (data.get_knight_attacks(to) & self.knights(attacker) != 0) or
+        //     (data.get_king_attacks(to) & self.kings(attacker) != 0) or
+        //     (data.get_pawn_attacks(to), inverted) & self.pawns(attacker) != 0) or
+        //     (data.get_bishop_attacks(to, occ) & self.queens_bishops(attacker) != 0) or
+        //     (data.get_rook_attacks(to, occ) & self.queens_rooks(attacker) != 0);
         return
-            (data.get_knight_attacks(to_sq) & self.knights(attacker)) |
-            (data.get_king_attacks(to_sq) & self.kings(attacker)) |
-            (data.get_pawn_attacks(to_sq, inverted) & self.pawns(attacker)) |
-            (data.get_bishop_attacks(to_sq, occ) & self.queens_bishops(attacker)) |
-            (data.get_rook_attacks(to_sq, occ) & self.queens_rooks(attacker)) != 0;
+            (data.get_knight_attacks(to) & self.knights(attacker)) |
+            (data.get_king_attacks(to) & self.kings(attacker)) |
+            (data.get_pawn_attacks(to, inverted) & self.pawns(attacker)) |
+            (data.get_bishop_attacks(to, occ) & self.queens_bishops(attacker)) |
+            (data.get_rook_attacks(to, occ) & self.queens_rooks(attacker)) != 0;
     }
 
     fn is_castling_allowed(self: *const Position, comptime castletype: CastleType, comptime us: Color) bool
@@ -972,6 +972,7 @@ pub const Position = struct
         }
     }
 
+    // TODO: Restore when implementing searc.
     // pub fn generate_captures(self: *const Position, comptime us: Color, noalias storage: anytype) void
     // {
     //     if (comptime lib.is_paranoid)
@@ -1018,6 +1019,7 @@ pub const Position = struct
         const bb_them = self.bb_by_side[them.u];
         const bb_not_us: u64 = ~bb_us;
         const king_sq: Square = self.king_square(us);
+        const not_pinned: u64 = ~st.pinned;
 
         // We start with a bitboard with all empty squares + them squares.
         var target: u64 = bb_not_us;
@@ -1146,7 +1148,7 @@ pub const Position = struct
             // Knights.
             {
                 var bb_from: u64 = self.bb_by_type[PieceType.KNIGHT.u] & bb_us;
-                if (ctp.pins) bb_from &= ~st.pinned; // a knight can never escape a pin.
+                if (ctp.pins) bb_from &= not_pinned; // a knight can never escape a pin.
                 while (bb_from != 0)
                 {
                     const from: Square = funcs.pop_square(&bb_from);
@@ -1248,14 +1250,14 @@ pub const Position = struct
         storage.store(Move{ .from = from, .to = to, .prom = prom, .movetype = movetype} );
     }
 
-    fn store_promotions(comptime all_prom: bool, from_sq: Square, to_sq: Square, noalias storage: anytype) void
+    fn store_promotions(comptime all_prom: bool, from: Square, to: Square, noalias storage: anytype) void
     {
-        store(from_sq, to_sq, .promotion, .queen, storage);
+        store(from, to, .promotion, .queen, storage);
         if (all_prom)
         {
-            store(from_sq, to_sq, .promotion, .rook, storage);
-            store(from_sq, to_sq, .promotion, .bishop, storage);
-            store(from_sq, to_sq, .promotion, .knight, storage);
+            store(from, to, .promotion, .rook, storage);
+            store(from, to, .promotion, .bishop, storage);
+            store(from, to, .promotion, .knight, storage);
         }
     }
 
@@ -1263,16 +1265,16 @@ pub const Position = struct
     /// * If we move in the same direction as the pin-direction it is legal.
     /// * Orientation known: sometimes (like with pawn moves) we know up-front (hard-coded) in which direction we are moving and use this info.
     /// * Orientation null: it needs to be retrieved. in this case we definitely should have a slider pin or otherwise a bug.
-    fn is_legal_check_pin(self: *const Position, comptime orientation: ?Orientation, king_sq: Square, from_sq: Square, to_sq: Square) bool
+    fn is_legal_check_pin(self: *const Position, comptime orientation: ?Orientation, king_sq: Square, from: Square, to: Square) bool
     {
-        if (!funcs.contains_square(self.current_state.pinned, from_sq)) return true;
+        if (!funcs.contains_square(self.current_state.pinned, from)) return true;
         if (orientation) |ori|
         {
-            return ori == squarepairs.get(king_sq, to_sq).orientation;
+            return ori == squarepairs.get(king_sq, to).orientation;
         }
         else
         {
-            return squarepairs.get(king_sq, from_sq).orientation == squarepairs.get(king_sq, to_sq).orientation;
+            return squarepairs.get(king_sq, from).orientation == squarepairs.get(king_sq, to).orientation;
         }
     }
 
@@ -1288,11 +1290,11 @@ pub const Position = struct
         return att == 0;
     }
 
-    fn is_legal_kingmove(self: *const Position, comptime us: Color, to_sq: Square) bool
+    fn is_legal_kingmove(self: *const Position, comptime us: Color, to: Square) bool
     {
         const them = comptime us.opp();
         const occ: u64 = self.all() ^ self.kings(us);
-        return !self.is_square_attacked_by_for_occupation(occ, to_sq, them);
+        return !self.is_square_attacked_by_for_occupation(occ, to, them);
     }
 
     /// Check king's path for attacks when castling.
