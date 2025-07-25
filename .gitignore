@@ -1,5 +1,7 @@
-.docs/
-.src/search.zig
-.src/tests.zig
-.src/eval.zig
-.src/main.zig
+/docs/
+/src/search.zig
+/src/tests.zig
+/src/eval.zig
+/src/main.zig
+
+/*.*
