@@ -54,7 +54,7 @@ pub const StateInfo = struct
     /// Draw counter, known to the players of the game: After 50 non-reversible moves (100 ply) it is a draw. This counter keeps track of the number of reversible moves that have been made.
     /// (copied)
     rule50: u16 = 0,
-    /// The enpassant square of this state. A1 or NO_EP means: there is no ep_square.
+    /// The enpassant square of this state.
     /// (copied)
     ep_square: ?Square = null,
     /// Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
@@ -666,10 +666,7 @@ pub const Position = struct
         // Update the castling rights.
         if (st.castling_rights != 0)
         {
-            // EXPERIMENTAL. The direct array access may have a @memcpy impact.
-            const ptr: [*]const u4 = &self.castling_masks;
-            const mask: u4 = ptr[from.u] | ptr[to.u];
-            //const mask: u4 = self.castling_masks[from.u] | self.castling_masks[to.u];
+            const mask: u4 = self.castling_masks[from.u] | self.castling_masks[to.u];
             if (mask != 0)
             {
                 key ^= zobrist.castling(st.castling_rights);
@@ -934,6 +931,15 @@ pub const Position = struct
         }
     }
 
+    pub fn lazy_generate_captures(self: *const Position, noalias storage: anytype) void
+    {
+        switch(self.to_move.e)
+        {
+            .white => self.generate_captures(Color.WHITE, storage),
+            .black => self.generate_captures(Color.BLACK, storage),
+        }
+    }
+
     pub fn generate_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void
     {
         // NOTE: getting state flags with an inline else and create Params from that is easier but much slower than the switch.
@@ -962,36 +968,37 @@ pub const Position = struct
         }
     }
 
-    // TODO: Restore when implementing searc.
-    // pub fn generate_captures(self: *const Position, comptime us: Color, noalias storage: anytype) void
-    // {
-    //     if (comptime lib.is_paranoid)
-    //     {
-    //         assert(self.to_move.e == us.e);
-    //     }
+    pub fn generate_captures(self: *const Position, comptime us: Color, noalias storage: anytype) void
+    {
+        if (comptime lib.is_paranoid)
+        {
+            assert(self.to_move.e == us.e);
+        }
 
-    //     storage.reset();
+        storage.reset();
 
-    //     const check: bool = self.current_state.checkers != 0;
-    //     const pins: bool = self.current_state.pinners != 0;
-    //     switch(check)
-    //     {
-    //         false =>
-    //         {
-    //             if (pins)
-    //                 self.gen(Params.create(.captures, us, true), storage)
-    //             else
-    //                 self.gen(Params.create(.captures, us, false), storage);
-    //         },
-    //         true =>
-    //         {
-    //             if (pins)
-    //                 self.gen(Params.create(.evasions, us, true), storage)
-    //             else
-    //                 self.gen(Params.create(.evasions, us, false), storage);
-    //         },
-    //     }
-    // }
+        const check: bool = self.current_state.checkers != 0;
+        const pins: bool = self.current_state.pinners != 0;
+        switch(check)
+        {
+            false =>
+            {
+                switch (pins)
+                {
+                    false => self.gen(Params.create(false, true, us, false), storage),
+                    true  => self.gen(Params.create(false, true, us, true), storage),
+                }
+            },
+            true =>
+            {
+                switch (pins)
+                {
+                    false => self.gen(Params.create(true, false, us, false), storage),
+                    true  => self.gen(Params.create(true, false, us, true), storage),
+                }
+            },
+        }
+    }
 
     /// See `MoveStorage` for the interface of storage.
     fn gen(self: *const Position, comptime ctp: Params, noalias storage: anytype) void
@@ -1009,7 +1016,7 @@ pub const Position = struct
         const bb_them = self.by_side(them);
         const bb_not_us: u64 = ~bb_us;
         const king_sq: Square = self.king_square(us);
-        const not_pinned: u64 = ~st.pinned;
+        const not_pinned: u64 = if (ctp.pins) ~st.pinned else bitboards.bb_full;
 
         // We start with a bitboard with all empty squares + them squares.
         var target: u64 = bb_not_us;
@@ -1047,20 +1054,20 @@ pub const Position = struct
                 {
                     var bb_single_push: u64 = funcs.pawns_shift(pawns_not_on_seventh, us, .up) & empty_squares;
                     var bb_double_push: u64 = funcs.pawns_shift(bb_single_push & funcs.relative_rank_3_bitboard(us), us, .up) & empty_squares;
-                    // Pawn push check interpolation
+                    // Pawn push check interpolation.
                     if (ctp.check())
                     {
                         bb_single_push &= target;
                         bb_double_push &= target;
                     }
-                    // single
+                    // Single.
                     while (bb_single_push != 0)
                     {
                         const to: Square = funcs.pop_square(&bb_single_push);
                         const from: Square = if (us.e == .white) to.sub(8) else to.add(8);
                         if (skip_pawn_pins or self.is_legal_check_pin(.vertical, king_sq, from, to)) store(from, to, .normal, .no_prom, storage);
                     }
-                    // double
+                    // Double.
                     while (bb_double_push != 0)
                     {
                         const to: Square = funcs.pop_square(&bb_double_push);
@@ -1075,7 +1082,7 @@ pub const Position = struct
                     var bb_northwest: u64 = funcs.pawns_shift(pawns_on_seventh, us, .northwest) & enemies;
                     var bb_norhteast: u64 = funcs.pawns_shift(pawns_on_seventh, us, .northeast) & enemies;
                     var bb_push: u64 = funcs.pawns_shift(pawns_on_seventh, us, .up) & empty_squares;
-                    // Pawn push check interpolation
+                    // Pawn push check interpolation.
                     if (ctp.check())
                     {
                         bb_push &= target;
@@ -1137,13 +1144,12 @@ pub const Position = struct
 
             // Knights.
             {
-                var bb_from: u64 = self.knights(us);
-                if (ctp.pins) bb_from &= not_pinned; // a knight can never escape a pin.
+                var bb_from: u64 = self.knights(us) & not_pinned; // A knight can never escape a pin.
                 while (bb_from != 0)
                 {
                     const from: Square = funcs.pop_square(&bb_from);
                     var bb_to: u64 = data.get_knight_attacks(from) & target;
-                    // QUESTION: This inline loop is somewhat faster for knights than the default while loop. I don't know why. Inlining the other pieces has no effect.
+                    // QUESTION: This inline loop is somewhat faster for knights than the default while loop. I don't know why. Inlining the other pieces has no effect or a bit worse.
                     inline for (0..8) |_|
                     {
                         if (bb_to == 0) break;

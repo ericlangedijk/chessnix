@@ -1,5 +1,7 @@
 const std = @import("std");
+const bitboards = @import("bitboards.zig");
 const funcs = @import("funcs.zig");
+const lib = @import("lib.zig");
 
 const assert = std.debug.assert;
 
@@ -201,9 +203,9 @@ pub const Square = packed union
         return .{ .u = index };
     }
 
-    ///
     pub fn from_usize(index: usize) Square
     {
+        assert(index < 64);
         return .{ .u = @truncate(index) };
     }
 
@@ -233,34 +235,25 @@ pub const Square = packed union
 
     pub fn to_bitboard(self: Square) u64
     {
-        return @as(u64, 1) << self.u;
+        return bitboards.bb_a1 << self.u;
+        //  @as(u64, 1)
+        //return bitboards.square_bitboards[self.u];
     }
 
-    pub fn plus(self: Square, d: u6) Square
+    pub fn add(self: Square, d: u6) Square
     {
-        return .{ .u = self.u + d};
+        return .{ .u = self.u + d };
     }
 
-    pub fn minus(self: Square, d: u6) Square
+    pub fn sub(self: Square, d: u6) Square
     {
-        return .{ .u = self.u - d};
+        return .{ .u = self.u - d };
     }
 
-    pub fn inc(self: *Square, d: u6) void
-    {
-        self.u += d;
-    }
-
-    pub fn dec(self: *Square, d: u6) void
-    {
-        self.u -= d;
-    }
-
+    /// Returns the square when `us` is white otherwise the vertically mirrored square.
     pub fn relative(self: Square, comptime us: Color) Square
     {
-        // TODO: use a simpler statement.
-        const side: u6 = us.u;// @as(u6, us.u) * 56;
-        return .{ .u = self.u ^ side * 56 };
+        return if (us.e == .white) self else .{ .u = self.u ^ 56 };
     }
 
     /// Only used during initialization.
@@ -268,14 +261,14 @@ pub const Square = packed union
     {
         switch(dir)
         {
-            .north => return if (self.rank() < 7) self.plus(8) else null,
-            .east => return if (self.file() < 7) self.plus(1) else null,
-            .south => return if (self.rank() > 0) self.minus(8) else null,
-            .west => return if (self.file() > 0) self.minus(1) else null,
-            .north_west => return if (self.rank() < 7 and self.file() > 0) self.plus(7) else null,
-            .north_east => return if (self.rank() < 7 and self.file() < 7) self.plus(9) else null,
-            .south_east => return if (self.rank() > 0 and self.file() < 7) self.minus(7) else null,
-            .south_west => return if (self.rank() > 0 and self.file() > 0) self.minus(9) else null,
+            .north => return if (self.rank() < 7) self.add(8) else null,
+            .east => return if (self.file() < 7) self.add(1) else null,
+            .south => return if (self.rank() > 0) self.sub(8) else null,
+            .west => return if (self.file() > 0) self.sub(1) else null,
+            .north_west => return if (self.rank() < 7 and self.file() > 0) self.add(7) else null,
+            .north_east => return if (self.rank() < 7 and self.file() < 7) self.add(9) else null,
+            .south_east => return if (self.rank() > 0 and self.file() < 7) self.sub(7) else null,
+            .south_west => return if (self.rank() > 0 and self.file() > 0) self.sub(9) else null,
         }
     }
 
@@ -290,7 +283,7 @@ pub const Square = packed union
     }
 
     /// Only used during initialization.\
-    /// Return a ray of squares up and including the border.
+    /// Returns a ray of squares in the direction `dir`.
     /// * not including self.
     pub fn ray(self: Square, dir: Direction) std.BoundedArray(Square, 8)
     {
@@ -309,7 +302,7 @@ pub const Square = packed union
     }
 
     /// Only used during initialization.\
-    /// Return all rays for a range of directions.
+    /// Returns all rays for a range of directions.
     /// * not including self.
     pub fn rays(self: Square, comptime dirs: []const Direction) std.BoundedArray(Square, 32)
     {
@@ -339,7 +332,7 @@ pub const Square = packed union
 
 pub const PieceType = packed union
 {
-    pub const NONE: PieceType = .{ .e = .none };
+    pub const NO_PIECETYPE: PieceType = .{ .e = .no_piecetype };
     pub const PAWN: PieceType = .{ .e = .pawn };
     pub const KNIGHT: PieceType = .{ .e = .knight };
     pub const BISHOP: PieceType = .{ .e = .bishop };
@@ -349,7 +342,7 @@ pub const PieceType = packed union
 
     pub const Enum = enum(u3)
     {
-        none = 0,
+        no_piecetype = 0,
         pawn = 1,
         knight = 2,
         bishop = 3,
@@ -375,7 +368,7 @@ pub const PieceType = packed union
 
     pub fn bitmask(self: PieceType) u6
     {
-        assert(self.u != 0);
+        if (comptime lib.is_paranoid) assert(self.u != 0);
         return @as(u6, 1) << (self.u - 1);
     }
 
@@ -389,7 +382,7 @@ pub const PieceType = packed union
     {
         return switch(self.e)
         {
-            .none, .pawn => 0,
+            .no_piecetype, .pawn => 0,
             .knight => 'N',
             .bishop => 'B',
             .rook => 'R',
@@ -439,7 +432,7 @@ pub const Piece = packed union
     e: Enum,
     /// The numeric value.
     u: u4,
-    /// The piece type nicely matches the bits.
+    /// The piece type nicely matches the bits. Probably this trick will not be possible anymore in Zig 0.15+
     piecetype: PieceType,
 
     pub fn make(pt: PieceType, side: Color) Piece
@@ -481,7 +474,7 @@ pub const Piece = packed union
 
     pub fn from_usize(u: usize) Piece
     {
-        assert(u <= 14 and u != 7 and u != 8);
+        if (comptime lib.is_paranoid) assert(u <= 14 and u != 7 and u != 8);
         return .{ .u = @truncate(u)};
     }
 
@@ -581,9 +574,9 @@ pub const Move = packed struct(u16)
             return PieceType{ .u = v + 2};
         }
 
-        pub fn to_piece(self: Prom, side: Color) Piece
+        pub fn to_piece(self: Prom, us: Color) Piece
         {
-            return Piece.make(self.to_piecetype(), side);
+            return Piece.make(self.to_piecetype(), us);
         }
     };
 
@@ -641,18 +634,19 @@ pub const Move = packed struct(u16)
     pub fn to_string(self: Move) std.BoundedArray(u8, 8)
     {
         var result: std.BoundedArray(u8, 8) = .{};
-        var to_sq = self.to;
+        const from: Square = self.from;
+        var to: Square = self.to;
 
         if (self.movetype == .castle)
         {
             const castletype: CastleType = self.castle_type();
-            const color: Color = if (to_sq.rank() == 0) Color.WHITE else Color.BLACK;
+            const color: Color = if (to.rank() == 0) Color.WHITE else Color.BLACK;
             // Change target square. We decode castling as "king takes rook"
-            to_sq = funcs.king_castle_to_square(color, castletype);
+            to = funcs.king_castle_to_square(color, castletype);
         }
 
-        result.appendSliceAssumeCapacity(@tagName(self.from.e));
-        result.appendSliceAssumeCapacity(@tagName(to_sq.e));
+        result.appendSliceAssumeCapacity(@tagName(from.e));
+        result.appendSliceAssumeCapacity(@tagName(to.e));
 
         if (self.movetype == .promotion)
         {
@@ -664,8 +658,6 @@ pub const Move = packed struct(u16)
     }
 
 };
-
-
 
 pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128;
@@ -682,50 +674,12 @@ const value_bishop: Value = 300;
 const value_rook: Value = 500;
 const value_queen: Value = 900;
 
+// Values used in Position stolen from Stockfish.
 pub const material_pawn: Value = 126;
 pub const material_knight: Value = 781;
 pub const material_bishop: Value = 825;
 pub const material_rook: Value = 1276;
 pub const material_queen: Value = 2538;
-
-//  no_piece = 0,
-//         w_pawn = 1,
-//         w_knight = 2,
-//         w_bishop = 3,
-//         w_rook = 4,
-//         w_queen = 5,
-//         w_king = 6,
-
-//         b_pawn = 9,
-//         b_knight = 10,
-//         b_bishop = 11,
-//         b_rook = 12,
-//         b_queen = 13,
-//         b_king = 14,
-
-const piece_values: [15]Value =
-.{
-    0,  // no_piece
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
-    0, 0,
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
-};
-
-const piece_material_values: [15]Value =
-.{
-    0,
-    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
-    0, 0,
-    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
-};
-
-// Values used in Position::MaterialBySide. 'borrowed' from stockfish.
-//
-// pub const MATERIAL_CODE_PAWN: i16 = 126;
-// pub const MATERIAL_CODE_KNIGHT: i16 = 781;
-// pub const MATERIAL_CODE_BISHOP: i16 = 825;
-// pub const MATERIAL_CODE_ROOK: i16 = 1276;
-// pub const MATERIAL_CODE_QUEEN: i16 = 2538;
 
 // startvalue: 18620 WITH pawns
 // startvalue: 16604 WITHOUT pawns
@@ -733,28 +687,21 @@ pub const max_material_value_threshold: Value = 18620;
 //pub const MIDGAME_THRESHOLD: i16 = 15258;
 //pub const ENDGAME_THRESHOLD: i16 = 3915;
 
-// pub const MATERIAL_CODES: [i16; 8] =
-// [
-//     0,
-//     MATERIAL_CODE_PAWN, MATERIAL_CODE_KNIGHT, MATERIAL_CODE_BISHOP, MATERIAL_CODE_ROOK, MATERIAL_CODE_QUEEN,
-//     0, 0,
-// ];
 
-
-pub const MovType = enum(u2)
-{
-    n = 0,
-    p = 1,
-    e = 2,
-    c = 3,
+const piece_values: [15]Value =
+.{
+    0, // no_piece
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
+    0, 0, // empty
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
 };
 
-pub const Mov = union (MovType)
-{
-    n: struct { from: Square, to: Square,  },
-    p: struct { from: Square, to: Square, },
-    e: struct { from: Square, to: Square, ep: Square },
-    c: struct { from: Square, to: Square, castle: CastleType },
+const piece_material_values: [15]Value =
+.{
+    0, // no_piece
+    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
+    0, 0, // empty
+    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
 
 

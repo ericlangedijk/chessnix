@@ -3,12 +3,13 @@ const lib = @import("lib.zig");
 const data = @import("data.zig");
 const funcs = @import("funcs.zig");
 const console = @import("console.zig");
+const types = @import("types.zig");
 const position = @import("position.zig");
 const notation = @import("notation.zig");
 
-const Color = position.Color;
-const Square = position.Square;
-const Move = position.Move;
+const Color = types.Color;
+const Square = types.Square;
+const Move = types.Move;
 const Position = position.Position;
 const Storage = position.MoveStorage;
 const JustCount = position.JustCount;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const lib = @import("lib");
 
 const assert = std.debug.assert;
 
@@ -97,6 +98,8 @@ pub fn BitSet(comptime size: u7) type
         };
     };
 }
+
+// TODO: move to funcs.zig and rename this file to bitset.zig (if we ever use it)
 
 /// Unsafe
 pub fn lsb_u64(u: u64) u6

@@ -2,6 +2,7 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const console = @import("console.zig");
 const funcs = @import("funcs.zig");
+const types = @import("types.zig");
 const position = @import("position.zig");
 const bitboards = @import("bitboards.zig");
 const data = @import("data.zig");
@@ -9,11 +10,11 @@ const data = @import("data.zig");
 const ctx = lib.ctx;
 const wtf = lib.wtf;
 
-const Color = position.Color;
-const Direction = position.Direction;
-const Square = position.Square;
-const Piece = position.Piece;
-const Move = position.Move;
+const Color = types.Color;
+const Direction = types.Direction;
+const Square = types.Square;
+const Piece = types.Piece;
+const Move = types.Move;
 const Position = position.Position;
 
 pub const FenResult  = struct

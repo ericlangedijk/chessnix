@@ -159,7 +159,7 @@ pub fn initialize() void
             {
                 if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.north_west) orelse break;
-                assert(bitpos > 0);
+                if (comptime lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
             }
 
@@ -170,7 +170,7 @@ pub fn initialize() void
             {
                 if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_east) orelse break;
-                assert(bitpos < 7);
+                if (comptime lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
             }
             diag_main_attacks[sq.idx() * 64 + occ] = bitboard;
@@ -190,7 +190,7 @@ pub fn initialize() void
             {
                 if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_west) orelse break;
-                assert(bitpos > 0);
+                if (comptime lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
             }
 
@@ -202,7 +202,7 @@ pub fn initialize() void
                 if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 //if (bitpos == 7) break;
                 q = q.next(.north_east) orelse break;
-                assert(bitpos < 7);
+                if (comptime lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
             }
             diag_anti_attacks[sq.idx() * 64 + occ] = bitboard;
@@ -328,14 +328,12 @@ pub const ptr_bb_southwest: [*]u64 =  &bb_southwest;
 /// Returns the raw index. Always <= 255.
 fn index_of_original(comptime ori: Orientation, sq: Square, occ: u64) u64
 {
-    const idx: usize = sq.idx();
-
     return switch(ori)
     {
         .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1, // just shifted to rank zero.
-        .vertical => ((occ & ptr_file_masks[idx]) *% ptr_file_magics[idx]) >> 57,
-        .diagmain => ((occ & ptr_diag_main_masks[idx]) *% ptr_diag_main_magics[idx]) >> 57,
-        .diaganti => ((occ & ptr_diag_anti_masks[idx]) *% ptr_diag_anti_magics[idx]) >> 57,
+        .vertical => ((occ & ptr_file_masks[sq.u]) *% ptr_file_magics[sq.u]) >> 57,
+        .diagmain => ((occ & ptr_diag_main_masks[sq.u]) *% ptr_diag_main_magics[sq.u]) >> 57,
+        .diaganti => ((occ & ptr_diag_anti_masks[sq.u]) *% ptr_diag_anti_magics[sq.u]) >> 57,
     };
 }
 

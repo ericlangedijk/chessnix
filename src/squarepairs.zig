@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
+const types = @import("types.zig");
 const console = @import("console.zig");
 const funcs = @import("funcs.zig");
 const bits = @import("bits.zig");
@@ -12,11 +13,11 @@ const uses = struct
     const rnd = @import("rnd.zig");
 };
 
-const Orientation = position.Orientation;
-const Direction = position.Direction;
-const Color = position.Color;
-const Piece = position.Piece;
-const Square = position.Square;
+const Orientation = types.Orientation;
+const Direction = types.Direction;
+const Color = types.Color;
+const Piece = types.Piece;
+const Square = types.Square;
 
 var pairs: [64 * 64]SquarePair = @splat(SquarePair.empty);
 pub const ptr_pairs: [*]SquarePair = &pairs;

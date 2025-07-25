@@ -10,9 +10,9 @@ const position = @import("position.zig");
 
 const Value = types.Value;
 const Float = types.Float;
-const Color = position.Color;
-const Square = position.Square;
-const CastleType = position.CastleType;
+const Color = types.Color;
+const Square = types.Square;
+const CastleType = types.CastleType;
 const Position = position.Position;
 
 const assert = std.debug.assert;
@@ -130,7 +130,6 @@ pub fn first_square_or_null(bitboard: u64) ?Square
     return Square.from(lsb);
 }
 
-
 /// Unsafe lsb
 pub fn first_square(bitboard: u64) Square
 {
@@ -145,6 +144,15 @@ pub fn pop_square(bitboard: *u64) Square
     assert(bitboard.* != 0);
     defer bitboard.* &= (bitboard.* - 1);
     return first_square(bitboard.*);
+}
+
+
+// EXPERIMENTAL
+pub fn pop(bitboard: *u64) ?Square
+{
+    if (bitboard.* == 0) return null;
+    defer bitboard.* &= (bitboard.* - 1);
+    return Square.from(@truncate(@ctz(bitboard.*)));
 }
 
 pub fn clear_square(bitboard: *u64, sq: Square) void

@@ -1,14 +1,14 @@
 const std = @import("std");
 const lib = @import("lib.zig");
-const position = @import("position.zig");
+const types = @import("types.zig");
 
 const uses = struct
 {
     const rnd = @import("rnd.zig");
 };
 
-const Piece = position.Piece;
-const Square = position.Square;
+const Piece = types.Piece;
+const Square = types.Square;
 
 pub fn initialize() void
 {

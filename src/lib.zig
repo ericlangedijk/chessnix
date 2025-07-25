@@ -63,7 +63,8 @@ pub const What = enum
 
 pub fn wtf() noreturn
 {
-    @panic("WTF");
+    unreachable;
+    //@panic("WTF");
 }
 
 pub fn crash(comptime what: What) noreturn
