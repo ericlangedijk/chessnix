@@ -61,7 +61,7 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64
     };
 }
 
-/// `to` is the square of the  double pushed pawn (e4).
+/// `to` is the to-square of the  double pushed pawn (e4).
 pub fn get_ep_mask(to: Square) u64
 {
     return ptr_ep_masks[to.u];

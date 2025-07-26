@@ -185,12 +185,12 @@ pub fn movenumber_to_ply(movenr: u16, to_move: Color) u16
     return @max(2 * (movenr - 1), 0) + (to_move.u);
 }
 
-pub fn ptr_add(T: type, ptr: *T, delta: comptime_int) *T
+pub fn ptr_add(T: type, ptr: *T, comptime delta: comptime_int) *T
 {
     return @ptrFromInt(@intFromPtr(ptr) + @sizeOf(T) * delta);
 }
 
-pub fn ptr_sub(T: type, ptr: *T, delta: comptime_int) *T
+pub fn ptr_sub(T: type, ptr: *T, comptime delta: comptime_int) *T
 {
     return @ptrFromInt(@intFromPtr(ptr) - @sizeOf(T) * delta);
 }

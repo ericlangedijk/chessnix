@@ -158,46 +158,6 @@ pub fn decode(fen: []const u8) FenError!FenResult
     return result;
 }
 
-// pub fn encode(pos: *const Position) []const u8
-// {
-//     _ = pos;
-//     //var s: std.ArrayListAlignedUnmanaged(u8) = .{};
-
-
-
-//     var buf: [256]u8 = undefined;
-//     var fba = std.io.fixedBufferStream(&buf);
-//     const writer = fba.writer();
-
-//     try writer.print("some text {}", .{123});
-
-//     var empty: u8 = 0;
-//     var rank: u3 = 7;
-//     while (true) : (rank -= 1)
-//     {
-//         var file: u3 = 0;
-//         while (true)
-//         {
-//             const sq: Square = .from_rank_file(rank, file);
-//             _ = sq;
-
-//             //for (empty)
-//             //for (emptyCnt = 0; f <= FILE_H && empty(make_square(f, r)); ++f)
-//               //  ++emptyCnt;
-//               empty+=1;
-
-//            if (empty > 0) std.fmt.bufPrint(&buf, "{}", empty);
-
-//             //if (f <= FILE_H)
-//               //  ss << PieceToChar[piece_on(make_square(f, r))];
-//         }
-
-//        //if (r > RANK_1) ss << '/';
-//     }
-
-//     //return s.toOwnedSlice(ctx.galloc);
-// }
-
 pub const FenDepths = std.BoundedArray(u64, 16);
 
 // "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324"

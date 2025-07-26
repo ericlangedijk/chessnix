@@ -238,7 +238,7 @@ pub const Position = struct
         pos.to_move = fenresult.to_move;
         pos.current_state.castling_rights = fenresult.castling_rights;
         pos.current_state.rule50 = fenresult.draw_count;
-        // We only set ep if it is actually possible to do a ep-capture.
+        // We only set ep if it is actually possible to do an ep-capture.
         if (fenresult.ep) |ep|
         {
             if (pos.is_usable_ep_square(ep)) pos.current_state.ep_square = ep;
@@ -476,7 +476,6 @@ pub const Position = struct
         else if (rank == bitboards.rank_6)
         {
             const to_sq = ep.sub(8);
-            //std.debug.print("{s}, ", .{to_sq.to_string()});
             return self.board[to_sq.u].e == .b_pawn and (masks.get_ep_mask(to_sq) & self.pawns(Color.WHITE) != 0);
         }
         return false;
@@ -576,7 +575,7 @@ pub const Position = struct
         assert(self.ply + 1 == self.history.items.len);
         const st: *StateInfo = self.history.addOne(ctx.galloc) catch wtf();
         const old: *const StateInfo = &self.history.items[self.ply];
-        // Copy some stuff. The reset is updated in make move + update state.
+        // Copy some stuff. The rest is updated in make move + update state.
         // Until then the rest of the new state is undefined.
         st.pawnkey = old.pawnkey;
         st.rule50 = old.rule50;
@@ -714,7 +713,7 @@ pub const Position = struct
                     // Double pawn push.
                     if (from.u ^ to.u == 16)
                     {
-                        // We only set the ep-square if it is actually possible to do a ep-capture.
+                        // We only set the ep-square if it is actually possible to do an ep-capture.
                         if (masks.get_ep_mask(to) & self.pawns(them) != 0)
                         {
                             const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
