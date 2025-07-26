@@ -1227,14 +1227,13 @@ pub const Position = struct
     /// * Orientation null: it needs to be retrieved. in this case we definitely should have a slider pin or otherwise a bug.
     fn is_legal_check_pin(self: *const Position, comptime orientation: ?Orientation, king_sq: Square, from: Square, to: Square) bool
     {
-        if (!funcs.contains_square(self.current_state.pinned, from)) return true;
         if (orientation) |ori|
         {
-            return ori == squarepairs.get(king_sq, to).orientation;
+            return !funcs.contains_square(self.current_state.pinned, from) or ori == squarepairs.get(king_sq, to).orientation;
         }
         else
         {
-            return squarepairs.get(king_sq, from).orientation == squarepairs.get(king_sq, to).orientation;
+            return !funcs.contains_square(self.current_state.pinned, from) or squarepairs.get(king_sq, from).orientation == squarepairs.get(king_sq, to).orientation;
         }
     }
 
@@ -1340,6 +1339,7 @@ pub const Position = struct
         return true;
     }
 
+    /// This is working but in a beginners-state.
     pub fn to_fen(self: *const Position) std.ArrayListUnmanaged(u8)
     {
         const st = self.state();
@@ -1357,7 +1357,6 @@ pub const Position = struct
                 if (pc.is_empty())
                 {
                     empty += 1;
-                    //std.debug.print("{},", .{empty});
                 }
                 else
                 {
@@ -1424,7 +1423,7 @@ pub const Params = packed struct
     us: Color = Color.WHITE,
     /// We are in check?
     check: bool = false,
-    /// There are pins. If not we can comptime skip all pin checks.  (state)
+    /// There are pins. If not we can comptime skip all pin checks.
     pins: bool = false,
 
     fn create(comptime us: Color, comptime check: bool, comptime pins: bool) Params
