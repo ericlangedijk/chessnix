@@ -629,16 +629,6 @@ pub const Move = packed struct(u16)
         return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .castle};
     }
 
-    pub fn from_u16(u: u16) Move
-    {
-        return @bitCast(u);
-    }
-
-    pub fn bitcast(self: Move) u16
-    {
-        return @bitCast(self);
-    }
-
     /// Only valid if castling
     pub fn castle_type(self: Move) CastleType
     {

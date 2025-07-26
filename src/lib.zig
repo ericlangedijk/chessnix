@@ -17,7 +17,6 @@ var private_context: MemoryContext = undefined;
 pub fn initialize() void
 {
     private_context = .init();
-    //private_console_output = UTF8ConsoleOutput.init();
 
     @import("squarepairs.zig").initialize();
     @import("zobrist.zig").initialize();
