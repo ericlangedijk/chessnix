@@ -5,7 +5,6 @@ const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
 const data = @import("data.zig");
 const masks = @import("masks.zig");
-const bits = @import("bits.zig");
 const position = @import("position.zig");
 
 const Value = types.Value;
@@ -120,7 +119,8 @@ pub fn mirror_vertically(u: u64) u64
 
 pub fn contains_square(bitboard: u64, sq: Square) bool
 {
-    return bits.test_bit_64(bitboard, sq.u);
+    //return bitboard & sq.to_bitboard() != 0;
+    return test_bit_64(bitboard, sq.u);
 }
 
 pub fn first_square_or_null(bitboard: u64) ?Square
@@ -146,7 +146,6 @@ pub fn pop_square(bitboard: *u64) Square
     return first_square(bitboard.*);
 }
 
-
 // EXPERIMENTAL
 pub fn pop(bitboard: *u64) ?Square
 {
@@ -159,6 +158,27 @@ pub fn clear_square(bitboard: *u64, sq: Square) void
 {
     bitboard.* &= ~sq.to_bitboard();
 }
+
+
+/// Unsafe
+pub fn lsb_u64(u: u64) u6
+{
+    assert(u != 0);
+    return @truncate(@ctz(u));
+}
+
+pub fn test_bit_u8(u: u8, bit: u3) bool
+{
+    const one: u8 = @as(u8, 1) << bit;
+    return u & one != 0;
+}
+
+pub fn test_bit_64(u: u64, bit: u6) bool
+{
+    const one: u64 = @as(u64, 1) << bit;
+    return u & one != 0;
+}
+
 
 pub fn movenumber_to_ply(movenr: u16, to_move: Color) u16
 {

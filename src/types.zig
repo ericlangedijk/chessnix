@@ -18,18 +18,18 @@ pub const Orientation = enum(u2)
     diaganti,
 };
 
-pub const Direction = enum(i8)
+pub const Direction = enum(u3)
 {
     pub const all: [8]Direction = .{.north, .east, .south, .west, .north_west, .north_east, .south_east, .south_west};
 
-    north = 8,
-    east = 1,
-    south = -8,
-    west = -1,
-    north_west = 7,
-    north_east = 9,
-    south_east = -7,
-    south_west = -9,
+    north,
+    east,
+    south,
+    west,
+    north_west,
+    north_east,
+    south_east,
+    south_west,
 
     pub fn to_i8(self: Direction) i8
     {
@@ -537,6 +537,26 @@ pub const Piece = packed union
 
         if (self.color().e == .black) ch = std.ascii.toLower(ch);
         return ch;
+    }
+
+    pub fn to_fen_char(self: Piece) u8
+    {
+        return switch (self.e)
+        {
+            .w_pawn   => 'P' ,
+            .w_knight => 'N',
+            .w_bishop => 'B',
+            .w_rook   => 'R',
+            .w_queen  => 'Q',
+            .w_king   => 'K',
+            .b_pawn   => 'p' ,
+            .b_knight => 'n' ,
+            .b_bishop => 'b' ,
+            .b_rook   => 'r' ,
+            .b_queen  => 'q' ,
+            .b_king   => 'k' ,
+            else => unreachable,
+        };
     }
 
 };

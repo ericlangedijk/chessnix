@@ -1,7 +1,9 @@
+/zig-cache
 /docs/
-/src/search.zig
-/src/tests.zig
+/src/bitset.zig
 /src/eval.zig
 /src/main.zig
+/src/search.zig
+/src/tests.zig
 
 /*.*

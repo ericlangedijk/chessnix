@@ -7,7 +7,6 @@ const bitboards = @import("bitboards.zig");
 const data = @import("data.zig");
 const console = @import("console.zig");
 const funcs = @import("funcs.zig");
-const bits = @import("bits.zig");
 const position = @import("position.zig");
 
 const Orientation = types.Orientation;
@@ -22,8 +21,6 @@ const assert = std.debug.assert;
 /// data.zig must be initialized first.
 pub fn initialize() void
 {
-    // if (sq.next(.west)) |n| adjacent_ep_masks[sq.u] |= n.to_bitboard();
-    // if (sq.next(.east)) |n| adjacent_ep_masks[sq.u] |= n.to_bitboard();
 
     // Passed pawn masks. TODO: just loop squares.
     for (bitboards.ranks) |rank|
@@ -38,11 +35,13 @@ pub fn initialize() void
             if (white_sq.file() < bitboards.file_h) bb |= data.ptr_bb_north[white_sq.add(1).u];
             passed_pawn_masks_white[black_sq.u] = bb;
             passed_pawn_masks_black[black_sq.u] = funcs.mirror_vertically(bb);
+            if (rank == bitboards.rank_4 or rank == bitboards.rank_5)
+            {
+                if (white_sq.next(.west)) |n| ep_masks[white_sq.u] |= n.to_bitboard();
+                if (white_sq.next(.east)) |n| ep_masks[white_sq.u] |= n.to_bitboard();
+            }
         }
     }
-
-
-
 }
 
 var passed_pawn_masks_white: [64]u64 = @splat(0);
@@ -62,7 +61,8 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64
     };
 }
 
-pub fn get_ep_mask(sq: Square) u64
+/// `to` is the square of the  double pushed pawn (e4).
+pub fn get_ep_mask(to: Square) u64
 {
-    return ptr_ep_masks[sq.u];
+    return ptr_ep_masks[to.u];
 }

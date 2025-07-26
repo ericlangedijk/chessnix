@@ -6,7 +6,6 @@ const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
 const console = @import("console.zig");
 const funcs = @import("funcs.zig");
-const bits = @import("bits.zig");
 
 const Orientation = types.Orientation;
 const Direction = types.Direction;
@@ -136,7 +135,7 @@ pub fn initialize() void
             for (0..8) |i|
             {
                 const bitpos: u3 = @truncate(i);
-                if (bits.test_bit_u8(attackmask, bitpos))
+                if (funcs.test_bit_u8(attackmask, bitpos))
                 {
                     const square: Square = .from_rank_file(7 - bitpos, file);
                     bitboard |= square.to_bitboard();
@@ -157,7 +156,7 @@ pub fn initialize() void
             var bitpos: u3 = offset;
             while (true)
             {
-                if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
+                if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.north_west) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
@@ -168,7 +167,7 @@ pub fn initialize() void
             bitpos = offset;
             while(true)
             {
-                if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
+                if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_east) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
@@ -188,7 +187,7 @@ pub fn initialize() void
             var bitpos: u3 = offset;
             while (true)
             {
-                if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
+                if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_west) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
@@ -199,7 +198,7 @@ pub fn initialize() void
             bitpos = offset;
             while (true)
             {
-                if (bits.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
+                if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 //if (bitpos == 7) break;
                 q = q.next(.north_east) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos < 7);

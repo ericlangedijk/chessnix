@@ -5,7 +5,6 @@ const lib = @import("lib.zig");
 const types = @import("types.zig");
 const console = @import("console.zig");
 const funcs = @import("funcs.zig");
-const bits = @import("bits.zig");
 const position = @import("position.zig");
 
 const uses = struct
@@ -37,9 +36,8 @@ pub const SquarePair = struct
     /// A mask for quick checking if a piece can cover this direction.\
     /// We can `and` the piecetype's numeric value with this mask.
     ///
-    /// * diagonal    = 001
     /// * orthoganal  = 100
-    /// * both        = 101
+    /// * diagonal    = 001
     /// * bishop      = 011 (value 3)
     /// * rook        = 100 (value 4)
     /// * queen       = 101 (value 5)
