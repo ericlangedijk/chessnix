@@ -1,0 +1,8 @@
+/.zig-cache
+/zig-out
+/notes
+/src/bitset.zig
+/src/eval.zig
+/src/search.zig
+
+
