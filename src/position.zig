@@ -1423,6 +1423,7 @@ pub const Position = struct
         storage.store(Move{ .from = from, .to = to, .prom = .no_prom, .movetype = .castle });
     }
 
+    /// obsolete
     /// Checks if the piece is pinned and if we can move it.
     /// * If we move in the same direction as the pin-direction it is legal.
     /// * Orientation known: sometimes (like with pawn moves) we know up-front (hard-coded) in which direction we are moving and use this info.
@@ -1439,6 +1440,7 @@ pub const Position = struct
         }
     }
 
+    /// obsolete
     /// Tricky one. An ep move can uncover a check.
     fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from: Square, to: Square) bool
     {
@@ -1457,6 +1459,7 @@ pub const Position = struct
         return !self.is_square_attacked_by_for_occupation(bb_without_king, to, them);
     }
 
+    /// obsolete
     fn is_legal_castle(self: *const Position, comptime castletype: CastleType, comptime us: Color, bb_unsafe: u64) bool
     {
         const idx = comptime index_of(castletype, us);
@@ -1464,6 +1467,7 @@ pub const Position = struct
         return path & bb_unsafe == 0;
     }
 
+    /// obsolete
     fn is_legal_castle_check_attacks(self: *const Position, comptime castletype: CastleType, comptime us: Color, king_sq: Square) bool
     {
         const them = comptime us.opp();
