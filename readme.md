@@ -38,3 +38,4 @@ Processor	Intel(R) Core(TM) i7-14700K, 3400 Mhz, 20 Core(s), 28 Logical Processo
  - OK
 
 - Total nodes: 18999768562 24.284s 782.3801 Mnodes/s (782380072)
+- Total nodes: 18999768562 23.839s 796.9975 Mnodes/s (796997487) - After Pawns speedup
