@@ -22,7 +22,18 @@ pub fn main() !void
         if (lib.is_release) read_key();
     }
 
-    try run(); // In debug mode this will be very very slow.
+    // Debug tests.
+    if (!lib.is_release)
+    {
+        try tests.run_silent_debugmode_test();
+        try tests.run_testfile(false, 1);
+    }
+
+    // Speed tests. In debug mode this will be very very slow.
+    if (lib.is_release)
+    {
+        try run();
+    }
 }
 
 fn run() !void
@@ -69,7 +80,6 @@ fn run() !void
     console.print("Total nodes: {} {} {d:.4} Mnodes/s ({})\n", .{ totalnodes, std.fmt.fmtDuration(totaltime), funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
     console.print("press enter to exit\n", .{});
 }
-
 
 fn read_key() void
 {

@@ -23,10 +23,10 @@ pub fn run_silent_debugmode_test() !void
     console.print("silent test ok\n", .{});
 }
 
-pub fn run_testfile(max_depth: ?usize) !void
+pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
 {
     const max: u64 = max_depth orelse 10;
-    const filename = "C:/Data/zig/chessnix/docs/testpositions.txt";
+    const filename = "C:/Data/zig/chessnix/notes/testpositions.txt";
     // Load text file in memory.
     const file: std.fs.File = try std.fs.openFileAbsolute(filename, .{});
     defer file.close();
@@ -38,10 +38,10 @@ pub fn run_testfile(max_depth: ?usize) !void
     // Read line by line
     var index: usize = 0;
     var iter = std.mem.tokenizeAny(u8, file_buffer, &.{13, 10});
-    outer: while (iter.next()) |str|
+    while (iter.next()) |str|
     {
         index += 1;
-        console.print("#{}. {s} ", .{index, str});
+        if (output) console.print("#{}. {s} ", .{index, str});
         var pos: Position = try .from_fen(str);
         defer pos.deinit();
 
@@ -62,10 +62,14 @@ pub fn run_testfile(max_depth: ?usize) !void
                 console.print(" ERROR D={} expected {} found {} ok = {}\n", .{d, expected_nodes, perft_nodes, ok });
             }
             else
-                console.print(" ok\n", .{});
-            if (!ok) break :outer;
+            {
+                if (output) console.print(" ok\n", .{});
+            }
+            if (!ok) return;
         }
     }
+    console.print("test from file ok\n", .{});
+
 }
 
 /// Run all testpositions and a perft 7 on the startpostion in releasemode.

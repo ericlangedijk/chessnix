@@ -18,6 +18,7 @@ const wtf = lib.wtf;
 
 const pop_square = funcs.pop_square;
 const pawns_shift = funcs.pawns_shift;
+const pawn_from = funcs.pawn_from;
 
 const Value = types.Value;
 const Orientation = types.Orientation;
@@ -1131,134 +1132,108 @@ pub const Position = struct
             const our_queens_bishops = self.queens_bishops(us);
             const our_queens_rooks = self.queens_rooks(us);
 
-            //const our_bishops = self.bishops(us);
-            //const our_rooks = self.rooks(us);
-            //const our_queens = self.queens(us);
-
             const target = if (ctp.check) st.interpolationmask else bb_not_us;
 
             // Pawns.
             if (our_pawns != 0)
             {
+                const third_rank: u64 = comptime funcs.relative_rank_3_bitboard(us);
+                const last_rank: u64 = comptime funcs.relative_rank_8_bitboard(us);
                 const empty_squares: u64 = ~bb_all;
                 const enemies: u64 = if (ctp.check) st.checkers else self.by_side(them);
-                const pawns_on_7: u64 = our_pawns & funcs.relative_rank_7_bitboard(us);
-                const pawns_not_on_7: u64 = our_pawns & ~pawns_on_7;
 
-                // Pawn pushes (no promotions).
+                // Generate all 4 types of pawnmoves: push, push double, capture left, capture right.
+                var bb_single = switch(ctp.pins)
                 {
-                    var bb_single = switch(ctp.pins)
-                    {
-                        false => (pawns_shift(pawns_not_on_7, us, .up) & empty_squares),
-                        true  => (pawns_shift(pawns_not_on_7 & ~st.pins, us, .up) & empty_squares) |
-                                 (pawns_shift(pawns_not_on_7 & st.pins_diag, us, .up) & empty_squares & st.pins_diag) |
-                                 (pawns_shift(pawns_not_on_7 & st.pins_orth, us, .up) & empty_squares & st.pins_orth),
-                    };
+                    false => (pawns_shift(our_pawns, us, .up) & empty_squares),
+                    true  => (pawns_shift(our_pawns & ~st.pins, us, .up) & empty_squares) |
+                             (pawns_shift(our_pawns & st.pins_diag, us, .up) & empty_squares & st.pins_diag) |
+                             (pawns_shift(our_pawns & st.pins_orth, us, .up) & empty_squares & st.pins_orth)
+                };
 
-                    const third_rank: u64 = comptime funcs.relative_rank_3_bitboard(us);
-                    var bb_double = pawns_shift(bb_single & third_rank, us, .up) & empty_squares;
+                var bb_double = pawns_shift(bb_single & third_rank, us, .up) & empty_squares;
 
-                    // Pawn push check interpolation.
-                    if (ctp.check)
-                    {
-                        bb_single &= target;
-                        bb_double &= target;
-                    }
-
-                    // Single.
-                    while (bb_single != 0)
-                    {
-                        const to: Square = pop_square(&bb_single);
-                        const from: Square = if (us.e == .white) to.sub(8) else to.add(8);
-                        store(from, to, storage);
-                    }
-                    // Double.
-                    while (bb_double != 0)
-                    {
-                        const to: Square = pop_square(&bb_double);
-                        const from: Square = if (us.e == .white) to.sub(16) else to.add(16);
-                        store(from, to, storage);
-                    }
+                // Pawn push check interpolation.
+                if (ctp.check)
+                {
+                    bb_single &= target;
+                    bb_double &= target;
                 }
 
-                // Pawn promotions.
-                if (pawns_on_7 != 0)
+                const bb_northwest: u64 = switch (ctp.pins)
                 {
+                    false => (pawns_shift(our_pawns, us, .northwest) & enemies),
+                    true  => (pawns_shift(our_pawns & ~st.pins, us, .northwest) & enemies) |
+                             (pawns_shift(our_pawns & st.pins_diag, us, .northwest) & enemies & st.pins_diag),
+                };
 
-                    //const movable_pawns: u64 = if (!ctp.pins) pawns_on_7 else pawns_on_7 & ~st.pins;
+                const bb_northeast: u64 = switch (ctp.pins)
+                {
+                    false => (pawns_shift(our_pawns, us, .northeast) & enemies),
+                    true  => (pawns_shift(our_pawns & ~st.pins, us, .northeast) & enemies) |
+                             (pawns_shift(our_pawns & st.pins_diag, us, .northeast) & enemies & st.pins_diag),
+                };
 
-                    var bb_northwest: u64 = switch (ctp.pins)
-                    {
-                        false => (pawns_shift(pawns_on_7, us, .northwest) & enemies),
-                        true  => (pawns_shift(pawns_on_7 & ~st.pins, us, .northwest) & enemies) |
-                                 (pawns_shift(pawns_on_7 & st.pins_diag, us, .northwest) & enemies & st.pins_diag),
-                    };
-
-                    var bb_northeast: u64 = switch (ctp.pins)
-                    {
-                        false => (pawns_shift(pawns_on_7, us, .northeast) & enemies),
-                        true  => (pawns_shift(pawns_on_7 & ~st.pins, us, .northeast) & enemies) |
-                                 (pawns_shift(pawns_on_7 & st.pins_diag, us, .northeast) & enemies & st.pins_diag),
-                    };
-
-                    // A pinned pawn on the 7th rank cannot push.
-                    var bb_push: u64 = pawns_shift(pawns_on_7 & ~st.pins, us, .up) & empty_squares;
-
-                    // check interpolation.
-                    if (ctp.check) bb_push &= target;
-
-                    // northwest
-                    while (bb_northwest != 0)
-                    {
-                        const to: Square = pop_square(&bb_northwest);
-                        const from: Square = if (us.e == .white) to.sub(7) else to.add(7);
-                        store_promotions(from, to, storage);
-                    }
-                    // northeast
-                    while (bb_northeast != 0)
-                    {
-                        const to: Square = pop_square(&bb_northeast);
-                        const from: Square = if (us.e == .white) to.sub(9) else to.add(9);
-                        store_promotions(from, to, storage);
-                    }
-                    // push
-                    while (bb_push != 0)
-                    {
-                        const to: Square = pop_square(&bb_push);
-                        const from: Square = if (us.e == .white) to.sub(8) else to.add(8);
-                        store_promotions(from, to, storage);
-                    }
+                // Single push normal
+                var bb_single_push: u64 = bb_single & ~last_rank;
+                while (bb_single_push != 0)
+                {
+                    const to: Square = pop_square(&bb_single_push);
+                    const from: Square = pawn_from(to, us, .up);
+                    store(from, to, storage);
                 }
 
-                // Pawn captures (no promotions).
+                // Double.push
+                while (bb_double != 0)
                 {
-                    // northwest
-                    var bb_northwest: u64 = switch (ctp.pins)
-                    {
-                        false => (pawns_shift(pawns_not_on_7, us, .northwest) & enemies),
-                        true  => (pawns_shift(pawns_not_on_7 & ~st.pins, us, .northwest) & enemies) |
-                                 (pawns_shift(pawns_not_on_7 & st.pins_diag, us, .northwest) & enemies & st.pins_diag),
-                    };
-                    while (bb_northwest != 0)
-                    {
-                        const to: Square = pop_square(&bb_northwest);
-                        const from: Square = if (us.e == .white) to.sub(7) else to.add(7);
-                        store(from, to, storage);
-                    }
+                    const to: Square = pop_square(&bb_double);
+                    const from: Square = if (us.e == .white) to.sub(16) else to.add(16);
+                    store(from, to, storage);
+                }
 
-                    // northeast
-                    var bb_northeast: u64 = switch (ctp.pins)
-                    {
-                        false => (pawns_shift(pawns_not_on_7, us, .northeast) & enemies),
-                        true  => (pawns_shift(pawns_not_on_7 & ~st.pins, us, .northeast) & enemies) |
-                                 (pawns_shift(pawns_not_on_7 & st.pins_diag, us, .northeast) & enemies & st.pins_diag),
-                    };
-                    while (bb_northeast != 0)
-                    {
-                        const to: Square = pop_square(&bb_northeast);
-                        const from: Square = if (us.e == .white) to.sub(9) else to.add(9);
-                        store(from, to, storage);
-                    }
+                // left capture promotions
+                var bb_northwest_promotions = bb_northwest & last_rank;
+                while (bb_northwest_promotions != 0)
+                {
+                    const to: Square = pop_square(&bb_northwest_promotions);
+                    const from: Square = pawn_from(to, us, .northwest);
+                    store_promotions(from, to, storage);
+                }
+
+                // right capture promotions
+                var bb_northeast_promotions = bb_northeast  & last_rank;
+                while (bb_northeast_promotions != 0)
+                {
+                    const to: Square = pop_square(&bb_northeast_promotions);
+                    const from: Square = pawn_from(to, us, .northeast);
+                    store_promotions(from, to, storage);
+                }
+
+                // push promotions
+                var bb_push_promotions: u64 = bb_single & last_rank;
+                while (bb_push_promotions != 0)
+                {
+                    const to: Square = pop_square(&bb_push_promotions);
+                    const from: Square =  pawn_from(to, us, .up);
+                    store_promotions(from, to, storage);
+                }
+
+                // left normal captures,
+                var bb_northwest_normal =  bb_northwest & ~last_rank;
+                while (bb_northwest_normal != 0)
+                {
+                    const to: Square = pop_square(&bb_northwest_normal);
+                    const from: Square = pawn_from(to, us, .northwest);
+                    store(from, to, storage);
+                }
+
+                // right normal captures,
+                var bb_norteast_normal =  bb_northeast  & ~last_rank;
+                while (bb_norteast_normal != 0)
+                {
+                    const to: Square = pop_square(&bb_norteast_normal);
+                    const from: Square = pawn_from(to, us, .northeast);
+                    store(from, to, storage);
                 }
 
                 // Enpassant.
@@ -1283,14 +1258,15 @@ pub const Position = struct
                 {
                     const from: Square = pop_square(&bb_from);
                     var bb_to: u64 = data.get_knight_attacks(from) & target;
-                    while (bb_to != 0)
+                    inline for (0..8) |_|
                     {
+                        if (bb_to == 0) break;
                         store(from, pop_square(&bb_to), storage);
                     }
                 }
             }
 
-            // Diagonal
+            // Diagonal sliders.
             {
                 if (!ctp.pins)
                 {
@@ -1330,7 +1306,7 @@ pub const Position = struct
                 }
             }
 
-            // Orthogonal.
+            // Orthogonal slicers.
             {
                 if (!ctp.pins)
                 {
@@ -1373,7 +1349,7 @@ pub const Position = struct
 
         } // (not doublecheck)
 
-        // King.
+        // King. TODO: The king is a troublemaker. For now this 'heuristic' gives the best avg speed, using 2 different approaches to check legality.
         {
             var bb_to = data.get_king_attacks(king_sq) & bb_not_us;
             if (@popCount(bb_to) > 2)

@@ -43,6 +43,12 @@ pub fn relative_rank_7_bitboard(comptime us: Color) u64
     return if (us.e == .white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
 }
 
+pub fn relative_rank_8_bitboard(comptime us: Color) u64
+{
+    return if (us.e == .white) bitboards.bb_rank_8 else bitboards.bb_rank_1;
+}
+
+
 pub fn relative_rank_3_bitboard(comptime us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
@@ -71,7 +77,7 @@ pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u6
         {
            return switch(shift)
             {
-                .up => pawns << 8,
+                .up        => pawns << 8,
                 .northwest => (pawns & ~bitboards.bb_file_a) << 7,
                 .northeast => (pawns & ~bitboards.bb_file_h) << 9,
             };
@@ -80,9 +86,35 @@ pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u6
         {
             return switch(shift)
             {
-                .up => pawns >> 8,
+                .up        => pawns >> 8,
                 .northwest => (pawns & ~bitboards.bb_file_h) >> 7, // southeast
                 .northeast => (pawns & ~bitboards.bb_file_a) >> 9, // southwest
+            };
+        }
+    }
+}
+
+/// Returns the from square of a moved pawn.
+pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Square
+{
+    switch (us.e)
+    {
+        .white =>
+        {
+            return switch(shift)
+            {
+                .up        => to.sub(8),
+                .northwest => to.sub(7),
+                .northeast => to.sub(9),
+            };
+        },
+        .black =>
+        {
+            return switch(shift)
+            {
+                .up        => to.add(8),
+                .northwest => to.add(7),
+                .northeast => to.add(9),
             };
         }
     }
