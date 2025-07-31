@@ -70,7 +70,6 @@ pub const StateInfo = struct
     /// (copied)
     castling_rights: u4 = 0,
     /// The move that was played to reach the current position.
-    /// (copied)
     last_move: Move = .empty,
     /// The piece that did the last_move.
     moved_piece: Piece = Piece.NO_PIECE,
@@ -148,7 +147,7 @@ pub const Position = struct
     is_960: bool,
     /// Moves and state-information history.
     history: StateInfoList,
-    /// For performance reasons we keep this pointer to the actual current state: the last item in the statelist.\
+    /// For performance reasons we keep this pointer to the actual current state: the last item in the history.\
     /// This field is always synchronized.
     current_state: *StateInfo,
 
