@@ -1,6 +1,6 @@
 #Work in progress version
 
-###Commands:
+### Commands:
 - perft [depth]
 - qperft [depth]
 - bench
