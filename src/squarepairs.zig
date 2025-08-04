@@ -5,7 +5,6 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
-const console = @import("console.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 
@@ -92,7 +91,7 @@ fn get_mut(from: Square, to: Square) *SquarePair
     return &ptr_pairs[idx];
 }
 
-pub fn get(from: Square, to: Square) *SquarePair
+pub fn get(from: Square, to: Square) *const SquarePair
 {
     const idx: usize = from.idx() * 64 + to.idx();
     return &ptr_pairs[idx];
