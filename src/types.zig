@@ -108,7 +108,28 @@ pub const Color = packed union
 
 pub const Square = packed union
 {
-    pub const all: [64]Square = get_all();
+    pub const all: [64]Square =
+    .{
+        A1, B1, C1, D1, E1, F1, G1, H1,
+        A2, B2, C2, D2, E2, F2, G2, H2,
+        A3, B3, C3, D3, E3, F3, G3, H3,
+        A4, B4, C4, D4, E4, F4, G4, H4,
+        A5, B5, C5, D5, E5, F5, G5, H5,
+        A6, B6, C6, D6, E6, F6, G6, H6,
+        A7, B7, C7, D7, E7, F7, G7, H7,
+        A8, B8, C8, D8, E8, F8, G8, H8,
+    };
+    pub const all_for_printing: [64]Square =
+    .{
+        A8, B8, C8, D8, E8, F8, G8, H8,
+        A7, B7, C7, D7, E7, F7, G7, H7,
+        A6, B6, C6, D6, E6, F6, G6, H6,
+        A5, B5, C5, D5, E5, F5, G5, H5,
+        A4, B4, C4, D4, E4, F4, G4, H4,
+        A3, B3, C3, D3, E3, F3, G3, H3,
+        A2, B2, C2, D2, E2, F2, G2, H2,
+        A1, B1, C1, D1, E1, F1, G1, H1,
+    };
     pub const zero: Square = A1;
     pub const no_ep: Square = A1;
 
@@ -320,10 +341,41 @@ pub const Square = packed union
         return result;
     }
 
-    /// Debug only.
+    /// Only used during initialization.\
+    pub fn ray_bitboard(self: Square, dir: Direction) u64
+    {
+        var bb: u64 = 0;
+        //const array: []const Square = self.ray(dir).slice();
+        var run: Square = self;
+        while (run.next(dir)) |n|
+        {
+            bb |=  n.to_bitboard();
+            run = n;
+        }
+        return bb;
+    }
+
+    /// Only used during initialization.\
+    pub fn rays_bitboard(self: Square, comptime dirs: []const Direction) u64
+    {
+        var bb: u64 = 0;
+        inline for (dirs) |d|
+        {
+            bb |= self.ray_bitboard(d);
+        }
+        return bb;
+    }
+
     pub fn to_string(self: Square) []const u8
     {
         return @tagName(self.e);
+    }
+
+    pub fn from_string(str: []const u8) Square
+    {
+        const v: u16 = (str[1] - '1') * 8 + (str[0] - 'a');
+        assert(v < 64);
+        return .{ .u = @truncate(v) };
     }
 
     pub fn char_of_rank(self: Square) u8
@@ -541,6 +593,23 @@ pub const Piece = packed union
         return self.piecetype.e == .pawn;
     }
 
+    pub fn is_king(self: Piece) bool
+    {
+        return self.piecetype.e == .king;
+    }
+
+    pub fn from_char(ch: u8, us: Color) !Piece
+    {
+        return switch (ch)
+        {
+            'n' => make(PieceType.PAWN, us),
+            'b' => make(PieceType.BISHOP, us),
+            'r' => make(PieceType.ROOK, us),
+            'k' => make(PieceType.QUEEN, us),
+            else => unreachable
+        };
+    }
+
     pub fn to_print_char(self: Piece) u8
     {
         var ch: u8 = switch(self.piecetype.e)
@@ -617,6 +686,24 @@ pub const Move = packed struct(u16)
         {
             return Piece.make(self.to_piecetype(), us);
         }
+
+        pub fn from_char(ch: u8) Prom
+        {
+            return switch (ch)
+            {
+                'n' => .knight,
+                'b' => .bishop,
+                'r' => .rook,
+                'q' => .queen,
+                else => unreachable
+            };
+        }
+
+        pub fn to_char(self: Prom) u8
+        {
+            return "nbrq"[@intFromEnum(self)];
+        }
+
     };
 
     /// 6 bits
@@ -684,7 +771,7 @@ pub const Move = packed struct(u16)
 
         if (self.movetype == .promotion)
         {
-            const ch: u8 = self.prom.to_piecetype().to_prom_uci();
+            const ch: u8 = self.prom.to_char();// to_piecetype().to_prom_uci();
             result.appendAssumeCapacity(ch);
         }
         return result;
@@ -737,5 +824,9 @@ const piece_material_values: [15]Value =
     material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
 
-
-
+/// Parsing errors for uci
+pub const ParseError = error
+{
+    Invalid,
+    IllegalMove,
+};
