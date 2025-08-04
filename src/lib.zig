@@ -5,6 +5,8 @@ const builtin = @import("builtin");
 
 const assert = std.debug.assert;
 
+pub const version= "0.1";
+
 // Some app consts.
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
@@ -13,12 +15,22 @@ pub const is_paranoid: bool = if (is_debug) true else false;
 /// The global memory.
 pub const ctx: *const MemoryContext = &private_context;
 
+// io and terminal
+pub const in: *const std.fs.File.Reader = &private_in;
+pub const out: *const std.fs.File.Writer = &private_out;
+
 var private_context: MemoryContext = undefined;
-//var private_console_output: UTF8ConsoleOutput = undefined;
+var private_in: std.fs.File.Reader = undefined;
+var private_out: std.fs.File.Writer = undefined;
+var private_is_tty: bool = false;
 
 pub fn initialize() void
 {
     private_context = .init();
+
+    private_in = std.io.getStdIn().reader();
+    private_out = std.io.getStdOut().writer();
+    private_is_tty = std.io.getStdOut().isTty();
 
     @import("squarepairs.zig").initialize();
     @import("zobrist.zig").initialize();
@@ -28,7 +40,6 @@ pub fn initialize() void
 
 pub fn finalize() void
 {
-    //private_console_output.deinit();
     private_context.deinit();
 }
 
@@ -56,21 +67,16 @@ pub const MemoryContext = struct
     }
 };
 
-pub const What = enum
+/// Are we in terminal mode?
+pub fn is_tty() bool
 {
-    Memory,
-};
-
-
-pub fn wtf() noreturn
-{
-    unreachable;
-    //@panic("WTF");
+    return private_is_tty;
 }
 
-pub fn crash(comptime what: What) noreturn
+/// Print without try :)
+pub fn print(comptime fmt: []const u8, args: anytype) void
 {
-    @panic(@tagName(what));
+    out.print(fmt, args) catch wtf();
 }
 
 pub fn not_in_release() void
@@ -78,35 +84,7 @@ pub fn not_in_release() void
     if (is_release) @compileError("not in release!");
 }
 
-/// Temp solution.
-const UTF8ConsoleOutput = struct
+pub fn wtf() noreturn
 {
-    original: ?c_uint = null,
-
-    fn init() UTF8ConsoleOutput
-    {
-
-        // const windows = @cImport({
-        //     @cInclude("windows.h");
-        // });
-
-        var self = UTF8ConsoleOutput{};
-        if (builtin.os.tag == .windows)
-        {
-            const kernel32 = std.os.windows.kernel32;
-            self.original = kernel32.GetConsoleOutputCP();
-            _ = kernel32.SetConsoleOutputCP(65001);
-
-            //const mode: u32 = kernel32.SetConsoleMode()
-        }
-        return self;
-    }
-
-    fn deinit(self: *UTF8ConsoleOutput) void
-    {
-        if (self.original) |org|
-        {
-            _ = std.os.windows.kernel32.SetConsoleOutputCP(org);
-        }
-    }
-};
+    unreachable;
+}
