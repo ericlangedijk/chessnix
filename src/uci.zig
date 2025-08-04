@@ -24,16 +24,15 @@ pub fn run() !void
         try out.print("chessnix {s} by Eric Langedijk\n", .{lib.version});
     }
 
-    var allocator = std.heap.ArenaAllocator.init(ctx.galloc);
-    defer allocator.deinit();
-
+    var buffer: [4096]u8 = @splat(0);
     var pos: Position = .new();
     defer pos.deinit();
 
     while (true)
     {
-        const line = try in.readUntilDelimiterOrEofAlloc(allocator.allocator(), '\n', 4096) orelse return;
+        const line = try in.readUntilDelimiter(&buffer, '\n');
         const input: []const u8 = std.mem.trim(u8, line, "\r");
+        if (input.len == 0) continue;
         var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue;
 
