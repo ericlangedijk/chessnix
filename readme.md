@@ -1,12 +1,12 @@
 #Work in progress version
 
 ###Commands:
-perft <depth>,
-qperft <depth>,
-bench
-position startpos
-position fen <fen_string>
-d (draw position)
+- perft <depth>,
+- qperft <depth>,
+- bench
+- position startpos
+- position fen <fen_string>
+- d (draw position)
 
 ### bench output
 Processor	Intel(R) Core(TM) i7-14700K, 3400 Mhz, 20 Core(s), 28 Logical Processor(s)
