@@ -7,7 +7,6 @@ const lib = @import("lib.zig");
 const types = @import("types.zig");
 const bitboards = @import("bitboards.zig");
 const data = @import("data.zig");
-const console = @import("console.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 
@@ -50,9 +49,9 @@ var passed_pawn_masks_white: [64]u64 = @splat(0);
 var passed_pawn_masks_black: [64]u64 = @splat(0);
 var ep_masks: [64]u64 =  @splat(0); // TODO: not initialized / used.
 
-const ptr_passed_pawn_masks_white: [*]u64 = &passed_pawn_masks_white;
-const ptr_passed_pawn_masks_black: [*]u64 = &passed_pawn_masks_black;
-const ptr_ep_masks: [*]u64 = &ep_masks;
+const ptr_passed_pawn_masks_white: [*]const u64 = &passed_pawn_masks_white;
+const ptr_passed_pawn_masks_black: [*]const u64 = &passed_pawn_masks_black;
+const ptr_ep_masks: [*]const u64 = &ep_masks;
 
 pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64
 {
