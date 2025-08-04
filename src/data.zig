@@ -2,11 +2,12 @@
 
 //! All bitboards + magics + functions for move generation.
 
+// TODO: put masks + magics in 1 struct for cache locality?
+
 const std = @import("std");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
-const console = @import("console.zig");
 const funcs = @import("funcs.zig");
 
 const Orientation = types.Orientation;
@@ -97,30 +98,28 @@ pub fn initialize() void
         if (sq.next(.south_west))|n| king_attacks[sq.u] |= n.to_bitboard();
 
         // Raw direction bitboards.
-        for (sq.ray(.north).slice()) |q| bb_north[sq.u] |= q.to_bitboard();
-        for (sq.ray(.south).slice()) |q| bb_south[sq.u] |= q.to_bitboard();
-        for (sq.ray(.west).slice())  |q| bb_west[sq.u] |= q.to_bitboard();
-        for (sq.ray(.east).slice())  |q| bb_east[sq.u] |= q.to_bitboard();
+        bb_north[sq.u] = sq.ray_bitboard(.north);
+        bb_east[sq.u] = sq.ray_bitboard(.east);
+        bb_south[sq.u] = sq.ray_bitboard(.south);
+        bb_west[sq.u] = sq.ray_bitboard(.west);
+        bb_northwest[sq.u] = sq.ray_bitboard(.north_west);
+        bb_northeast[sq.u] = sq.ray_bitboard(.north_east);
+        bb_southeast[sq.u] = sq.ray_bitboard(.south_east);
+        bb_southwest[sq.u] = sq.ray_bitboard(.south_west);
 
-        for (sq.rays(&.{.north, .east}).slice()) |q| bb_northeast[sq.u] |= q.to_bitboard();
-        for (sq.rays(&.{.south, .west}).slice()) |q| bb_southwest[sq.u] |= q.to_bitboard();
-        for (sq.rays(&.{.north, .west}).slice())  |q| bb_northwest[sq.u] |= q.to_bitboard();
-        for (sq.rays(&.{.south, .east}).slice())  |q| bb_southeast[sq.u] |= q.to_bitboard();
+        const entry_file: *MagicEntry = &file_magics[sq.u];
+        const entry_main: *MagicEntry = &main_magics[sq.u];
+        const entry_anti: *MagicEntry = &anti_magics[sq.u];
 
         // Masks without borders and without square itself.
-        for (sq.rays(&.{.west, .east}).slice()) |q| rank_masks[sq.u] |= q.to_bitboard();
-        for (sq.rays(&.{.north, .south}).slice()) |q| file_masks[sq.u] |= q.to_bitboard();
-        for (sq.rays(&.{.north_west, .south_east}).slice()) |q| diag_main_masks[sq.u] |= q.to_bitboard();
-        for (sq.rays(&.{.north_east, .south_west}).slice()) |q| diag_anti_masks[sq.u] |= q.to_bitboard();
-        rank_masks[sq.u] &= ~(bitboards.bb_file_a | bitboards.bb_file_h);
-        file_masks[sq.u] &= ~(bitboards.bb_rank_1 | bitboards.bb_rank_1);
-        diag_main_masks[sq.u] &= ~bitboards.bb_borders;
-        diag_anti_masks[sq.u] &= ~bitboards.bb_borders;
+        entry_file.mask = sq.rays_bitboard(&.{.north, .south}) & ~(bitboards.bb_rank_1 | bitboards.bb_rank_8);
+        entry_main.mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bitboards.bb_borders;
+        entry_anti.mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bitboards.bb_borders;
 
         // Magics for each square, deduced from the precalculated ones.
-        file_magics[sq.u] = magics.file_magics[file];
-        diag_main_magics[sq.u] = magics.diag_main_magics[@as(u8, file) + rank];
-        diag_anti_magics[sq.u] = magics.diag_anti_magics[@as(u8, file) + (7 - rank)];
+        entry_file.magic = PrecomputedMagics.file_magics[file];
+        entry_main.magic = PrecomputedMagics.diag_main_magics[@as(u8, file) + rank];
+        entry_anti.magic = PrecomputedMagics.diag_anti_magics[@as(u8, file) + (7 - rank)];
 
         // Rank attacks.
         for (0..64) |occ|
@@ -201,7 +200,6 @@ pub fn initialize() void
             while (true)
             {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
-                //if (bitpos == 7) break;
                 q = q.next(.north_east) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
@@ -215,7 +213,7 @@ pub fn initialize() void
 const occ_index_mask: u8 = 0b01111110;
 
 /// Precomputed magics.
-const magics = struct
+const PrecomputedMagics = struct
 {
     const file_magics: [8]u64 =
     .{
@@ -268,15 +266,25 @@ const magics = struct
     };
 };
 
-// Movgen
-var file_magics: [64]u64 = @splat(0);
-var diag_main_magics: [64]u64 = @splat(0);
-var diag_anti_magics: [64]u64 = @splat(0);
+const MagicEntry = struct
+{
+    const empty: MagicEntry = .{};
 
-var rank_masks: [64]u64 = @splat(0);
-var file_masks: [64]u64 = @splat(0);
-var diag_main_masks: [64]u64 = @splat(0);
-var diag_anti_masks: [64]u64 =  @splat(0);
+    mask: u64 = 0,
+    magic: u64 = 0,
+
+    const shift: u6 = 57;
+
+    fn attack_index(self: MagicEntry, occ: u64) u64
+    {
+        return ((occ & self.mask) *% self.magic) >> shift;
+    }
+};
+
+// Movgen.
+var file_magics: [64]MagicEntry = @splat(.empty);
+var main_magics: [64]MagicEntry = @splat(.empty);
+var anti_magics: [64]MagicEntry = @splat(.empty);
 
 var pawn_attacks_white: [64]u64 = @splat(0);
 var pawn_attacks_black: [64]u64 = @splat(0);
@@ -297,81 +305,51 @@ var bb_southeast: [64]u64 = @splat(0);
 var bb_northeast: [64]u64 = @splat(0);
 var bb_southwest: [64]u64 = @splat(0);
 
-// Movgen. (Zig still sucks with array access, hence the pointers. When directly accessing the vars above an enormous amount of @memcpy calls are done.)
-pub const ptr_file_magics: [*]u64 = &file_magics;
-pub const ptr_diag_main_magics: [*]u64 = &diag_main_magics;
-pub const ptr_diag_anti_magics: [*]u64 = &diag_anti_magics;
+// Movgen. (Pointers are faster than array access. Danger of @memcpy calls).
+pub const ptr_file_magics: [*]const MagicEntry = &file_magics;
+pub const ptr_main_magics: [*]const MagicEntry = &main_magics;
+pub const ptr_anti_magics: [*]const MagicEntry = &anti_magics;
 
-pub const ptr_rank_masks: [*]u64 = &rank_masks;
-pub const ptr_file_masks: [*]u64 = &file_masks;
-pub const ptr_diag_main_masks: [*]u64 = &diag_main_masks;
-pub const ptr_diag_anti_masks: [*]u64 = &diag_anti_masks;
-
-pub const ptr_pawn_attacks_white: [*]u64 = &pawn_attacks_white;
-pub const ptr_pawn_attacks_black: [*]u64 = &pawn_attacks_black;
-pub const ptr_knight_attacks: [*]u64 = & knight_attacks;
-pub const ptr_king_attacks: [*]u64 = &king_attacks;
-pub const ptr_rank_attacks: [*]u64 = &rank_attacks;
-pub const ptr_file_attacks: [*]u64 = &file_attacks;
-pub const ptr_diag_main_attacks: [*]u64 = &diag_main_attacks;
-pub const ptr_diag_anti_attacks: [*]u64 = &diag_anti_attacks;
+pub const ptr_pawn_attacks_white: [*]const u64 = &pawn_attacks_white;
+pub const ptr_pawn_attacks_black: [*]const u64 = &pawn_attacks_black;
+pub const ptr_knight_attacks: [*]const u64 = & knight_attacks;
+pub const ptr_king_attacks: [*]const u64 = &king_attacks;
+pub const ptr_rank_attacks: [*]const u64 = &rank_attacks;
+pub const ptr_file_attacks: [*]const u64 = &file_attacks;
+pub const ptr_diag_main_attacks: [*]const u64 = &diag_main_attacks;
+pub const ptr_diag_anti_attacks: [*]const u64 = &diag_anti_attacks;
 
 // Raw
-pub const ptr_bb_north: [*]u64 = &bb_north;
-pub const ptr_bb_south: [*]u64 = &bb_south;
-pub const ptr_bb_west: [*]u64 =  &bb_west;
-pub const ptr_bb_east: [*]u64 =  &bb_east;
-pub const ptr_bb_northwest: [*]u64 =  &bb_northwest;
-pub const ptr_bb_southeast: [*]u64 = &bb_southeast;
-pub const ptr_bb_northeast: [*]u64 = &bb_northeast;
-pub const ptr_bb_southwest: [*]u64 =  &bb_southwest;
+pub const ptr_bb_north: [*]const u64 = &bb_north;
+pub const ptr_bb_south: [*]const u64 = &bb_south;
+pub const ptr_bb_west: [*]const u64 =  &bb_west;
+pub const ptr_bb_east: [*]const u64 =  &bb_east;
+pub const ptr_bb_northwest: [*]const u64 =  &bb_northwest;
+pub const ptr_bb_southeast: [*]const u64 = &bb_southeast;
+pub const ptr_bb_northeast: [*]const u64 = &bb_northeast;
+pub const ptr_bb_southwest: [*]const u64 =  &bb_southwest;
 
+/// Using the `Orientation` enum order.
 pub const direction_bitboards: [8][*]u64 =
 .{
     ptr_bb_north,
+    ptr_bb_east,
     ptr_bb_south,
     ptr_bb_west,
-    ptr_bb_east,
     ptr_bb_northwest,
-    ptr_bb_southeast,
     ptr_bb_northeast,
+    ptr_bb_southeast,
     ptr_bb_southwest,
 };
 
-/// Returns the raw index. Always <= 255.
-fn index_of_original(comptime ori: Orientation, sq: Square, occ: u64) u64
+fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 {
     return switch(ori)
     {
-        .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1, // just shifted to rank zero.
-        .vertical => ((occ & ptr_file_masks[sq.u]) *% ptr_file_magics[sq.u]) >> 57,
-        .diagmain => ((occ & ptr_diag_main_masks[sq.u]) *% ptr_diag_main_magics[sq.u]) >> 57,
-        .diaganti => ((occ & ptr_diag_anti_masks[sq.u]) *% ptr_diag_anti_magics[sq.u]) >> 57,
-    };
-}
-
-/// Calculate File Magic: calculating is maybe faster than a table lookup.
-// inline fn compute_file_magic(sq: Square) u64
-// {
-//    const m = @as(u64, 0x8040201008040200);
-//    return m >> (sq.u & 7); // (sq.u & 7) == sq.file();
-// }
-
-/// Correct but slower than lookup
-// inline fn compute_diagmain_magic_slower(sq: Square) u64
-// {
-//     const index = @as(u4, sq.file()) + sq.rank();
-//     return magics.diag_main_magics[index];
-// }
-
-fn index_of(comptime ori: Orientation, sq: Square, occ: u64) u64
-{
-    return switch(ori)
-    {
-        .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1, // just shifted to rank zero.
-        .vertical   => ((occ & ptr_file_masks[sq.u]) *% ptr_file_magics[sq.u]) >> 57,
-        .diagmain   => ((occ & ptr_diag_main_masks[sq.u]) *% ptr_diag_main_magics[sq.u]) >> 57,
-        .diaganti   => ((occ & ptr_diag_anti_masks[sq.u]) *% ptr_diag_anti_magics[sq.u]) >> 57,
+        .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1,
+        .vertical   => ptr_file_magics[sq.u].attack_index(occ),
+        .diagmain   => ptr_main_magics[sq.u].attack_index(occ),
+        .diaganti   => ptr_anti_magics[sq.u].attack_index(occ),
     };
 }
 
@@ -379,7 +357,7 @@ fn index_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 {
     const offset: u64 = sq.idx() * 64;
-    const raw: u64 =  index_of(ori, sq, occ);
+    const raw: u64 = attack_index_of(ori, sq, occ);
 
     return switch (ori)
     {
@@ -393,6 +371,8 @@ pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 /// A little speedup for combined attacks. We only need to calculate the offset once.
 fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, occ: u64) u64
 {
+    assert(orientations.len == 2 or orientations.len == 4);
+
     const offset: u64 = sq.idx() * 64;
     var result: u64 = 0;
 
@@ -402,23 +382,23 @@ fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, o
         {
             .horizontal =>
             {
-                const raw: u64 = index_of(ori, sq, occ);
+                const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_rank_attacks[offset + raw];
             },
             .vertical =>
             {
-                const raw: u64 = index_of(ori, sq, occ);
+                const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_file_attacks[offset + raw];
             },
             .diagmain =>
             {
-                const raw: u64 = index_of(ori, sq, occ);
+                const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_diag_main_attacks[offset + raw];
 
             },
             .diaganti =>
             {
-                const raw: u64 = index_of(ori, sq, occ);
+                const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_diag_anti_attacks[offset + raw];
             },
         }
@@ -478,63 +458,4 @@ pub fn get_queen_attacks(sq: Square, occ: u64) u64
 pub fn get_king_attacks(sq: Square) u64
 {
     return ptr_king_attacks[sq.u];
-}
-
-/// Converting everything to hard coded constants is slower than our pointers.
-pub fn write_src() !void
-{
-
-    const file = try std.fs.cwd().createFile("c:/Tmp/output.txt", .{});
-    defer file.close();
-
-    try wr(file, "file_magics",        &file_magics);
-    try wr(file, "diag_main_magics",   &diag_main_magics);
-    try wr(file, "diag_anti_magics",   &diag_anti_magics);
-    try wr(file, "rank_masks",         &rank_masks);
-    try wr(file, "file_masks",         &file_masks);
-    try wr(file, "diag_main_masks",    &diag_main_masks);
-    try wr(file, "diag_anti_masks",    &diag_anti_masks );
-    try wr(file, "pawn_attacks_white", &pawn_attacks_white);
-    try wr(file, "pawn_attacks_black", &pawn_attacks_black);
-    try wr(file, "knight_attacks",     &knight_attacks);
-    try wr(file, "king_attacks",       &king_attacks);
-    try wr(file, "rank_attacks",       &rank_attacks);
-    try wr(file, "file_attacks",       &file_attacks);
-    try wr(file, "diag_main_attacks",  &diag_main_attacks);
-    try wr(file, "diag_anti_attacks",  &diag_anti_attacks);
-    try wr(file, "bb_north",           &bb_north);
-    try wr(file, "bb_south",           &bb_south);
-    try wr(file, "bb_west",            &bb_west);
-    try wr(file, "bb_east",            &bb_east);
-    try wr(file, "bb_northwest",       &bb_northwest);
-    try wr(file, "bb_southeast",       &bb_southeast);
-    try wr(file, "bb_northeast",       &bb_northeast);
-    try wr(file, "bb_southwest",       &bb_southwest);
-
-    // for (bb_north, 0..) |u, i|
-    // {
-    //     _ = try file.write("0x");
-    //     try std.fmt.format(file.writer(), "{x:0>16}, ", .{u});
-    //     if (i % 8 == 7) _ = try file.write("\n");
-    // }
-
-    //try file.writeAll("Hello, world!\n");
-}
-
-fn wr(file: std.fs.File, varname: []const u8, array: []const u64) !void
-{
-
-    try std.fmt.format(file.writer(), "const {s}: [{}]u64 = \n", .{ varname, array.len });
-    _ = try file.write(".{\n    ");
-    for (array, 0..) |u, i|
-    {
-        _ = try file.write("0x");
-        try std.fmt.format(file.writer(), "{x:0>16}, ", .{u});
-        if (i % 8 == 7)
-        {
-             _ = try file.write("\n");
-             if (i < array.len - 1) _ = try file.write("    ");
-        }
-    }
-    _ = try file.write("};\n\n");
 }
