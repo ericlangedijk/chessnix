@@ -59,9 +59,9 @@ var ep_keys: [8]u64 = @splat(0);
 var castling_keys: [16]u64 = @splat(0);
 var btm_key: u64 = 0;
 
-const ptr_piece_square_keys: [*]u64 = &piece_square_keys;
-const ptr_ep_keys: [*]u64 = &ep_keys;
-const ptr_castling_keys: [*]u64 = &castling_keys;
+const ptr_piece_square_keys: [*]const u64 = &piece_square_keys;
+const ptr_ep_keys: [*]const u64 = &ep_keys;
+const ptr_castling_keys: [*]const u64 = &castling_keys;
 
 pub fn piece_square(pc: Piece, sq: Square) u64
 {
