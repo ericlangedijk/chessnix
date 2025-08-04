@@ -38,18 +38,18 @@ pub fn rook_castle_to_square(us: Color, dir: CastleType) Square
     return squares[us.u][dir.idx()];
 }
 
-pub fn relative_rank_7_bitboard(comptime us: Color) u64
+pub fn relative_rank_7_bitboard(us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
 }
 
-pub fn relative_rank_8_bitboard(comptime us: Color) u64
+pub fn relative_rank_8_bitboard(us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_8 else bitboards.bb_rank_1;
 }
 
 
-pub fn relative_rank_3_bitboard(comptime us: Color) u64
+pub fn relative_rank_3_bitboard(us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
 }
@@ -120,6 +120,15 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
     }
 }
 
+pub fn all_pawns_attacks(pawns: u64, comptime us: Color) u64
+{
+    return switch(us.e)
+    {
+        .white => ((pawns & ~bitboards.bb_file_a) << 7) | ((pawns & ~bitboards.bb_file_h) << 9),
+        .black => ((pawns & ~bitboards.bb_file_h) >> 7) | ((pawns & ~bitboards.bb_file_a) >> 9),
+    };
+}
+
 pub fn is_supported_by_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
 {
     const them = comptime us.opp();
@@ -186,6 +195,7 @@ pub fn pop_square(bitboard: *u64) Square
     return first_square(bitboard.*);
 }
 
+/// I cannot make this function as fast as a manual loop.
 // pub fn pop(bitboard: *u64) ?Square
 // {
 //     if (bitboard.* == 0) return null;
