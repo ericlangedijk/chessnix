@@ -115,6 +115,3 @@ fn eql(input: []const u8, comptime line: []const u8) bool
 {
     return std.mem.eql(u8, input, line);
 }
-
-
-// info depth 8 seldepth 13 multipv 1 score cp 47 nodes 3436 nps 572666 hashfull 1 tbhits 0 time 6 pv e2e4 c7c5 b1c3 b8c6 g1f3 g8f6
