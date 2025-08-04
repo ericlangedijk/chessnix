@@ -5,7 +5,6 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const funcs = @import("funcs.zig");
-const console = @import("console.zig");
 const types = @import("types.zig");
 const p = @import("position.zig");
 const perft = @import("perft.zig");
@@ -20,7 +19,7 @@ pub fn run_silent_debugmode_test() !void
 {
     if (lib.is_release) return;
     try run_tests(3, true, false);
-    console.print("silent test ok\n", .{});
+    lib.print("silent test ok\n", .{});
 }
 
 pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
@@ -41,7 +40,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
     while (iter.next()) |str|
     {
         index += 1;
-        if (output) console.print("#{}. {s} ", .{index, str});
+        if (output) lib.print("#{}. {s} ", .{index, str});
         var pos: Position = try .from_fen(str);
         defer pos.deinit();
 
@@ -59,16 +58,16 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
                 //var f = pos.to_fen();
                 //defer f.deinit(ctx.galloc);
                 //p.print_pos(&pos);
-                console.print(" ERROR D={} expected {} found {} ok = {}\n", .{d, expected_nodes, perft_nodes, ok });
+                lib.print(" ERROR D={} expected {} found {} ok = {} {s}\n", .{d, expected_nodes, perft_nodes, ok , str});
             }
             else
             {
-                if (output) console.print(" ok\n", .{});
+                if (output) lib.print(" ok\n", .{});
             }
             if (!ok) return;
         }
     }
-    console.print("test from file ok\n", .{});
+    lib.print("test from file ok\n", .{});
 
 }
 
@@ -83,7 +82,7 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
 
     outer: for (testpositions, 0..) |str, index|
     {
-        if (output) console.print("#{}. {s}\n", .{index, str});
+        if (output) lib.print("#{}. {s}\n", .{index, str});
         var pos: Position = try .from_fen(str);
         defer pos.deinit();
 
@@ -100,46 +99,46 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
             if (output)
             {
                 if (!ok)
-                    console.print("    ERROR D={} expected {} found {} ok = {}\n", .{d, expected_nodes, perft_nodes, ok})
+                    lib.print("    ERROR D={} expected {} found {} ok = {} {s}\n", .{d, expected_nodes, perft_nodes, ok, str})
                 else
-                    console.print("    D={} expected {} found {} ok = {}\n", .{d, expected_nodes, perft_nodes, ok});
+                    lib.print("    D={} expected {} found {} ok = {}\n", .{d, expected_nodes, perft_nodes, ok});
             }
             if (!ok) errors += 1;
             if (break_on_error and !ok) break :outer;
         }
     }
 
-    if (output) console.print("perft tests: totalnodes: {}, time {}, nps {} errors {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime), errors});
+    if (output) lib.print("perft tests: totalnodes: {}, time {}, nps {} errors {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime), errors});
 
 
     if (errors != 0)
     {
-        console.print("!!!\nTHERE ARE ERRORS\n!!!\n", .{});
+        lib.print("!!!\nTHERE ARE ERRORS\n!!!\n", .{});
         //if (lib.is_release) lib.wtf() else return;
     }
 
     // Perft 7 startpos speedtest in release mode
     if (lib.is_release)
     {
-        console.print("running startpos perft 7...\n", .{});
+        lib.print("running startpos perft 7...\n", .{});
         var pos = Position.new();
         defer pos.deinit();
         var tim = funcs.start_timer();
         const nodes = perft.run_quick(&pos, 7);
         const tt = tim.read();
-        console.print("perft {}: nodes: {}, time {}, nps {}\n", .{ 7, nodes, std.fmt.fmtDuration(tt), funcs.nps(nodes, tt)});
-        if (nodes != 3195901860) console.print("WRONG NODES in perft 7{} expected {}\n", .{nodes, 3195901860});
+        lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{ 7, nodes, std.fmt.fmtDuration(tt), funcs.nps(nodes, tt)});
+        if (nodes != 3195901860) lib.print("WRONG NODES in perft 7{} expected {}\n", .{nodes, 3195901860});
     }
 
     if (lib.is_release)
     {
-        console.print("running kiwipete perft 6...\n", .{});
+        lib.print("running kiwipete perft 6...\n", .{});
         var pos = try Position.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
         defer pos.deinit();
         var tim = funcs.start_timer();
         const nodes = perft.run_quick(&pos, 6);
         const tt = tim.read();
-        console.print("perft {}: nodes: {}, time {}, nps {}\n", .{ 6, nodes, std.fmt.fmtDuration(tt), funcs.nps(nodes, tt)});
+        lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{ 6, nodes, std.fmt.fmtDuration(tt), funcs.nps(nodes, tt)});
         // D6 8031647685
     }
 
@@ -150,12 +149,9 @@ pub fn run_raw_movegeneration_speed() !void
 {
     var total: u64 = 0;
     var totaltime: u64 = 0;
-    //var timer = funcs.start_timer();
-    var store: p.MoveStorage = .init();
+    var store: p.JustCount = .init();
 
-    console.print("running raw speed test for 1 second...\n", .{});
-    // 1715 moves
-    // totalnodes: 373.328.060, time 1s, nps 373326902
+    lib.print("running raw speed test for 1 second...\n", .{});
     while(true)
     {
         for (testpositions) |str|
@@ -163,16 +159,56 @@ pub fn run_raw_movegeneration_speed() !void
             var pos: Position = try .from_fen(str);
             defer pos.deinit();
             var timer = funcs.start_timer();
-            inline for (0..10) |_|
-            {
-                pos.lazy_generate_moves(&store);
-            }
+            pos.lazy_generate_moves(&store);
+            total += store.len();
             totaltime += timer.read();
-            total += store.len() * 10;
         }
         if (totaltime > 1_000_000_000) break;
     }
-    console.print("raw speed test totalnodes: {}, time {}, nps {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime)});
+    lib.print("raw speed test totalnodes: {}, time {}, nps {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime)});
+}
+
+pub fn bench() !void
+{
+    const Test = struct
+    {
+        name: []const u8,
+        fen: []const u8,
+        end_depth: u8,
+        end_depth_nodes: u64,
+    };
+
+    const testruns: [4]Test =
+    .{
+        .{.name = "Startpos", .fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",                 .end_depth = 7, .end_depth_nodes = 3195901860 },
+        .{.name = "Kiwipete", .fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",     .end_depth = 6, .end_depth_nodes = 8031647685 },
+        .{.name = "Midgame",  .fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", .end_depth = 6, .end_depth_nodes = 6923051137 },
+        .{.name = "Endgame",  .fen = "5nk1/pp3pp1/2p4p/q7/2PPB2P/P5P1/1P5K/3Q4 w - - 1 28",                      .end_depth = 6, .end_depth_nodes = 849167880 },
+    };
+
+    var totalnodes: u64 = 0;
+    var totaltime: u64 = 0;
+
+    inline for (&testruns) |*testrun|
+    {
+        var pos = try Position.from_fen(testrun.fen);
+        defer pos.deinit();
+        for (1..testrun.end_depth + 1) |depth|
+        {
+            var timer = funcs.start_timer();
+            const nodes: u64 = perft.run_quick(&pos, @truncate(depth));
+            const time = timer.read();
+            lib.print("Perft {s} {}: {:<12} {d:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, std.fmt.fmtDuration(time), funcs.mnps(nodes, time), funcs.nps(nodes, time) });
+            if (depth == testrun.end_depth)
+            {
+                totalnodes += nodes;
+                totaltime += time;
+                if (nodes == testrun.end_depth_nodes) lib.print("OK\n\n", .{}) else lib.print("ERROR\n\n", .{});
+            }
+        }
+    }
+
+    lib.print("Total nodes: {} {} {d:.4} Mnodes/s ({})\n", .{ totalnodes, std.fmt.fmtDuration(totaltime), funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
 }
 
 // 3b4/2R5/1KQ4r/1RB5/8/8/8/1r2k1q1 w - - 0 1 (general piece pin check)
