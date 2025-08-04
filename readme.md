@@ -1,11 +1,11 @@
 #Work in progress version
 
 ###Commands:
-- perft <depth>,
-- qperft <depth>,
+- perft [depth]
+- qperft [depth]
 - bench
 - position startpos
-- position fen <fen_string>
+- position fen [fen_string]
 - d (draw position)
 
 ### bench output
