@@ -1,7 +1,14 @@
-#Initial version
-Running 4 Perft tests.
+#Work in progress version
 
-### output
+###Commands:
+perft <depth>,
+qperft <depth>,
+bench
+position startpos
+position fen <fen_string>
+d (draw position)
+
+### bench output
 Processor	Intel(R) Core(TM) i7-14700K, 3400 Mhz, 20 Core(s), 28 Logical Processor(s)
 
  - Perft Startpos 1: 20           7.9us               2.5316 Mnodes/s (2531645)
@@ -39,3 +46,4 @@ Processor	Intel(R) Core(TM) i7-14700K, 3400 Mhz, 20 Core(s), 28 Logical Processo
 
 - Total nodes: 18999768562 24.284s 782.3801 Mnodes/s (782380072)
 - Total nodes: 18999768562 23.839s 796.9975 Mnodes/s (796997487) - After Pawns speedup
+- Total nodes: 18999768562 23.081s 823.1575 Mnodes/s (823157451) - After speedup update_state
