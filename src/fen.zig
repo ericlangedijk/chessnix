@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const console = @import("console.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
