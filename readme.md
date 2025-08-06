@@ -4,8 +4,8 @@
 - perft [depth]
 - qperft [depth]
 - bench
-- position startpos
-- position fen [fen_string]
+- BUG! position startpos
+- BUG! position fen [fen_string]
 - d (draw position)
 
 ### bench output
