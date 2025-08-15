@@ -4,31 +4,30 @@ const lib = @import("lib.zig");
 const funcs = @import("funcs.zig");
 const typoes = @import("types.zig");
 const position = @import("position.zig");
+const engine = @import("engine.zig");
 const perft = @import("perft.zig");
 const tests = @import("tests.zig");
 
 const Move = typoes.Move;
 const Position = position.Position;
 
-const in = lib.in;
-const out = lib.out;
-
 const ctx = lib.ctx;
 
 pub fn run() !void
 {
-    //const format = comptime std.fmt.format;
+    const in = lib.in;
+    const out = lib.out;
+
+    try engine.initialize();
 
     if (lib.is_tty())
     {
-        try out.print("chessnix {s} by Eric Langedijk\n", .{lib.version});
+        try out.print("chessnix {s} by eric\n", .{lib.version});
     }
 
     var buffer: [4096]u8 = @splat(0);
-    var pos: Position = .new();
-    defer pos.deinit();
 
-    while (true)
+    uci_loop: while (true)
     {
         const line = try in.readUntilDelimiter(&buffer, '\n');
         const input: []const u8 = std.mem.trim(u8, line, "\r");
@@ -46,7 +45,7 @@ pub fn run() !void
         }
         else if (eql(cmd, "ucinewgame"))
         {
-            pos.set_startpos();
+            //engine.set_startpos();
         }
         else if (eql(cmd, "go"))
         {
@@ -58,25 +57,16 @@ pub fn run() !void
         }
         else if (eql(cmd, "position"))
         {
-            const next = tokenizer.next() orelse continue;
+            const next = tokenizer.next() orelse continue :uci_loop;
             if (eql(next, "fen"))
             {
-                const fen_str = tokenizer.next() orelse continue;
-                try pos.set_fen(fen_str);
+                var fen_and_moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
+                try engine.set_position(fen_and_moves.next(), fen_and_moves.next());
             }
             else if (eql(next, "startpos"))
             {
-                pos.set_startpos();
-            }
-
-            const moves = tokenizer.next() orelse continue;
-            if (eql(moves, "moves"))
-            {
-                while (tokenizer.next()) |move|
-                {
-                    const m: Move = pos.parse_move(move) catch continue;
-                    pos.lazy_make_move(m);
-                }
+                var moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
+                try engine.set_position(position.fen_classic_startpos, moves.next());
             }
         }
         else if (eql(cmd, "quit"))
@@ -86,7 +76,7 @@ pub fn run() !void
         // custom
         else if (eql(cmd, "d"))
         {
-            try position.print_pos(&pos);
+            try position.print_pos(&engine.pos);
         }
         // custom
         else if (eql(cmd, "bench"))
@@ -98,16 +88,21 @@ pub fn run() !void
         {
             const next = tokenizer.next() orelse continue;
             const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue;
-            perft.run(&pos, depth);
+            perft.run(&engine.pos, depth);
         }
         // custom
         if (eql(cmd, "qperft"))
         {
             const next = tokenizer.next() orelse continue;
             const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue;
-            perft.qrun(&pos, depth);
+            perft.qrun(&engine.pos, depth);
         }
     }
+}
+
+fn set_position() void
+{
+
 }
 
 fn eql(input: []const u8, comptime line: []const u8) bool
