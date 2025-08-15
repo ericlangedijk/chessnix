@@ -16,20 +16,20 @@ pub const is_paranoid: bool = if (is_debug) true else false;
 pub const ctx: *const MemoryContext = &private_context;
 
 // io and terminal
-pub const in: *const std.fs.File.Reader = &private_in;
-pub const out: *const std.fs.File.Writer = &private_out;
+//pub const in: *const std.fs.File.Reader = &private_in;
+//pub const out: *const std.fs.File.Writer = &private_out;
 
 var private_context: MemoryContext = undefined;
-var private_in: std.fs.File.Reader = undefined;
-var private_out: std.fs.File.Writer = undefined;
+pub var in: std.fs.File.Reader = undefined;
+pub var out: std.fs.File.Writer = undefined;
 var private_is_tty: bool = false;
 
 pub fn initialize() void
 {
     private_context = .init();
 
-    private_in = std.io.getStdIn().reader();
-    private_out = std.io.getStdOut().writer();
+    in = std.io.getStdIn().reader();
+    out = std.io.getStdOut().writer();
     private_is_tty = std.io.getStdOut().isTty();
 
     @import("squarepairs.zig").initialize();
