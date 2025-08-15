@@ -29,6 +29,8 @@ pub fn initialize() !void
 /// * Example moves_str:  `moves e2e4 e7e5 g1f3`
 pub fn set_position(fen_str: ?[]const u8, moves_str: ?[]const u8) !void
 {
+    var tt = funcs.start_timer();
+
     if (fen_str) |fen|
     {
         try pos.set(&history[0], fen);
@@ -51,5 +53,8 @@ pub fn set_position(fen_str: ?[]const u8, moves_str: ?[]const u8) !void
             idx += 1;
         }
     }
+
+    const t = tt.read();
+    std.debug.print("time {}\n", .{std.fmt.fmtDuration(t)});
 }
 
