@@ -6,11 +6,12 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
-const p = @import("position.zig");
+const position = @import("position.zig");
 const perft = @import("perft.zig");
-const fen = @import("fen.zig");
-const Position = p.Position;
-const Storage = p.MoveStorage;
+
+const StateInfo = position.StateInfo;
+const Position = position.Position;
+const Storage = position.MoveStorage;
 
 const ctx = lib.ctx;
 
@@ -34,7 +35,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
     const file_buffer = try file.readToEndAlloc(ctx.galloc, file_size);
     defer ctx.galloc.free(file_buffer);
 
-    var st: p.StateInfo = undefined;
+    var st: StateInfo = undefined;
     var pos: Position = .create();
 
     // Read line by line
@@ -47,7 +48,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
         try pos.set(&st, str);
         //if (index == 536) p.print_pos(&pos);
 
-        const depths: fen.FenDepths = try fen.decode_depths(str);
+        const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d|
         {
@@ -78,7 +79,7 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
     const max: u64 = max_depth orelse 10;
     var total: u64 = 0;
     var totaltime: u64 = 0;
-    var st: p.StateInfo = undefined;
+    var st: StateInfo = undefined;
     var pos: Position = .create();
     var timer = funcs.start_timer();
 
@@ -87,7 +88,7 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
         if (output) lib.print("#{}. {s}\n", .{index, str});
         try pos.set(&st, str);
 
-        const depths: fen.FenDepths = try fen.decode_depths(str);
+        const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d|
         {
@@ -117,58 +118,33 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
         lib.print("!!!\nTHERE ARE ERRORS\n!!!\n", .{});
         //if (lib.is_release) lib.wtf() else return;
     }
-
-    // // Perft 7 startpos speedtest in release mode
-    // if (lib.is_release)
-    // {
-    //     lib.print("running startpos perft 7...\n", .{});
-    //     //var pos = Position.new();
-    //     //defer pos.deinit();
-    //     //pos.set_startpos();
-    //     var tim = funcs.start_timer();
-    //     const nodes = perft.run_quick(&pos, 7);
-    //     const tt = tim.read();
-    //     lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{ 7, nodes, std.fmt.fmtDuration(tt), funcs.nps(nodes, tt)});
-    //     if (nodes != 3195901860) lib.print("WRONG NODES in perft 7{} expected {}\n", .{nodes, 3195901860});
-    // }
-
-    // if (lib.is_release)
-    // {
-    //     lib.print("running kiwipete perft 6...\n", .{});
-    //     //var pos = try Position.from_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-    //     defer pos.deinit();
-    //     var tim = funcs.start_timer();
-    //     const nodes = perft.run_quick(&pos, 6);
-    //     const tt = tim.read();
-    //     lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{ 6, nodes, std.fmt.fmtDuration(tt), funcs.nps(nodes, tt)});
-    //     // D6 8031647685
-    // }
-
-
 }
 
-// pub fn run_raw_movegeneration_speed() !void
-// {
-//     var total: u64 = 0;
-//     var totaltime: u64 = 0;
-//     var store: p.JustCount = .init();
+pub fn run_raw_movegeneration_speed() !void
+{
+    var total: u64 = 0;
+    var totaltime: u64 = 0;
+    var store: position.JustCount = .init();
 
-//     lib.print("running raw speed test for 1 second...\n", .{});
-//     while(true)
-//     {
-//         for (testpositions) |str|
-//         {
-//             var pos: Position = try .from_fen(str);
-//             defer pos.deinit();
-//             var timer = funcs.start_timer();
-//             pos.lazy_generate_moves(&store);
-//             total += store.len();
-//             totaltime += timer.read();
-//         }
-//         if (totaltime > 1_000_000_000) break;
-//     }
-//     lib.print("raw speed test totalnodes: {}, time {}, nps {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime)});
-// }
+    try lib.out.print("running raw speed test for 1 second...\n", .{});
+
+    var pos: Position = .create();
+    var st: StateInfo = undefined;
+
+    while(true)
+    {
+        for (testpositions) |str|
+        {
+            try pos.set(&st, str);
+            var timer = funcs.start_timer();
+            pos.lazy_generate_moves(&store);
+            total += store.len();
+            totaltime += timer.read();
+        }
+        if (totaltime > 1_000_000_000) break;
+    }
+    try lib.out.print("raw speed test totalnodes: {}, time {}, nps {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime)});
+}
 
 pub fn bench() !void
 {
@@ -191,7 +167,7 @@ pub fn bench() !void
     var totalnodes: u64 = 0;
     var totaltime: u64 = 0;
 
-    var st: p.StateInfo = undefined;
+    var st: StateInfo = undefined;
     var pos = Position.create();
 
     inline for (&testruns) |*testrun|
@@ -216,7 +192,70 @@ pub fn bench() !void
     try lib.out.print("Total nodes: {} {} {d:.4} Mnodes/s ({})\n", .{ totalnodes, std.fmt.fmtDuration(totaltime), funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
 }
 
-// 3b4/2R5/1KQ4r/1RB5/8/8/8/1r2k1q1 w - - 0 1 (general piece pin check)
+pub const DepthError = error
+{
+    BoardChar, Color, DrawCount, Castle, MoveNumber,
+    NoSemiColon, NoDepthChar, ExpectedNodes, TooManyPartsInDepth
+};
+
+pub const FenDepths = std.BoundedArray(u64, 16);
+
+/// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324"
+/// "1B6/1r3Bk1/8/Pp6/4KN1p/8/5b1R/8 b - -;23;728;14764;461899;9440955;292742932"
+pub fn decode_depths(fen: []const u8) DepthError!FenDepths
+{
+    var depths: std.BoundedArray(u64, 16) = .{};
+    depths.appendAssumeCapacity(0);
+
+    const first_semicolon: usize = index_of(fen, ';') orelse return DepthError.NoSemiColon;
+    const last_part = fen[first_semicolon + 1..];
+
+    var iter = std.mem.tokenizeScalar(u8, last_part, ';');
+
+    var depth: usize = 1;
+    while (iter.next()) |slice| // D1 20
+    {
+
+        if (std.mem.indexOfScalar(u8, slice, ' ') == null)
+        {
+            const nodes: u64 = std.fmt.parseInt(u64, slice, 10) catch return DepthError.ExpectedNodes;
+            depths.appendAssumeCapacity(nodes);
+        }
+        else
+        {
+            if (slice[0] != 'D') return DepthError.NoDepthChar;
+            var sub_iter = std.mem.tokenizeScalar(u8, slice, ' ');
+            var i: usize = 0;
+            while (sub_iter.next()) |part|
+            {
+                if (i == 0) // D1 (depth)
+                {
+                    //const nr = part[1..];
+                    // TODO: skip for now. lazy me. we should parse the depth here.
+                }
+                else if (i == 1) // 20 (node)
+                {
+                    //std.debug.print("PART [{s}], ", .{part});
+                    const nodes: u64 = std.fmt.parseInt(u64, part, 10) catch return DepthError.ExpectedNodes;
+                    depths.appendAssumeCapacity(nodes);
+                }
+                else return DepthError.TooManyPartsInDepth;
+                i += 1;
+            }
+        }
+        depth += 1;
+    }
+    return depths;
+}
+
+fn index_of(slice: []const u8, value:u8) ?usize
+{
+    for (slice, 0..) |c, i|
+    {
+        if (c == value) return i;
+    }
+    return null;
+}
 
 const testpositions: [134][]const u8 =
 .{
