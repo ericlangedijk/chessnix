@@ -20,9 +20,7 @@ const JustCount = position.JustCount;
 /// With output.
 pub fn run(pos: *Position, depth: u8) void
 {
-    //var cloned = pos.clone(true);
     var t = funcs.start_timer();
-    //const nodes: u64 = do_run(true, true, depth, pos);
     const nodes: u64 = switch (pos.to_move.e)
     {
         .white => do_run(true, true, Color.WHITE, depth, pos),
@@ -30,14 +28,13 @@ pub fn run(pos: *Position, depth: u8) void
     };
     const time = t.lap();
     lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{depth, nodes, std.fmt.fmtDuration(time), funcs.nps(nodes, time)});
+    // if (pos.state.key != 0xabb725b727afbcba) lib.print("WTF.......", .{});
 }
 
 /// Only show output when ready.
 pub fn qrun(pos: *Position, depth: u8) void
 {
-    //var cloned = pos.clone(true);
     var t = funcs.start_timer();
-    //const nodes: u64 = do_run(true, true, depth, pos);
     const nodes: u64 = switch (pos.to_move.e)
     {
         .white => do_run(false, true, Color.WHITE, depth, pos),
@@ -47,7 +44,7 @@ pub fn qrun(pos: *Position, depth: u8) void
     lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{depth, nodes, std.fmt.fmtDuration(time), funcs.nps(nodes, time)});
 }
 
-/// No ouput. Just return node count.
+/// No output. Just return node count.
 pub fn run_quick(pos: *Position, depth: u8) u64
 {
     //var cloned = pos.clone(true);
@@ -70,6 +67,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     pos.generate_moves(us, &storage);
     const moves = storage.slice();
 
+
     for (moves) |m|
     {
         if (is_root and depth <= 1)
@@ -79,7 +77,8 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
         }
         else
         {
-            pos.make_move(us, m);
+            var st: position.StateInfo = undefined;
+            pos.make_move(us, &st, m);
             if (is_leaf)
             {
                 var counter: JustCount = .init();
