@@ -33,7 +33,7 @@ pub fn run() !void
         const input: []const u8 = std.mem.trim(u8, line, "\r");
         if (input.len == 0) continue;
         var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
-        const cmd: []const u8 = tokenizer.next() orelse continue;
+        const cmd: []const u8 = tokenizer.next() orelse continue :uci_loop;
 
         if (eql(cmd, "uci"))
         {
@@ -84,25 +84,20 @@ pub fn run() !void
             try tests.bench();
         }
         // custom
-        if (eql(cmd, "perft"))
+        else if (eql(cmd, "perft"))
         {
-            const next = tokenizer.next() orelse continue;
-            const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue;
+            const next = tokenizer.next() orelse continue :uci_loop;
+            const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :uci_loop;
             perft.run(&engine.pos, depth);
         }
         // custom
-        if (eql(cmd, "qperft"))
+        else if (eql(cmd, "qperft"))
         {
-            const next = tokenizer.next() orelse continue;
-            const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue;
+            const next = tokenizer.next() orelse continue :uci_loop;
+            const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :uci_loop;
             perft.qrun(&engine.pos, depth);
         }
     }
-}
-
-fn set_position() void
-{
-
 }
 
 fn eql(input: []const u8, comptime line: []const u8) bool
