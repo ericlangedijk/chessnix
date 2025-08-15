@@ -2,13 +2,12 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const funcs = @import("funcs.zig");
-const typoes = @import("types.zig");
+const types = @import("types.zig");
 const position = @import("position.zig");
 const engine = @import("engine.zig");
 const perft = @import("perft.zig");
 const tests = @import("tests.zig");
 
-const Move = typoes.Move;
 const Position = position.Position;
 
 const ctx = lib.ctx;
