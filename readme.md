@@ -1,4 +1,4 @@
-#Work in progress version
+### Work in progress version
 
 On Windows run chessnix in administrator mode for better performance.
 
