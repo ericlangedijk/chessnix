@@ -448,19 +448,6 @@ pub const PieceType = packed union
             .king => 'K',
         };
     }
-
-    pub fn to_prom_uci(self: PieceType) u8
-    {
-        return switch(self.e)
-        {
-            .knight => 'n',
-            .bishop => 'b',
-            .rook => 'r',
-            .queen => 'q',
-            else => unreachable,
-        };
-    }
-
 };
 
 pub const Piece = packed union
@@ -647,6 +634,26 @@ pub const Piece = packed union
         };
     }
 
+    pub fn from_fen_char(char: u8) Piece
+    {
+        return switch(char)
+        {
+            'P' => Piece.W_PAWN,
+            'N' => Piece.W_KNIGHT,
+            'B' => Piece.W_BISHOP,
+            'R' => Piece.W_ROOK,
+            'Q' => Piece.W_QUEEN,
+            'K' => Piece.W_KING,
+            'p' => Piece.B_PAWN,
+            'n' => Piece.B_KNIGHT,
+            'b' => Piece.B_BISHOP,
+            'r' => Piece.B_ROOK,
+            'q' => Piece.B_QUEEN,
+            'k' => Piece.B_KING,
+            else => unreachable,
+        };
+    }
+
 };
 
 pub const MoveType = enum (u2)
@@ -689,6 +696,7 @@ pub const Move = packed struct(u16)
 
         pub fn from_char(ch: u8) Prom
         {
+            //return "nbrq"[@enumFromInt(ch)];
             return switch (ch)
             {
                 'n' => .knight,
@@ -752,9 +760,9 @@ pub const Move = packed struct(u16)
     }
 
     /// UCI string
-    pub fn to_string(self: Move) std.BoundedArray(u8, 8)
+    pub fn to_string(self: Move) std.BoundedArray(u8, 5)
     {
-        var result: std.BoundedArray(u8, 8) = .{};
+        var result: std.BoundedArray(u8, 5) = .{};
         const from: Square = self.from;
         var to: Square = self.to;
 
@@ -763,7 +771,7 @@ pub const Move = packed struct(u16)
             const castletype: CastleType = self.castle_type();
             const color: Color = if (to.rank() == 0) Color.WHITE else Color.BLACK;
             // Change target square. We decode castling as "king takes rook"
-            to = funcs.king_castle_to_square(color, castletype);
+            to = funcs.king_castle_to_square(color, castletype); // TODO: maybe when completing Chess960 we do *not* need to do this. Check the UCI protocol.
         }
 
         result.appendSliceAssumeCapacity(@tagName(from.e));
@@ -771,16 +779,41 @@ pub const Move = packed struct(u16)
 
         if (self.movetype == .promotion)
         {
-            const ch: u8 = self.prom.to_char();// to_piecetype().to_prom_uci();
+            const ch: u8 = self.prom.to_char();
             result.appendAssumeCapacity(ch);
         }
         return result;
+    }
+
+    pub fn format(self: Move, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void
+    //pub fn format(self: Move, writer: anytype) !void
+    {
+        const from: Square = self.from;
+        var to: Square = self.to;
+        if (self.movetype == .castle)
+        {
+            const castletype: CastleType = self.castle_type();
+            const color: Color = if (self.to.rank() == 0) Color.WHITE else Color.BLACK;
+            // Change target square. We decode castling as "king takes rook"
+            // TODO: maybe when completing Chess960 we do *not* need to do this. Check the UCI protocol.
+            to = funcs.king_castle_to_square(color, castletype);
+        }
+
+        try writer.writeAll(@tagName(from.e));
+        try writer.writeAll(@tagName(to.e));
+        //try writer.print("{s}", .{ @tagName(from.e) });
+        //try writer.print("{s}", .{ @tagName(to.e) });
+        if (self.movetype == .promotion)
+        {
+            try writer.print("{u}", . { self.prom.to_char() } );
+        }
     }
 
 };
 
 pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128;
+pub const max_threads: u16 = 32;
 
 pub const infinity: Value = 32000;
 pub const mate: Value = 28000;
