@@ -1,0 +1,41 @@
+Processor Intel(R) Core(TM) i7-14700K, 3400 Mhz, 20 Core(s), 28 Logical Processor(s)
+
+bench output
+
+ - Perft Startpos 1: 20           7.9us               2.5316 Mnodes/s (2531645)
+ - Perft Startpos 2: 400          12.1us             33.0579 Mnodes/s (33057851)
+ - Perft Startpos 3: 8902         31.3us            284.4089 Mnodes/s (284408945)
+ - Perft Startpos 4: 197281       258.2us           764.0627 Mnodes/s (764062742)
+ - Perft Startpos 5: 4865609      5.993ms           811.8414 Mnodes/s (811841389)
+ - Perft Startpos 6: 119060324    151.241ms         787.2210 Mnodes/s (787220977)
+ - Perft Startpos 7: 3195901860   3.98s             802.8452 Mnodes/s (802845219)
+ - OK
+
+ - Perft Kiwipete 1: 48           900ns              53.3333 Mnodes/s (53333333)
+ - Perft Kiwipete 2: 2039         4.4us             463.4091 Mnodes/s (463409090)
+ - Perft Kiwipete 3: 97862        121.8us           803.4647 Mnodes/s (803464696)
+ - Perft Kiwipete 4: 4085603      5.88ms            694.8304 Mnodes/s (694830442)
+ - Perft Kiwipete 5: 193690690    225.275ms         859.7951 Mnodes/s (859795121)
+ - Perft Kiwipete 6: 8031647685   11.171s           718.9539 Mnodes/s (718953867)
+ - OK
+
+ - Perft Midgame 1: 46           10.7us              4.2991 Mnodes/s (4299065)
+ - Perft Midgame 2: 2079         3.5us             594.0000 Mnodes/s (594000000)
+ - Perft Midgame 3: 89890        104.2us           862.6679 Mnodes/s (862667946)
+ - Perft Midgame 4: 3894594      4.323ms           900.7966 Mnodes/s (900796576)
+ - Perft Midgame 5: 164075551    180.403ms         909.4911 Mnodes/s (909491052)
+ - Perft Midgame 6: 6923051137   7.991s            866.2863 Mnodes/s (866286282)
+ - OK
+
+ - Perft Endgame 1: 38           800ns              47.5000 Mnodes/s (47500000)
+ - Perft Endgame 2: 1129         2.2us             513.1818 Mnodes/s (513181818)
+ - Perft Endgame 3: 37035        54.7us            677.0567 Mnodes/s (677056672)
+ - Perft Endgame 4: 1023977      1.321ms           774.9769 Mnodes/s (774976916)
+ - Perft Endgame 5: 31265700     45.61ms           685.4905 Mnodes/s (685490466)
+ - Perft Endgame 6: 849167880    1.14s             744.2865 Mnodes/s (744286521)
+ - OK
+
+- Total nodes: 18999768562 24.284s 782.3801 Mnodes/s (782380072)
+- Total nodes: 18999768562 23.839s 796.9975 Mnodes/s (796997487) - After Pawns speedup
+- Total nodes: 18999768562 23.081s 823.1575 Mnodes/s (823157451) - After speedup update_state
+- Total nodes: 18999768562 22.35s  850.0811 Mnodes/s (850081065) - After removing history list from position.
