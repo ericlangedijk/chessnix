@@ -15,9 +15,6 @@ const MoveStorage = position.MoveStorage;
 
 const ctx = lib.ctx;
 
-const in = lib.in;
-const out = lib.out;
-
 pub fn main() !void
 {
     lib.initialize();
@@ -30,5 +27,9 @@ pub fn main() !void
         try tests.run_testfile(false, 1);
     }
 
-    try uci.run();
+    uci.run() catch |err|
+    {
+        std.debug.print("ERROR: {}.\n\nPress any key to quit\n", .{ err });
+        _ = lib.in.readByte() catch {};
+    };
 }
