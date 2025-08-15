@@ -156,7 +156,7 @@ fn determine_disambiguation(m: Move, pos: *Position) Disambiguation
 
     // Now generate filtered moves.
     var store: Store = .init(pos, from_sq, to_sq, pt);
-    pos.lazy_generate_moves( &store);
+    pos.lazy_generate_moves(&store);
 
     var file_conflict: bool = false;
     var rank_conflict: bool = false;
@@ -212,7 +212,6 @@ const Store = struct
         }
     }
 
-    /// Required function.
     pub fn len(self: *const Store) usize
     {
         return self.ptr - &self.moves;
@@ -223,8 +222,6 @@ const Store = struct
         return self.moves[0..self.len()];
     }
 };
-
-
 
 const Notation = struct
 {
