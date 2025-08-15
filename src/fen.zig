@@ -41,14 +41,6 @@ pub const FenResult  = struct
     }
 };
 
-// parse consts
-const STATE_BOARD: i32 = 0;
-const STATE_COLOR: i32 = 1;
-const STATE_CASTLE: i32 = 2;
-const STATE_EP: i32 = 3;
-const DRAW_COUNT: i32 = 4;
-const MOVENUMBER: i32 = 5;
-
 pub const FenError = error
 {
     BoardChar, Color, DrawCount, Castle, MoveNumber,
@@ -57,8 +49,17 @@ pub const FenError = error
 
 /// happy only. we should catch the biggest nonsense still.
 // "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+// * If there follow 'custom' information with semicolons, we need a space after the normal fen.
 pub fn decode(fen: []const u8) FenError!FenResult
 {
+    // parse consts
+    const STATE_BOARD: i32 = 0;
+    const STATE_COLOR: i32 = 1;
+    const STATE_CASTLE: i32 = 2;
+    const STATE_EP: i32 = 3;
+    const DRAW_COUNT: i32 = 4;
+    const MOVENUMBER: i32 = 5;
+
     var result: FenResult = .init();
 
     var state: i32 = STATE_BOARD;
@@ -69,8 +70,10 @@ pub fn decode(fen: []const u8) FenError!FenResult
 
     //const stripped: []const u8 = fen;
 
-    const semicolon = std.mem.indexOfScalar(u8, fen, ';');
-    var iter = if (semicolon) |p| std.mem.tokenizeScalar(u8, fen[0..p], ' ') else std.mem.tokenizeScalar(u8, fen, ' ');
+    //const semicolon = std.mem.indexOfScalar(u8, fen, ';'); // TODO: get rid of this!!
+    //var iter = if (semicolon) |p| std.mem.tokenizeScalar(u8, fen[0..p], ' ') else std.mem.tokenizeScalar(u8, fen, ' ');
+
+    var iter = std.mem.tokenizeScalar(u8, fen, ' ');
 
     //var iter = std.mem.tokenizeAny(u8, fen, &.{' ', ';'} );
     //var iter = std.mem.tokenizeScalar(u8, fen, ' ');
@@ -138,7 +141,7 @@ pub fn decode(fen: []const u8) FenError!FenResult
                     }
                 }
 
-                     // TODO: chess960 shredder
+                // TODO: chess960 shredder
             },
             STATE_EP =>
             {
@@ -154,7 +157,7 @@ pub fn decode(fen: []const u8) FenError!FenResult
             },
             MOVENUMBER =>
             {
-                const v: u16 = std.fmt.parseInt(u16, slice, 10)  catch break :outer;//catch 0; //return FenError.MoveNumber;
+                const v: u16 = std.fmt.parseInt(u16, slice, 10)  catch break :outer;
                 result.game_ply = funcs.movenumber_to_ply(v, result.to_move);
             },
             else =>
