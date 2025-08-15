@@ -1,6 +1,7 @@
 // zig fmt: off
 
 const std = @import("std");
+// const builtin = @import("builtin");
 const types = @import("types.zig");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
@@ -9,7 +10,6 @@ const zobrist = @import("zobrist.zig");
 const squarepairs = @import("squarepairs.zig");
 const masks = @import("masks.zig");
 const data = @import("data.zig");
-const fen = @import("fen.zig");
 
 const assert = std.debug.assert;
 const ctx = lib.ctx;
@@ -258,23 +258,96 @@ pub const Position = struct
     /// Initializes the position from a fen string.
     pub fn set(self: *Position, st: *StateInfo, fen_str: []const u8) !void
     {
-        const fenresult: fen.FenResult = try fen.decode(fen_str);
-        self.clear(st);
-        for (fenresult.pieces, Square.all) |p, sq|
-        {
-            if (p.is_piece()) self.lazy_add_piece(sq, p);
-        }
-        self.start_files = .{ bitboards.file_a, bitboards.file_h, bitboards.file_e };
-        self.game_ply = fenresult.game_ply;
-        self.to_move = fenresult.to_move;
-        self.state.castling_rights = fenresult.castling_rights;
-        self.state.rule50 = fenresult.draw_count;
+        const STATE_BOARD: u8 = 0;
+        const STATE_COLOR: u8 = 1;
+        const STATE_CASTLE: u8 = 2;
+        const STATE_EP: u8 = 3;
+        const DRAW_COUNT: u8 = 4;
+        const MOVENUMBER: u8 = 5;
 
-        // We only set ep if it is actually possible to do an ep-capture.
-        if (fenresult.ep) |ep|
+        self.clear(st);
+        self.start_files = .{ bitboards.file_a, bitboards.file_h, bitboards.file_e };
+
+        var state: u8 = STATE_BOARD;
+        var rank: u3 = bitboards.rank_8;
+        var file: u3 = bitboards.file_a;
+
+        var tokenizer = std.mem.tokenizeScalar(u8, fen_str, ' ');
+
+        outer: while (tokenizer.next()) |token|
         {
-            if (self.is_usable_ep_square(ep)) self.state.ep_square = ep;
+            switch (state)
+            {
+                STATE_BOARD =>
+                {
+                    for (token) |c|
+                    {
+                        switch (c)
+                        {
+                            '1'...'8' =>
+                            {
+                                const empty_squares: u3 = @truncate(c - '0');
+                                file = file +| empty_squares;
+                            },
+                            '/' =>
+                            {
+                                rank = rank -| 1;
+                                file = bitboards.file_a;
+                            },
+                            else =>
+                            {
+                                const pc: Piece = try Piece.from_fen_char(c);
+                                const sq: Square = Square.from_rank_file(rank, file);
+                                self.lazy_add_piece(sq, pc);
+                                file = file +| 1;
+                            },
+                        }
+                    }
+                },
+                STATE_COLOR =>
+                {
+                    if (token[0] == 'b') self.to_move = Color.BLACK;
+                },
+                STATE_CASTLE =>
+                {
+                    for (token) |c|
+                    {
+                        switch (c)
+                        {
+                            'K' => st.castling_rights |= cf_white_short,
+                            'Q' => st.castling_rights |= cf_white_long,
+                            'k' => st.castling_rights |= cf_black_short,
+                            'q' => st.castling_rights |= cf_black_long,
+                            else => {}
+                        }
+                    }
+                },
+                STATE_EP =>
+                {
+                    if (token.len == 2)
+                    {
+                        const ep: Square = Square.from_string(token);
+                        if (self.is_usable_ep_square(ep)) st.ep_square = ep;
+                    }
+                },
+                DRAW_COUNT =>
+                {
+                    const v: u16 = std.fmt.parseInt(u16, token, 10) catch break :outer;
+                    st.rule50 = v;
+                },
+                MOVENUMBER =>
+                {
+                    const v: u16 = std.fmt.parseInt(u16, token, 10) catch break :outer;
+                    self.game_ply = funcs.movenumber_to_ply(v, self.to_move);
+                },
+                else =>
+                {
+                    break :outer;
+                }
+            }
+            state += 1;
         }
+
         self.after_construction();
     }
 
@@ -1048,13 +1121,10 @@ pub const Position = struct
 
         switch (check)
         {
-            false =>
+            false => switch (pins)
             {
-                switch (pins)
-                {
-                    false => self.gen(Params.create(us, false, false), storage),
-                    true  => self.gen(Params.create(us, false, true), storage),
-                }
+                false => self.gen(Params.create(us, false, false), storage),
+                true  => self.gen(Params.create(us, false, true), storage),
             },
             true => switch (pins)
             {
@@ -1739,6 +1809,7 @@ pub const MoveFinder = struct
 /// Prints the position to the `lib.out`.
 pub fn print_pos(pos: *const Position) !void
 {
+    // TODO: use writer.print()
     const format = comptime std.fmt.format;
 
     var s = std.ArrayListUnmanaged(u8).initCapacity(ctx.galloc, 320) catch wtf();
