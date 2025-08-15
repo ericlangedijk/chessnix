@@ -119,6 +119,8 @@ pub const Square = packed union
         A7, B7, C7, D7, E7, F7, G7, H7,
         A8, B8, C8, D8, E8, F8, G8, H8,
     };
+
+    /// Top down squares for print.
     pub const all_for_printing: [64]Square =
     .{
         A8, B8, C8, D8, E8, F8, G8, H8,
@@ -371,6 +373,7 @@ pub const Square = packed union
         return @tagName(self.e);
     }
 
+    /// TODO: catch errors
     pub fn from_string(str: []const u8) Square
     {
         const v: u16 = (str[1] - '1') * 8 + (str[0] - 'a');
@@ -634,7 +637,7 @@ pub const Piece = packed union
         };
     }
 
-    pub fn from_fen_char(char: u8) Piece
+    pub fn from_fen_char(char: u8) !Piece
     {
         return switch(char)
         {
@@ -650,7 +653,7 @@ pub const Piece = packed union
             'r' => Piece.B_ROOK,
             'q' => Piece.B_QUEEN,
             'k' => Piece.B_KING,
-            else => unreachable,
+            else => FenError.InvalidPiece,
         };
     }
 
@@ -862,4 +865,9 @@ pub const ParseError = error
 {
     Invalid,
     IllegalMove,
+};
+
+pub const FenError = error
+{
+    InvalidPiece,
 };
