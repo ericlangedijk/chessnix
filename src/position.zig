@@ -94,12 +94,11 @@ pub const Position = struct
     board: [64]Piece,
     /// Bitboards occupation indexed by PieceType.
     /// * (0) is for all pieces combined (the complete occupation).
-    /// * (7) is unsued.
-    bb_by_type: [8]u64,
-    /// Bitboards occupation indexed by color. by_type[piecetype] & by_side[color] will give the bitboard for one piece.
+    bb_by_type: [7]u64,
+    /// Bitboards occupation indexed by color.
     /// * (0) white pieces.
     /// * (1) black pieces.
-    bb_by_side: [2]u64,
+    bb_by_color: [2]u64,
     /// Supporting Chess960, the startfiles of:
     /// * (0) a-rook file or 'left' rook
     /// * (1) h-rook file or 'right' rook
@@ -153,7 +152,7 @@ pub const Position = struct
         {
             .board = @splat(Piece.NO_PIECE),
             .bb_by_type = @splat(0),
-            .bb_by_side = @splat(0),
+            .bb_by_color = @splat(0),
             .start_files = @splat(0),
             .king_start_squares = @splat(Square.A1),
             .rook_start_squares = @splat(Square.A1),
@@ -175,7 +174,7 @@ pub const Position = struct
         st.* = .empty;
         self.board = @splat(Piece.NO_PIECE);
         self.bb_by_type = @splat(0);
-        self.bb_by_side = @splat(0);
+        self.bb_by_color = @splat(0);
         self.start_files = @splat(0);
         self.king_start_squares = @splat(Square.A1);
         self.rook_start_squares = @splat(Square.A1);
@@ -258,17 +257,17 @@ pub const Position = struct
     /// Initializes the position from a fen string.
     pub fn set(self: *Position, st: *StateInfo, fen_str: []const u8) !void
     {
-        const STATE_BOARD: u8 = 0;
-        const STATE_COLOR: u8 = 1;
-        const STATE_CASTLE: u8 = 2;
-        const STATE_EP: u8 = 3;
-        const DRAW_COUNT: u8 = 4;
-        const MOVENUMBER: u8 = 5;
+        const state_board: u8 = 0;
+        const state_color: u8 = 1;
+        const state_castle: u8 = 2;
+        const state_ep: u8 = 3;
+        const state_draw_count: u8 = 4;
+        const state_movenumber: u8 = 5;
 
         self.clear(st);
         self.start_files = .{ bitboards.file_a, bitboards.file_h, bitboards.file_e };
 
-        var state: u8 = STATE_BOARD;
+        var parse_state: u8 = state_board;
         var rank: u3 = bitboards.rank_8;
         var file: u3 = bitboards.file_a;
 
@@ -276,9 +275,9 @@ pub const Position = struct
 
         outer: while (tokenizer.next()) |token|
         {
-            switch (state)
+            switch (parse_state)
             {
-                STATE_BOARD =>
+                state_board =>
                 {
                     for (token) |c|
                     {
@@ -291,7 +290,7 @@ pub const Position = struct
                             },
                             '/' =>
                             {
-                                rank = rank -| 1;
+                                rank -|= 1;
                                 file = bitboards.file_a;
                             },
                             else =>
@@ -299,16 +298,16 @@ pub const Position = struct
                                 const pc: Piece = try Piece.from_fen_char(c);
                                 const sq: Square = Square.from_rank_file(rank, file);
                                 self.lazy_add_piece(sq, pc);
-                                file = file +| 1;
+                                file +|= 1;
                             },
                         }
                     }
                 },
-                STATE_COLOR =>
+                state_color =>
                 {
                     if (token[0] == 'b') self.to_move = Color.BLACK;
                 },
-                STATE_CASTLE =>
+                state_castle =>
                 {
                     for (token) |c|
                     {
@@ -322,7 +321,7 @@ pub const Position = struct
                         }
                     }
                 },
-                STATE_EP =>
+                state_ep =>
                 {
                     if (token.len == 2)
                     {
@@ -330,12 +329,12 @@ pub const Position = struct
                         if (self.is_usable_ep_square(ep)) st.ep_square = ep;
                     }
                 },
-                DRAW_COUNT =>
+                state_draw_count =>
                 {
                     const v: u16 = std.fmt.parseInt(u16, token, 10) catch break :outer;
                     st.rule50 = v;
                 },
-                MOVENUMBER =>
+                state_movenumber =>
                 {
                     const v: u16 = std.fmt.parseInt(u16, token, 10) catch break :outer;
                     self.game_ply = funcs.movenumber_to_ply(v, self.to_move);
@@ -345,7 +344,7 @@ pub const Position = struct
                     break :outer;
                 }
             }
-            state += 1;
+            parse_state += 1;
         }
 
         self.after_construction();
@@ -363,8 +362,8 @@ pub const Position = struct
         // Castling encoding
         if
         (
-             self.get(from).e == Piece.make(PieceType.KING, us).e and
              from.u == self.king_start_squares[self.to_move.u].u and
+             self.get(from).e == Piece.make(PieceType.KING, us).e and
              (to.e == Square.G1.e or to.e == Square.G8.e or to.e == Square.C1.e or to.e == Square.C8.e)
         )
         {
@@ -381,23 +380,13 @@ pub const Position = struct
     }
 
     /// Clones a position.
-    /// * If `including_history` is false, only the active state is copied and `ply` becomes zero. TODO: Repetitions get lost.
-    pub fn clone(src: *const Position, comptime including_history: bool) Position
+    pub fn clone(src: *const Position, new_state: *StateInfo) Position
     {
-        var result: Position = src.*;
-        if (!including_history)
-        {
-            result.ply = 0;
-            //result.history = create_history();
-            result.state = result.get_actual_state_ptr();
-            result.state.* = src.state.*;
-        }
-        else
-        {
-            //result.history = src.history.clone(ctx.galloc) catch wtf();
-            result.state = result.get_actual_state_ptr();
-        }
-        return result;
+        var pos: Position = src.*;
+        new_state.* = src.state.*;
+        new_state.prev = null;
+        pos.ply = 0;
+        return pos;
     }
 
     fn after_construction(self: *Position) void
@@ -504,8 +493,8 @@ pub const Position = struct
     {
         return switch(us.e)
         {
-            .white => self.bb_by_type[pt.u] & self.by_side(Color.WHITE),
-            .black => self.bb_by_type[pt.u] & self.by_side(Color.BLACK),
+            .white => self.bb_by_type[pt.u] & self.by_color(Color.WHITE),
+            .black => self.bb_by_type[pt.u] & self.by_color(Color.BLACK),
         };
     }
 
@@ -514,9 +503,9 @@ pub const Position = struct
         return self.bb_by_type[pt.u];
     }
 
-    pub fn by_side(self: *const Position, comptime us: Color) u64
+    pub fn by_color(self: *const Position, comptime us: Color) u64
     {
-        return self.bb_by_side[us.u];
+        return self.bb_by_color[us.u];
     }
 
     pub fn all(self: *const Position) u64
@@ -531,42 +520,42 @@ pub const Position = struct
 
     pub fn pawns(self: *const Position, comptime us: Color) u64
     {
-        return self.by_side(us) & self.by_type(PieceType.PAWN);
+        return self.by_color(us) & self.by_type(PieceType.PAWN);
     }
 
     pub fn knights(self: *const Position, comptime us: Color) u64
     {
-        return self.by_side(us) & self.by_type(PieceType.KNIGHT);
+        return self.by_color(us) & self.by_type(PieceType.KNIGHT);
     }
 
     pub fn bishops(self: *const Position, comptime us: Color) u64
     {
-        return self.by_side(us) & self.by_type(PieceType.BISHOP);
+        return self.by_color(us) & self.by_type(PieceType.BISHOP);
     }
 
     pub fn rooks(self: *const Position, comptime us: Color) u64
     {
-        return self.by_side(us) & self.by_type(PieceType.ROOK);
+        return self.by_color(us) & self.by_type(PieceType.ROOK);
     }
 
     pub fn queens(self: *const Position, comptime us: Color) u64
     {
-        return self.by_side(us) & self.by_type(PieceType.QUEEN);
+        return self.by_color(us) & self.by_type(PieceType.QUEEN);
     }
 
     pub fn kings(self: *const Position, comptime us: Color) u64
     {
-        return self.by_side(us) & self.by_type(PieceType.KING);
+        return self.by_color(us) & self.by_type(PieceType.KING);
     }
 
     pub fn queens_bishops(self: *const Position, comptime us: Color) u64
     {
-        return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.QUEEN)) & self.by_side(us);
+        return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.QUEEN)) & self.by_color(us);
     }
 
     pub fn queens_rooks(self: *const Position, comptime us: Color) u64
     {
-        return (self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_side(us);
+        return (self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_color(us);
     }
 
     pub fn king_square(self: *const Position, comptime us: Color) Square
@@ -576,7 +565,7 @@ pub const Position = struct
 
     pub fn sliders(self: *const Position, comptime us: Color) u64
     {
-        return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_side(us);
+        return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_color(us);
     }
 
     /// Returns the sum of the white + black materials.
@@ -624,7 +613,7 @@ pub const Position = struct
         self.board[sq.u] = pc;
         self.bb_by_type[0] |= mask;
         self.bb_by_type[pc.piecetype.u] |= mask;
-        self.bb_by_side[us.u] |= mask;
+        self.bb_by_color[us.u] |= mask;
         self.values[us.u] += pc.value();
         self.materials[us.u] += pc.material();
     }
@@ -637,7 +626,7 @@ pub const Position = struct
         self.board[sq.u] = Piece.NO_PIECE;
         self.bb_by_type[0] &= not_mask;
         self.bb_by_type[pc.piecetype.u] &= not_mask;
-        self.bb_by_side[us.u] &= not_mask;
+        self.bb_by_color[us.u] &= not_mask;
         self.values[us.u] -= pc.value();
         self.materials[us.u] -= pc.material();
     }
@@ -653,7 +642,7 @@ pub const Position = struct
         self.board[to.u] = pc;
         self.bb_by_type[0] ^= xor_mask;
         self.bb_by_type[pc.piecetype.u] ^= xor_mask;
-        self.bb_by_side[us.u] ^= xor_mask;
+        self.bb_by_color[us.u] ^= xor_mask;
     }
 
     /// Only used in make move. This must be called *before* incrementing the ply.
@@ -915,7 +904,7 @@ pub const Position = struct
         const them: Color = comptime us.opp();
         const st: *StateInfo = self.state;
         const king_sq: Square = self.king_square(us);
-        const bb_us: u64 = self.by_side(us);
+        const bb_us: u64 = self.by_color(us);
         const bb_all: u64 = self.all();
 
         st.checkmask =
@@ -1123,13 +1112,37 @@ pub const Position = struct
         {
             false => switch (pins)
             {
-                false => self.gen(Params.create(us, false, false), storage),
-                true  => self.gen(Params.create(us, false, true), storage),
+                false => self.gen(Params.create(false, us, false, false), storage),
+                true  => self.gen(Params.create(false, us, false, true), storage),
             },
             true => switch (pins)
             {
-                false => self.gen(Params.create(us, true, false), storage),
-                true  => self.gen(Params.create(us, true, true), storage),
+                false => self.gen(Params.create(false, us, true, false), storage),
+                true  => self.gen(Params.create(false, us, true, true), storage),
+            },
+        }
+    }
+
+    pub  fn generate_captures(self: *const Position, comptime us: Color, noalias storage: anytype) void
+    {
+        if (comptime lib.is_paranoid) assert(self.to_move.e == us.e);
+
+        storage.reset();
+
+        const check: bool = self.state.checkers != 0;
+        const pins: bool = self.state.pins != 0;
+
+        switch (check)
+        {
+            false => switch (pins)
+            {
+                false => self.gen(Params.create(true, us, false, false), storage),
+                true  => self.gen(Params.create(true, us, false, true), storage),
+            },
+            true => switch (pins)
+            {
+                false => self.gen(Params.create(true, us, true, false), storage),
+                true  => self.gen(Params.create(true, us, true, true), storage),
             },
         }
     }
@@ -1140,11 +1153,14 @@ pub const Position = struct
         // Comptimes.
         const us = comptime ctp.us;
         const them = comptime us.opp();
+        const do_all_promotions: bool = comptime !ctp.captures;
+
         const st: StateInfo = self.state.*; // Copying the struct seems somewhat faster than using the pointer.
 
         const doublecheck: bool = ctp.check and @popCount(st.checkers) > 1;
         const bb_all: u64 = self.all();
-        const bb_us: u64 = self.by_side(us);
+        const bb_us: u64 = self.by_color(us);
+        const bb_them: u64 = self.by_color(them);
         const bb_not_us: u64 = ~bb_us;
         const king_sq: Square = self.king_square(us);
 
@@ -1156,7 +1172,8 @@ pub const Position = struct
             const our_queens_bishops = self.queens_bishops(us);
             const our_queens_rooks = self.queens_rooks(us);
 
-            const target = if (ctp.check) st.checkmask else bb_not_us;
+            // If generating captures the target is them.
+            const target = if (ctp.check) st.checkmask else if (!ctp.captures) bb_not_us else bb_them;
 
             // Pawns.
             if (our_pawns != 0)
@@ -1164,7 +1181,7 @@ pub const Position = struct
                 const third_rank: u64 = comptime funcs.relative_rank_3_bitboard(us);
                 const last_rank: u64 = comptime funcs.relative_rank_8_bitboard(us);
                 const empty_squares: u64 = ~bb_all;
-                const enemies: u64 = if (ctp.check) st.checkers else self.by_side(them);
+                const enemies: u64 = if (ctp.check) st.checkers else self.by_color(them);
 
                 // Generate all 4 types of pawnmoves: push, push double, capture left, capture right.
                 var bb_single = switch(ctp.pins)
@@ -1198,21 +1215,24 @@ pub const Position = struct
                              (pawns_shift(our_pawns & st.pins_diagonal, us, .northeast) & enemies & st.pins_diagonal),
                 };
 
-                // Single push normal
-                var bb_single_push: u64 = bb_single & ~last_rank;
-                while (bb_single_push != 0)
+                if (!ctp.captures or ctp.check)
                 {
-                    const to: Square = pop_square(&bb_single_push);
-                    const from: Square = pawn_from(to, us, .up);
-                    store(from, to, storage);
-                }
+                    // Single push normal
+                    var bb_single_push: u64 = bb_single & ~last_rank;
+                    while (bb_single_push != 0)
+                    {
+                        const to: Square = pop_square(&bb_single_push);
+                        const from: Square = pawn_from(to, us, .up);
+                        store(from, to, storage);
+                    }
 
-                // Double.push
-                while (bb_double != 0)
-                {
-                    const to: Square = pop_square(&bb_double);
-                    const from: Square = if (us.e == .white) to.sub(16) else to.add(16);
-                    store(from, to, storage);
+                    // Double.push
+                    while (bb_double != 0)
+                    {
+                        const to: Square = pop_square(&bb_double);
+                        const from: Square = if (us.e == .white) to.sub(16) else to.add(16);
+                        store(from, to, storage);
+                    }
                 }
 
                 // left capture promotions
@@ -1221,7 +1241,7 @@ pub const Position = struct
                 {
                     const to: Square = pop_square(&bb_northwest_promotions);
                     const from: Square = pawn_from(to, us, .northwest);
-                    store_promotions(from, to, storage);
+                    store_promotions(do_all_promotions, from, to, storage);
                 }
 
                 // right capture promotions
@@ -1230,7 +1250,7 @@ pub const Position = struct
                 {
                     const to: Square = pop_square(&bb_northeast_promotions);
                     const from: Square = pawn_from(to, us, .northeast);
-                    store_promotions(from, to, storage);
+                    store_promotions(do_all_promotions, from, to, storage);
                 }
 
                 // push promotions
@@ -1239,7 +1259,7 @@ pub const Position = struct
                 {
                     const to: Square = pop_square(&bb_push_promotions);
                     const from: Square =  pawn_from(to, us, .up);
-                    store_promotions(from, to, storage);
+                    store_promotions(do_all_promotions, from, to, storage);
                 }
 
                 // left normal captures,
@@ -1373,9 +1393,13 @@ pub const Position = struct
 
         } // (not doublecheck)
 
-        // King. TODO: The king is a troublemaker. For now this 'popcount heuristic' gives the best avg speed, using 2 different approaches to check legality.
+        // King.
         {
-            var bb_to = data.get_king_attacks(king_sq) & bb_not_us;
+            // TODO: The king is a troublemaker. For now this 'popcount heuristic' gives the best avg speed, using 2 different approaches to check legality.
+            const target = if (ctp.check or !ctp.captures) bb_not_us else bb_them;
+
+            var bb_to = data.get_king_attacks(king_sq) & target; //bb_not_us;
+
             if (@popCount(bb_to) > 2)
             {
                 const bb_unsafe: u64 = self.get_unsafe_squares_for_king(us);
@@ -1385,6 +1409,7 @@ pub const Position = struct
                     store(king_sq, pop_square(&bb_to), storage);
                 }
 
+                // TODO: if gen-captures no castling moves
                 if (!ctp.check and st.castling_rights != 0)
                 {
                     inline for (CastleType.all) |ct|
@@ -1434,12 +1459,15 @@ pub const Position = struct
         storage.store(Move{ .from = from, .to = to, .prom = .no_prom, .movetype = .enpassant });
     }
 
-    fn store_promotions(from: Square, to: Square, noalias storage: anytype) void
+    fn store_promotions(comptime do_all: bool, from: Square, to: Square, noalias storage: anytype) void
     {
         storage.store(Move{ .from = from, .to = to, .prom = .queen, .movetype = .promotion });
-        storage.store(Move{ .from = from, .to = to, .prom = .rook, .movetype = .promotion });
-        storage.store(Move{ .from = from, .to = to, .prom = .bishop, .movetype = .promotion });
-        storage.store(Move{ .from = from, .to = to, .prom = .knight, .movetype = .promotion });
+        if (do_all)
+        {
+            storage.store(Move{ .from = from, .to = to, .prom = .rook, .movetype = .promotion });
+            storage.store(Move{ .from = from, .to = to, .prom = .bishop, .movetype = .promotion });
+            storage.store(Move{ .from = from, .to = to, .prom = .knight, .movetype = .promotion });
+        }
     }
 
     fn store_castle(from: Square, to: Square, noalias storage: anytype) void
@@ -1666,6 +1694,8 @@ pub const Position = struct
 /// 4 bits comptime struct for generating moves.
 pub const Params = packed struct
 {
+    /// Only generate captures and promotions. Used in quiet search.
+    captures: bool = false,
     /// The color for which we are generating.
     us: Color = Color.WHITE,
     /// We are in check?
@@ -1673,9 +1703,9 @@ pub const Params = packed struct
     // There are pins. If not we can comptime skip all pin checks.
     pins: bool = false,
 
-    fn create(comptime us: Color, comptime check: bool, comptime pins: bool) Params
+    fn create(comptime captures: bool, comptime us: Color, comptime check: bool, comptime pins: bool) Params
     {
-        return Params{ .us = us, .check = check, .pins = pins };
+        return Params{ .captures = captures, .us = us, .check = check, .pins = pins };
     }
 };
 
@@ -1848,5 +1878,53 @@ pub fn print_pos(pos: *const Position) !void
     }
     try format(writer, "\n\n", .{});
     try lib.out.print("{s}", .{s.items});
-    //try lib.out.print("{any}", .{pos.state.*});
+}
+
+/// EXPERIMENTAL
+pub fn print_history(pos: *const Position) !void
+{
+    var reversed_stateinfo_list: std.ArrayListUnmanaged(*const StateInfo) = .empty;
+    defer reversed_stateinfo_list.deinit(ctx.galloc);
+
+    var buffer: std.ArrayListUnmanaged(StateInfo) = .empty;
+    defer buffer.deinit(ctx.galloc);
+
+    var curr_state: *StateInfo = pos.state;
+    while (true)
+    {
+        reversed_stateinfo_list.append(ctx.galloc, curr_state) catch wtf();
+        curr_state = curr_state.prev orelse break;
+    }
+    var iter = std.mem.reverseIterator(reversed_stateinfo_list.items);
+
+    var i: usize = 0;
+    while (iter.next()) |st|
+    {
+        var copy: StateInfo = st.*;
+        copy.prev = null;
+        if (i > 0) copy.prev = &buffer.items[i - 1];
+        buffer.append(ctx.galloc, copy) catch wtf();
+
+        i += 1;
+    }
+
+    var cloned_pos: Position = .clone(pos, &buffer.items[buffer.items.len - 1]);
+    cloned_pos.ply = @truncate(buffer.items.len);
+
+    curr_state = cloned_pos.state;
+    while (true)
+    {
+        if (curr_state.last_move.is_empty()) break;
+        cloned_pos.lazy_unmake_move();
+        curr_state = curr_state.prev orelse break;
+    }
+
+    for (buffer.items[1..]) |*st|
+    {
+        const str = @import("notation.zig").get(.Short, st.last_move, &cloned_pos);
+        if (cloned_pos.to_move.e == .white) try lib.out.print("{}. ", .{ funcs.ply_to_movenumber(cloned_pos.game_ply, cloned_pos.to_move)});
+        try lib.out.print("{s} ", .{ str.slice() });
+        cloned_pos.lazy_make_move(st, st.last_move);
+    }
+    std.debug.print("\n", .{});
 }
