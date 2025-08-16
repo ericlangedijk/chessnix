@@ -373,12 +373,14 @@ pub const Square = packed union
         return @tagName(self.e);
     }
 
-    /// TODO: catch errors
+    /// TODO: catch errors?
     pub fn from_string(str: []const u8) Square
     {
-        const v: u16 = (str[1] - '1') * 8 + (str[0] - 'a');
-        assert(v < 64);
-        return .{ .u = @truncate(v) };
+        //return if (std.meta.stringToEnum(Enum, str)) |e| .{ .e = e } else Square.A1;
+
+        const v: u6 = @truncate((str[1] -| '1') * 8 + (str[0] -| 'a'));
+        //assert(v < 64);
+        return .{ .u = v };
     }
 
     pub fn char_of_rank(self: Square) u8
