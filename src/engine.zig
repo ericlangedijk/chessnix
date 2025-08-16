@@ -43,7 +43,7 @@ pub fn set_position(fen_str: ?[]const u8, moves_str: ?[]const u8) !void
     if (moves_str) |moves|
     {
         var tokenizer = std.mem.tokenizeScalar(u8, moves, ' ');
-        var idx: usize = 0;
+        var idx: usize = 1;
         while (tokenizer.next()) |m|
         {
             const move: Move = pos.parse_move(m) catch break;
