@@ -84,7 +84,7 @@ pub const StateInfo = struct
     pins_orthogonal: u64 = 0,
     // All pins. (TODO: maybe remove).
     pins: u64 = 0,
-    /// Pointer to the previous state.
+    /// Pointer to the previous state. For the engine a fixed history array is used. For Search this is stack-based.
     prev: ?*StateInfo = null,
 };
 
@@ -732,14 +732,14 @@ pub const Position = struct
 
         var key: u64 = self.state.key ^ zobrist.btm();
 
-        // Copy some state stuff. The rest is updated down here.
-        st.rule50 = self.state.rule50; // TODO: make 1-time operation
+        // Copy some state stuff. The rest is done down here and in update_state().
+        st.rule50 = self.state.rule50;
         st.ep_square = self.state.ep_square;
         st.castling_rights = self.state.castling_rights;
         st.prev = self.state;
         self.state = st;
 
-        st.rule50 += 1;  // TODO: make 1-time operation
+        st.rule50 += 1;
         st.last_move = m;
         st.moved_piece = pc;
         st.captured_piece = capt;
@@ -749,9 +749,9 @@ pub const Position = struct
         self.game_ply += 1;
 
         // Reset drawcounter by default.
-        if (is_pawnmove or is_capture)
+        if (is_pawnmove or is_capture or movetype == .castle)
         {
-            st.rule50 = 0;  // TODO: make 1-time operation
+            st.rule50 = 0;
         }
 
         // Clear ep by default if it is set.
@@ -787,10 +787,10 @@ pub const Position = struct
                 if (is_pawnmove)
                 {
                     // Double pawn push.
-                    if (from.u ^ to.u == 16)
+                    if (from.u ^ to.u == 16 and masks.get_ep_mask(to) & self.pawns(them) != 0)
                     {
                         // We only set the ep-square if it is actually possible to do an ep-capture.
-                        if (masks.get_ep_mask(to) & self.pawns(them) != 0)
+                        //if (masks.get_ep_mask(to) & self.pawns(them) != 0)
                         {
                             const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
                             st.ep_square = ep;
