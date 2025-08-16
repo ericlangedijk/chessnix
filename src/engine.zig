@@ -26,7 +26,7 @@ pub fn initialize() !void
 
 /// Sets the position from fen + moves.
 /// * Example fen_str: `position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1`
-/// * Example moves_str:  `moves e2e4 e7e5 g1f3`
+/// * Example moves_str: `e2e4 e7e5 g1f3`
 pub fn set_position(fen_str: ?[]const u8, moves_str: ?[]const u8) !void
 {
     if (fen_str) |fen|
