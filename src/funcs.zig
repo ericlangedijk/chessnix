@@ -26,12 +26,14 @@ pub const PawnShift = enum(u2)
     up, northwest, northeast,
 };
 
+/// TODO: move to position.zig
 pub fn king_castle_to_square(us: Color, dir: CastleType) Square
 {
     const squares: [2][2]Square = .{ .{.G1, .C1}, .{.G8, .C8} };
     return squares[us.u][dir.idx()];
 }
 
+/// TODO: move to position.zig
 pub fn rook_castle_to_square(us: Color, dir: CastleType) Square
 {
     const squares: [2][2]Square = .{ .{.F1, .D1}, .{.F8, .D8} };
