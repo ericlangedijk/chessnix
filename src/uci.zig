@@ -16,10 +16,11 @@ pub fn run() !void
 {
     const in = lib.in;
     const out = lib.out;
+    const is_tty = lib.is_tty();
 
     try engine.initialize();
 
-    if (lib.is_tty())
+    if (is_tty)
     {
         try out.print("chessnix {s} by eric\n", .{lib.version});
     }
@@ -34,6 +35,7 @@ pub fn run() !void
         var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :uci_loop;
 
+        // Uci commands.
         if (eql(cmd, "uci"))
         {
             try out.print("id chessnix {s}\nauthor eric\nuciok\n", .{lib.version});
@@ -72,29 +74,45 @@ pub fn run() !void
         {
             return;
         }
-        // custom
-        else if (eql(cmd, "d"))
+
+        // Custom commands in terminal.
+        else if (is_tty)
         {
-            try position.print_pos(&engine.pos);
-        }
-        // custom
-        else if (eql(cmd, "bench"))
-        {
-            try tests.bench();
-        }
-        // custom
-        else if (eql(cmd, "perft"))
-        {
-            const next = tokenizer.next() orelse continue :uci_loop;
-            const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :uci_loop;
-            perft.run(&engine.pos, depth);
-        }
-        // custom
-        else if (eql(cmd, "qperft"))
-        {
-            const next = tokenizer.next() orelse continue :uci_loop;
-            const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :uci_loop;
-            perft.qrun(&engine.pos, depth);
+            if (eql(cmd, "d"))
+            {
+                try position.print_pos(&engine.pos);
+            }
+            else if (eql(cmd, "bench"))
+            {
+                try tests.bench();
+            }
+            else if (eql(cmd, "perft"))
+            {
+                const next = tokenizer.next() orelse continue :uci_loop;
+                const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :uci_loop;
+                perft.run(&engine.pos, depth);
+            }
+            else if (eql(cmd, "qperft"))
+            {
+                const next = tokenizer.next() orelse continue :uci_loop;
+                const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :uci_loop;
+                perft.qrun(&engine.pos, depth);
+            }
+            // TODO: DEBUG ONLY
+            else if (eql(cmd, "m"))
+            {
+                try position.print_history(&engine.pos);
+            }
+            // TODO: DEBUG ONLY
+            else if (eql(cmd, "c"))
+            {
+                var store: position.MoveStorage = .init();
+                engine.pos.lazy_generate_captures(&store);
+                for (store.slice()) |m|
+                {
+                    try lib.out.print("{s}\n", .{ m.to_string().slice() });
+                }
+            }
         }
     }
 }
