@@ -2,8 +2,6 @@
 
 //! All bitboards + magics + functions for move generation.
 
-// TODO: put masks + magics in 1 struct for cache locality?
-
 const std = @import("std");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
@@ -145,14 +143,14 @@ pub fn initialize() void
             file_attacks[idx * 64 + occ] = bitboard;
         }
 
-        // Diagonal main attacks
+        // Diagonal main attacks.
         for (0..64) |occ|
         {
             const offset: u3 = @min(7 - rank, file);
             const attackmask: u8 = sliding_attacks[offset][occ];
             var bitboard: u64 = 0;
 
-            // scan northwest (backwards from iffset)
+            // Scan northwest (backwards from offset).
             var q: Square = sq;
             var bitpos: u3 = offset;
             while (true)
@@ -163,7 +161,7 @@ pub fn initialize() void
                 bitpos -= 1;
             }
 
-            // scan southeast (forwards from offset)
+            // Scan southeast (forwards from offset).
             q = sq;
             bitpos = offset;
             while(true)
@@ -183,7 +181,7 @@ pub fn initialize() void
             const attackmask: u8 = sliding_attacks[offset][occ];
             var bitboard: u64 = 0;
 
-            // scan southwest (backwards from offset)
+            // Scan southwest (backwards from offset).
             var q: Square = sq;
             var bitpos: u3 = offset;
             while (true)
@@ -194,7 +192,7 @@ pub fn initialize() void
                 bitpos -= 1;
             }
 
-            // scan northeast (forwards from offset)
+            // Scan northeast (forwards from offset).
             q = sq;
             bitpos = offset;
             while (true)
@@ -295,7 +293,7 @@ var file_attacks: [64 * 64]u64 = @splat(0);
 var diag_main_attacks: [64 * 64]u64 = @splat(0);
 var diag_anti_attacks: [64 * 64]u64 = @splat(0);
 
-// Raw
+// Raw.
 var bb_north: [64]u64 = @splat(0);
 var bb_south: [64]u64 = @splat(0);
 var bb_west: [64]u64 = @splat(0);
@@ -319,7 +317,7 @@ pub const ptr_file_attacks: [*]const u64 = &file_attacks;
 pub const ptr_diag_main_attacks: [*]const u64 = &diag_main_attacks;
 pub const ptr_diag_anti_attacks: [*]const u64 = &diag_anti_attacks;
 
-// Raw
+// Raw.
 pub const ptr_bb_north: [*]const u64 = &bb_north;
 pub const ptr_bb_south: [*]const u64 = &bb_south;
 pub const ptr_bb_west: [*]const u64 =  &bb_west;
@@ -371,8 +369,6 @@ pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 /// A little speedup for combined attacks. We only need to calculate the offset once.
 fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, occ: u64) u64
 {
-    assert(orientations.len == 2 or orientations.len == 4);
-
     const offset: u64 = sq.idx() * 64;
     var result: u64 = 0;
 
