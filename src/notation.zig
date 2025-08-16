@@ -17,6 +17,7 @@ const Square = types.Square;
 const Move = types.Move;
 const MoveType = types.MoveType;
 const Position = position.Position;
+const StateInfo = position.StateInfo;
 
 const Disambiguation = enum
 {
@@ -38,10 +39,10 @@ pub const NotationType = enum
 pub fn get(comptime notationtype: NotationType, m: Move, pos: *const Position) std.BoundedArray(u8, 16)
 {
     // We always need a copy.
-    var cloned_pos: Position = pos.clone(false);
-    defer cloned_pos.deinit();
+    var st: StateInfo = undefined;
+    var cloned_pos: Position = pos.clone(&st);
 
-    // todo: comptime Color here.
+    // TODO: comptime Color here.
     switch (notationtype)
     {
         .Short => return get_short_algebraic(m, &cloned_pos),
@@ -65,8 +66,9 @@ fn get_long_algebraic(m: Move, pos: *Position) std.BoundedArray(u8, 16)
 {
     var s: std.BoundedArray(u8, 16) = .{};
 
-    pos.lazy_make_move(m);
-    const st = pos.current_state;
+    var st: StateInfo = undefined;
+    pos.lazy_make_move(&st, m);
+    //const st = pos.current_state;
     const pc = st.moved_piece;
     const capt = st.captured_piece;
 
@@ -96,9 +98,10 @@ fn get_short_algebraic(m: Move, pos: *Position) std.BoundedArray(u8, 16)
 
     const dis: Disambiguation = determine_disambiguation(m, pos);
 
-    pos.lazy_make_move(m);
+    var st: StateInfo = undefined;
+    pos.lazy_make_move(&st, m);
 
-    const st = pos.current_state;
+    //const st = pos.current_state;
     const pc = st.moved_piece;
     const capt = st.captured_piece;
 
