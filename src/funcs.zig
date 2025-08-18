@@ -26,18 +26,6 @@ pub const PawnShift = enum(u2)
     up, northwest, northeast,
 };
 
-// pub fn king_castle_to_square(us: Color, dir: CastleType) Square
-// {
-//     const squares: [2][2]Square = .{ .{.G1, .C1}, .{.G8, .C8} };
-//     return squares[us.u][dir.u];
-// }
-
-// pub fn rook_castle_to_square(us: Color, dir: CastleType) Square
-// {
-//     const squares: [2][2]Square = .{ .{.F1, .D1}, .{.F8, .D8} };
-//     return squares[us.u][dir.u];
-// }
-
 pub fn relative_rank_7_bitboard(us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
@@ -55,11 +43,6 @@ pub fn relative_rank_3_bitboard(us: Color) u64
 
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64
 {
-    if (lib.is_paranoid)
-    {
-        if (shift == .up) assert(pawns & bitboards.bb_rank_8 & bitboards.bb_rank_1 == 0);
-    }
-
     switch(us.e)
     {
         .white =>
