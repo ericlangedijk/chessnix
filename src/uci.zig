@@ -7,6 +7,7 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 const engine = @import("engine.zig");
 const search = @import("search.zig");
+const eval = @import("eval.zig");
 const perft = @import("perft.zig");
 const tests = @import("tests.zig");
 
@@ -116,23 +117,22 @@ fn uci_loop() !void
                 const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :command_loop;
                 perft.qrun(&engine.pos, depth);
             }
+            // DEBUG TEMP
             else if (eql(cmd, "deb"))
             {
                 try lib.out.print("size of Stack {}\n", .{@sizeOf(search.Stack)});
                 try lib.out.print("size of SearchManager {}\n", .{@sizeOf(search.SearchManager)});
             }
+            // DEBUG TEMP
             else if (eql(cmd, "m"))
             {
                 try engine.pos.print_history();
             }
-            else if (eql(cmd, "c"))
+            // DEBUG TEMP
+            else if (eql(cmd, "e"))
             {
-                var store: position.MoveStorage = .init();
-                engine.pos.lazy_generate_captures(&store);
-                for (store.slice()) |m|
-                {
-                    try lib.out.print("{s}\n", .{ m.to_string().slice() });
-                }
+                const e = eval.lazy_evaluate(&engine.pos);
+                try lib.out.print("eval = {}\n", .{ e });
             }
         }
     }

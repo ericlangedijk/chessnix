@@ -258,7 +258,7 @@ fn index_of(slice: []const u8, value:u8) ?usize
     return null;
 }
 
-const testpositions: [134][]const u8 =
+pub const testpositions: [134][]const u8 =
 .{
 
     "3b4/2R5/1KQ4r/1RB5/8/8/8/1r2k1q1 w - - 0 1 ;D1 17", // general piece pin check

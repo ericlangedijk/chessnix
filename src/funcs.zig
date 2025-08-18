@@ -111,8 +111,8 @@ pub fn is_passed_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
 {
     return switch (us.e)
     {
-        .white => masks.get_passed_pawn_mask(us, sq) & pos.all_pawns() == 0,
-        .black => masks.get_passed_pawn_mask(us, sq) & pos.all_pawns() == 0,
+        .white => masks.get_passed_pawn_mask(Color.WHITE, sq) & pos.all_pawns() == 0,
+        .black => masks.get_passed_pawn_mask(Color.BLACK, sq) & pos.all_pawns() == 0,
     };
 }
 

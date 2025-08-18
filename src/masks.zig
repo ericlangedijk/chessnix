@@ -34,7 +34,7 @@ pub fn initialize() void
             bb = data.ptr_bb_north[white_sq.u];
             if (white_sq.file() > bitboards.file_a) bb |= data.ptr_bb_north[white_sq.sub(1).u];
             if (white_sq.file() < bitboards.file_h) bb |= data.ptr_bb_north[white_sq.add(1).u];
-            passed_pawn_masks_white[black_sq.u] = bb;
+            passed_pawn_masks_white[white_sq.u] = bb;
             passed_pawn_masks_black[black_sq.u] = funcs.mirror_vertically(bb);
             if (rank == bitboards.rank_4 or rank == bitboards.rank_5)
             {

@@ -393,6 +393,8 @@ pub const Square = packed union
 
 pub const PieceType = packed union
 {
+    pub const all: [6]PieceType = .{ PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING };
+
     pub const NO_PIECETYPE: PieceType = .{ .e = .no_piecetype };
     pub const PAWN: PieceType = .{ .e = .pawn };
     pub const KNIGHT: PieceType = .{ .e = .knight };
@@ -725,7 +727,7 @@ pub const Move = packed struct(u16)
         };
     }
 
-    pub fn create_promotion(from: Square, to: Square, prom: MoveInfo.Prom) Move
+    pub fn create_promotion(from: Square, to: Square, comptime prom: MoveInfo.Prom) Move
     {
         return
         .{
@@ -746,7 +748,7 @@ pub const Move = packed struct(u16)
         };
     }
 
-    pub fn create_castle(from: Square, to: Square, castletype: CastleType) Move
+    pub fn create_castle(from: Square, to: Square, comptime castletype: CastleType) Move
     {
         return
         .{
@@ -762,7 +764,7 @@ pub const Move = packed struct(u16)
         return self.from.u == self.to.u;
     }
 
-    /// UCI string
+    /// uci string
     pub fn to_string(self: Move) std.BoundedArray(u8, 5)
     {
         var result: std.BoundedArray(u8, 5) = .{};
@@ -814,11 +816,14 @@ pub const material_rook: Value = 1276;
 pub const material_queen: Value = 2538;
 
 // startvalue: 18620 WITH pawns
-// startvalue: 16604 WITHOUT pawns
-pub const max_material_value_threshold: Value = 18620;
-//pub const MIDGAME_THRESHOLD: i16 = 15258;
-//pub const ENDGAME_THRESHOLD: i16 = 3915;
+// startvalue: 16604 WITHOUT pawnsquit
+pub const max_material_value: Value = 18620;
 
+/// The threshold value for piece square tables.
+pub const max_material_without_pawns: Value = 16604;
+
+// pub const midgame_threshold: Value = 15258; // NOPE
+// pub const endgame_threshold: Value = 3915; // NOPE
 
 const piece_values: [15]Value =
 .{

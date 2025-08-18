@@ -4,11 +4,14 @@
 
 const std = @import("std");
 
+const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const data = @import("data.zig");
 const funcs = @import("funcs.zig");
+
+const wtf = lib.wtf;
 
 const Value = types.Value;
 const Float = types.Float;
@@ -23,243 +26,222 @@ const Position = position.Position;
 const float = funcs.float;
 const int = funcs.int;
 
-/// Piece Square score for opening and endgame.\
-/// During evaluation we slide between the values depending on the game phase, which is deduced from the material.
-const ScorePair = struct { opening: i16, endgame: i16 };
-/// A compressed piece square table.
-const HalfTable = [32]ScorePair;
-
-pub const MatingGame = enum(u16)
+/// Passed to all eval methods.
+const Params = struct
 {
-    //B
-    R =  PieceType.ROOK.material(),
-    RR = PieceType.ROOK.material() * 2,
+    pos: *const Position,
+    /// We cache the material value here.
+    non_pawn_material: Value,
 };
 
-/// Returns "quiet" evaluation. This should be a position without captures possible.
+/// Debug only.
+pub fn lazy_evaluate(pos: *const Position) Value
+{
+    return switch (pos.to_move.e)
+    {
+        .white => evaluate(pos, Color.WHITE),
+        .black => evaluate(pos, Color.BLACK),
+    };
+}
+
+/// `us` must be the color to move.
 pub fn evaluate(pos: *const Position, comptime us: Color) Value
 {
-    return eval(pos, us, false);
-}
-
-pub fn eval(pos: *const Position, comptime us: Color, comptime output: bool) Value
-{
-    // TODO: if material is high and high depth exit early?
     const them = comptime us.opp();
-    var s: Value = 0;
-    s += eval_value(pos, us, output);
-    s -= eval_value(pos, them, output); if (output) std.debug.print("VAL {}\n", .{s});
-    s += eval_pawns(pos, us, output);
-    s -= eval_pawns(pos, them, output); if (output) std.debug.print("VAL {}\n", .{s});
-    s += eval_knights(pos, us, output);
-    s -= eval_knights(pos, them, output); if (output) std.debug.print("VAL {}\n", .{s});
-    s += eval_bishops(pos, us, output);
-    s -= eval_bishops(pos, them, output); if (output) std.debug.print("VAL {}\n", .{s});
-    s += eval_rooks(pos, us, output);
-    s -= eval_rooks(pos, them, output); if (output) std.debug.print("VAL {}\n", .{s});
-    s += eval_queens(pos, us, output);
-    s -= eval_queens(pos, them, output); if (output) std.debug.print("VAL {}\n", .{s});
-    s += eval_king(pos, us, output);
-    s -= eval_king(pos, them, output);
-    if (output) std.debug.print("eval = {}\n", .{s});
-    return s;
+
+    const ep: Params =
+    .{
+        .pos = pos,
+        .non_pawn_material = pos.non_pawn_material(),
+    };
+
+    var score: Value = 0;
+
+    if (us.e == pos.to_move.e) score += 20;
+
+    score += eval_material(&ep, us);
+    score -= eval_material(&ep, them);
+    score += eval_pawns(&ep, us);
+    score -= eval_pawns(&ep, them);
+    score += eval_knights(&ep, us);
+    score -= eval_knights(&ep, them);
+    score += eval_bishops(&ep, us);
+    score -= eval_bishops(&ep, them);
+    score += eval_rooks(&ep, us);
+    score -= eval_rooks(&ep, them);
+    score += eval_queens(&ep, us);
+    score -= eval_queens(&ep, them);
+    score += eval_king(&ep, us);
+    score -= eval_king(&ep, them);
+
+    return score;
 }
 
-/// The raw sum of pieces values.
-fn eval_value(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_material(e: *const Params, comptime us: Color) Value
 {
-    const v: Value = pos.values[us.u];
-    if (output) std.debug.print("eval_material {s} value = {}, \n", .{@tagName(us.e), v });
+    const v: Value = e.pos.values[us.u];
     return v;
 }
 
-fn eval_pawns(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_pawns(e: *const Params, comptime us: Color) Value
 {
-    const bb_pawns = pos.pawns(us);
-    var s: Value = 0;
+    const bb_pawns = e.pos.pawns(us);
+    var score: Value = 0;
     var bb = bb_pawns;
-    var sq: Square = .zero;
-    var v: Value = 0;
 
     while (bb != 0)
     {
-        sq = funcs.pop_square(&bb);
+        const sq: Square = funcs.pop_square(&bb);
 
         // Piece on square value.
-        v = pc_sq(us, PieceType.PAWN, sq, pos.material());
-        s += v;
-        if (output) std.debug.print("eval_pawns {s} (pc_sq) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        score += pc_sq(us, PieceType.PAWN, sq, e.non_pawn_material);
 
         // Reward passed pawns.
-        if (funcs.is_passed_pawn(pos, us, sq))
+        if (funcs.is_passed_pawn(e.pos, us, sq))
         {
-            v = 20;
-            if (output) std.debug.print("eval_pawns {s} (pass) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
-            s += v;
+            score += 20;
         }
 
         // Punish doubled pawns.
-        var bb_file = bitboards.file_bitboards[sq.file()] & pos.pawns(us);
-        bb_file &= ~sq.to_bitboard();
-        v = @popCount(bb_file);
-        if (v > 0)
         {
-            s -= 10;
-            if (output) std.debug.print("eval_pawns {s} (doubled) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+            var bb_file = bitboards.file_bitboards[sq.file()] & e.pos.pawns(us);
+            bb_file &= ~sq.to_bitboard();
+            if (@popCount(bb_file) > 0)
+            {
+                score -= 10;
+            }
         }
-        //std.debug.print("doubled pawn {s}", .{sq.to_string()});
-
     }
 
-    return s;
+
+    return score;
 }
 
-fn eval_knights(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_knights(e: *const Params, comptime us: Color) Value
 {
     var s: Value = 0;
-    var bb = pos.knights(us);
-    var sq: Square = .zero;
-    var v: Value = 0;
+    var bb = e.pos.knights(us);
 
     while (bb != 0)
     {
-        sq = funcs.pop_square(&bb);
+        const sq: Square = funcs.pop_square(&bb);
 
         // Piece on square value.
-        v = pc_sq(us, PieceType.KNIGHT, sq, pos.material());
-        s += v;
-        if (output) std.debug.print("eval_knights {s} (pc_sq) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        s += pc_sq(us, PieceType.KNIGHT, sq, e.non_pawn_material);
 
         // Reward support by a pawn.
-        v = if (funcs.is_supported_by_pawn(pos, us, sq)) 20 else 0;
-        s += v;
-        if (output) std.debug.print("eval_knights {s} (supp) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        {
+            const v: Value = if (funcs.is_supported_by_pawn(e.pos, us, sq)) 20 else 0;
+            s += v;
+        }
 
         // Mobility
-        const attacks: u64 = data.get_knight_attacks(sq) & ~pos.by_side(us);
-        v = @popCount(attacks);
-        s += v;
-        if (output) std.debug.print("eval_knights {s}  (mob) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        {
+            const attacks: u64 = data.get_knight_attacks(sq) & ~e.pos.by_color(us);
+            const v = @popCount(attacks);
+            s += v;
+        }
     }
     return s;
 }
 
-fn eval_bishops(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_bishops(e: *const Params, comptime us: Color) Value
 {
     var s: Value = 0;
-    const bb_bishops = pos.bishops(us);
+    const bb_bishops = e.pos.bishops(us);
     var bb = bb_bishops;
-    var sq: Square = .zero;
-    var v: Value = 0;
 
     while (bb != 0)
     {
-        sq = funcs.pop_square(&bb);
+        const sq: Square  = funcs.pop_square(&bb);
+
         // Piece on square value.
-        v = pc_sq(us, PieceType.BISHOP, sq, pos.material());
-        s += v;
-        if (output) std.debug.print("eval_bishops {s} (pc_sq) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        s += pc_sq(us, PieceType.BISHOP, sq, e.non_pawn_material);
+
         // Mobility.
-        const attacks: u64 = data.get_bishop_attacks(sq, pos.all()) & ~pos.by_side(us);
-        v = @popCount(attacks);
-        s += v;
-        if (output) std.debug.print("eval_bishops {s}  (mob) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        {
+            const attacks: u64 = data.get_bishop_attacks(sq, e.pos.all()) & ~e.pos.by_color(us);
+            const v = @popCount(attacks);
+            s += v;
+        }
     }
 
     // Reward bishop pair.
-    v = @popCount(bb_bishops & bitboards.bb_black_squares) + @popCount(bb_bishops & bitboards.bb_white_squares);
-    if (v >= 2)
     {
-        s += 20;
-        if (output) std.debug.print("eval_bishops {s} bishoppair, result = {}\n", .{@tagName(us.e), s });
+        const v = @popCount(bb_bishops & bitboards.bb_black_squares) + @popCount(bb_bishops & bitboards.bb_white_squares);
+        if (v >= 2)
+        {
+            s += 20;
+        }
     }
     return s;
 }
 
-fn eval_rooks(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_rooks(e: *const Params, comptime us: Color) Value
 {
     var s: Value = 0;
-    const bb_rooks = pos.rooks(us);
+    const bb_rooks = e.pos.rooks(us);
     var bb = bb_rooks;
-    var sq: Square = .zero;
-    var v: Value = 0;
 
     while (bb != 0)
     {
-        sq = funcs.pop_square(&bb);
+        const sq: Square = funcs.pop_square(&bb);
+
         // Piece on square value.
-        v = pc_sq(us, PieceType.ROOK, sq, pos.material());
-        s += v;
-        if (output) std.debug.print("eval_rooks {s} (pc_sq) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        s += pc_sq(us, PieceType.ROOK, sq, e.non_pawn_material);
+
+        const bb_not_us: u64 = ~e.pos.by_color(us);
+        const attacks: u64 = data.get_rook_attacks(sq, e.pos.all());
 
         // Mobility.
-        const bb_not_us: u64 = ~pos.by_side(us);
-        const attacks: u64 = data.get_rook_attacks(sq, pos.all());
-        v = @popCount(attacks & bb_not_us);
-        s += v;
-        if (output) std.debug.print("eval_rooks {s}  (mob) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
-
-        // if (us.e == .white)
-        // {
-        // funcs.print_bitboard(attacks);
-        // funcs.print_bitboard(bb_rooks);
-        // }
+        {
+            s += @popCount(attacks & bb_not_us);
+        }
 
         // Reward connected rooks.
         if (@popCount(attacks & bb_rooks) > 0)
         {
-            v = 20;
-            s += v;
-            if (output) std.debug.print("connected rooks {}\n", .{v});
+            s += 20;
         }
     }
     return s;
 }
 
-fn eval_queens(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_queens(e: *const Params, comptime us: Color) Value
 {
     var s: Value = 0;
-    const bb_queens = pos.queens(us);
+    const bb_queens = e.pos.queens(us);
     var bb = bb_queens;
-    var sq: Square = .zero;
-    var v: Value = 0;
 
     while (bb != 0)
     {
-        sq = funcs.pop_square(&bb);
+        const sq: Square = funcs.pop_square(&bb);
+
         // Piece on square value.
-        v = pc_sq(us, PieceType.QUEEN, sq, pos.material());
-        s += v;
-        if (output) std.debug.print("eval_queens {s} (pc_sq) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
+        s += pc_sq(us, PieceType.QUEEN, sq, e.non_pawn_material);
 
         // Mobility.
-        const bb_not_us: u64 = ~pos.by_side(us);
-        const attacks: u64 = data.get_rook_attacks(sq, pos.all());
-        v = @popCount(attacks & bb_not_us);
+        const bb_not_us: u64 = ~e.pos.by_color(us);
+        const attacks: u64 = data.get_rook_attacks(sq, e.pos.all());
+        const v = @popCount(attacks & bb_not_us);
         s += v;
-        if (output) std.debug.print("eval_queens {s}  (mob) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), sq.to_string(), v, s });
     }
     return s;
 }
 
-fn eval_king(pos: *const Position, comptime us: Color, comptime output: bool) Value
+fn eval_king(e: *const Params, comptime us: Color) Value
 {
     const them: Color = comptime us.opp();
     var s: Value = 0;
-    const king_sq = pos.king_square(us);
-    var v: Value = 0;
+    const king_sq =e.pos.king_square(us);
     var bb: u64 = 0;
 
     // Piece on square value.
-    v = pc_sq(us, PieceType.KING, king_sq, pos.material());
-    s += v;
-    if (output) std.debug.print("eval_king {s} (pc_sq) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), king_sq.to_string(), v, s });
+    s += pc_sq(us, PieceType.KING, king_sq,e.non_pawn_material);
 
-
-    // punish pieces pointing at us, disregarding what is in between (remember this is a quiet position: there are no direct attacks)
-    bb = data.get_rook_attacks(king_sq, 0) & pos.queens_rooks(them);
-    v = @popCount(bb); // this is the number of queens or rooks indirectly pointing at the king.
-    if (output) std.debug.print("eval_king {s} (indirect attacks) sq = {s}, value = {}, result = {}, \n", .{@tagName(us.e), king_sq.to_string(), v, s });
+    // punish pieces pointing at us, disregarding what is in between.
+    bb = data.get_rook_attacks(king_sq, 0) & e.pos.queens_rooks(them);
+    const v = @popCount(bb); // this is the number of queens or rooks indirectly pointing at the king.
     s -= v;
 
     // todo enemy knights close by? enemy pieces pointing closeby (3x3)
@@ -267,12 +249,12 @@ fn eval_king(pos: *const Position, comptime us: Color, comptime output: bool) Va
     // let bb: u64 = calc_rook_attacks(king_sq.idx(), 0) & pos.queens_rooks_c::<THEM>();
     // score -= ((bb.popcount() as i16) * 2);
 
-    // todo castling + protection.
+    // todo castling + pawn / piece protection.
 
     return s;
 }
 
-/// Static exchange evaluation. Quickly decide if a (capture) move is ok.
+/// Static exchange evaluation. Quickly decide if a (capture) move is good or bad.
 pub fn see(pos: *const Position, m: Move) bool
 {
     if (m.movetype == .promotion) return true;
@@ -392,246 +374,207 @@ pub fn see(pos: *const Position, m: Move) bool
     return gain[0] >= 0;
 }
 
+/// Piece on square value for a certain phase of the game, using the materials value.
 pub fn pc_sq(comptime us: Color, comptime pt: PieceType, sq: Square, pos_material: Value) Value
 {
-    const pair: ScorePair = get_scorepair(us, pt, sq);
-    //return sliding_score(@floatFromInt(pos_material), @floatFromInt(pair.opening), @floatFromInt(pair.endgame));
-    return sliding_score2(pos_material, pair.opening, pair.endgame);
+    const pair = PestoTables.get_scorepair(us, pt, sq);
+    return sliding_score(pos_material, pair.mg, pair.eg);
 }
 
-/// Calculates a sliding number between opening and endgame.
-fn sliding_score(pos_material: f32, opening: f32, endgame: f32) Value
+/// TODO: check check check.
+fn sliding_score(non_pawn_material: Value, opening: Value, endgame: Value) Value
 {
-    //std.debug.print("material {d:.1}, opening {d:.1} endgame {d:.1}, ", .{pos_material, opening, endgame});
-    const maximum: f32 = comptime @floatFromInt(types.max_material_value_threshold);
-    //std.debug.print("max {d:.1}, ", .{maximum});
-    const range: f32 = endgame - opening;
-    //std.debug.print("range {d:.1}, ", .{range});
-    const min: f32 = @min(pos_material, maximum);
-    //std.debug.print("mt {d:.1}, ", .{mt});
-    const step: f32 = (min / maximum) * range;
-    //std.debug.print("step {d:.1}, ", .{step});
-    //std.debug.print("result {d:.1} -> ", .{endgame - step});
+    // const maximum: Value = comptime types.max_material_without_pawns;
+    // const range: Value = endgame - opening;
+    // const min: Value = @min(non_pawn_material, maximum);
+    // const step: Float = (float(min) / float(maximum)) * float(range);
+    // return int(float(endgame) - step);
 
-// const t: f32 = mt / maximum;
-// const value: f32 = opening + t * (endgame - opening); // linear interpolation
-// return @intFromFloat(value);
-
-    return @intFromFloat(endgame - step);
+    const maximum: i32 = comptime types.max_material_without_pawns;
+    const phase: i32 = @min(non_pawn_material, maximum);
+    return @truncate(@divTrunc(opening * phase + endgame * (maximum - phase), maximum));
 }
 
-fn sliding_score2(pos_material: Value, opening: Value, endgame: Value) Value
+const PestoTables = struct
 {
-    //std.debug.print("material {d:.1}, opening {d:.1} endgame {d:.1}, ", .{pos_material, opening, endgame});
-    const maximum: Value = comptime types.max_material_value_threshold;
-
-    //std.debug.print("max {d:.1}, ", .{maximum});
-    const range: Value = endgame - opening;
-
-    //std.debug.print("range {d:.1}, ", .{range});
-    const min: Value = @min(pos_material, maximum);
-    //std.debug.print("mt {d:.1}, ", .{mt});
-
-    const step: Float = (float(min) / float(maximum)) * float(range);
-    //std.debug.print("step {d:.1}, ", .{step});
-    //std.debug.print("result {d:.1} -> ", .{endgame - step});
-
-// const t: f32 = mt / maximum;
-// const value: f32 = opening + t * (endgame - opening); // linear interpolation
-// return @intFromFloat(value);
-
-    return int(float(endgame) - step);
-}
-
-
-pub fn get_scorepair(comptime us: Color, comptime pt: PieceType, sq: Square) ScorePair
-{
-    const idx = get_half_table_idx(us, sq);
-
-    return switch (pt.e)
+    fn get_index(comptime us: Color, sq: Square) u6
     {
-        .pawn => pawn_table[idx],
-        .knight => knight_table[idx],
-        .bishop => bishop_table[idx],
-        .rook => rook_table[idx],
-        .queen => queen_table[idx],
-        .king => king_table[idx],
-        else => unreachable,
+        return switch(us.e)
+        {
+            .white => sq.u ^ 56,
+            .black => sq.u,
+        };
+    }
+
+    fn get_scorepair(comptime us: Color, comptime pc: PieceType, sq: Square) struct { mg: Value, eg: Value}
+    {
+        const mg: [*]const Value = switch (pc.e)
+        {
+            .pawn   => &mg_pawn_table,
+            .knight => &mg_knight_table,
+            .bishop => &mg_bishop_table,
+            .rook   => &mg_rook_table,
+            .queen  => &mg_queen_table,
+            .king   => &mg_king_table,
+            else => unreachable,
+        };
+
+        const eg: [*]const Value = switch (pc.e)
+        {
+            .pawn   => &eg_pawn_table,
+            .knight => &eg_knight_table,
+            .bishop => &eg_bishop_table,
+            .rook   => &eg_rook_table,
+            .queen  => &eg_queen_table,
+            .king   => &eg_king_table,
+            else => unreachable,
+        };
+
+        const idx: u6 = get_index(us, sq);
+        return .{ .mg = mg[idx], .eg = eg[idx] };
+    }
+
+    const mg_pawn_table: [64]Value =
+    .{
+          0,   0,   0,   0,   0,   0,  0,   0,
+         98, 134,  61,  95,  68, 126, 34, -11,
+         -6,   7,  26,  31,  65,  56, 25, -20,
+        -14,  13,   6,  21,  23,  12, 17, -23,
+        -27,  -2,  -5,  12,  17,   6, 10, -25,
+        -26,  -4,  -4, -10,   3,   3, 33, -12,
+        -35,  -1, -20, -23, -15,  24, 38, -22,
+          0,   0,   0,   0,   0,   0,  0,   0,
     };
-}
 
-fn get_half_table_idx(comptime us: Color, sq: Square) u8
-{
-    return switch(us.e)
-    {
-        .white => white_indexer[sq.u],
-        .black => black_indexer[sq.u],
+    const eg_pawn_table: [64]Value =
+    .{
+        0,   0,   0,   0,   0,   0,   0,   0,
+        178, 173, 158, 134, 147, 132, 165, 187,
+        94, 100,  85,  67,  56,  53,  82,  84,
+        32,  24,  13,   5,  -2,   4,  17,  17,
+        13,   9,  -3,  -7,  -7,  -8,   3,  -1,
+        4,   7,  -6,   1,   0,  -5,  -1,  -8,
+        13,   8,   8,  10,  13,   0,   2,  -7,
+        0,   0,   0,   0,   0,   0,   0,   0,
     };
-}
 
+    const mg_knight_table: [64]Value =
+    .{
+        -167, -89, -34, -49,  61, -97, -15, -107,
+        -73,  -41,  72,  36,  23,  62,   7,  -17,
+        -47,   60,  37,  65,  84, 129,  73,   44,
+        -9,    17,  19,  53,  37,  69,  18,   22,
+        -13,    4,  16,  13,  28,  19,  21,   -8,
+        -23,   -9,  12,  10,  19,  17,  25,  -16,
+        -29,  -53, -12,  -3,  -1,  18, -14,  -19,
+        -105, -21, -58, -33, -17, -28, -19,  -23,
+    };
 
-fn sp(comptime opening: Value, comptime endgame: Value) ScorePair
-{
-    return .{ .opening = opening, .endgame = endgame };
-}
+    const eg_knight_table: [64]Value =
+    .{
+        -58, -38, -13, -28, -31, -27, -63, -99,
+        -25,  -8, -25,  -2,  -9, -25, -24, -52,
+        -24, -20,  10,   9,  -1,  -9, -19, -41,
+        -17,   3,  22,  22,  22,  11,   8, -18,
+        -18,  -6,  16,  25,  16,  17,   4, -18,
+        -23,  -3,  -1,  15,  10,  -3, -20, -22,
+        -42, -20, -10,  -5,  -2, -20, -23, -44,
+        -29, -51, -23, -15, -22, -18, -50, -64,
+    };
 
-const pawn_table: HalfTable =
-.{
-    sp(   0,  90 ), sp(   0,  90 ), sp(   0,  90 ), sp(   0,  90 ),
-    sp(  10,  80 ), sp(  12,  80 ), sp(  20,  80 ), sp(  22,  80 ),
-    sp(   8,  60 ), sp(  10,  60 ), sp(  16,  60 ), sp(  18,  60 ),
-    sp(   6,  50 ), sp(   8,  50 ), sp(  14,  50 ), sp(  16,  50 ),
-    sp(   4,  40 ), sp(   6,  40 ), sp(  12,  40 ), sp(  14,  40 ),
-    sp(   2,  30 ), sp(   8,  30 ), sp(  10,  30 ), sp(  12,  30 ),
-    sp(   0,  20 ), sp(   0,  20 ), sp( -10,  20 ), sp( -10,  20 ),
-    sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ),
+    const mg_bishop_table: [64]Value =
+    .{
+        -29,   4, -82, -37, -25, -42,   7,  -8,
+        -26,  16, -18, -13,  30,  59,  18, -47,
+        -16,  37,  43,  40,  35,  50,  37,  -2,
+        -4,   5,  19,  50,  37,  37,   7,  -2,
+        -6,  13,  13,  26,  34,  12,  10,   4,
+         0,  15,  15,  15,  14,  27,  18,  10,
+         4,  15,  16,   0,   7,  21,  33,   1,
+        -33,  -3, -14, -21, -13, -12, -39, -21,
+    };
+
+    const eg_bishop_table: [64]Value =
+    .{
+        -14, -21, -11,  -8, -7,  -9, -17, -24,
+        -8,  -4,   7, -12, -3, -13,  -4, -14,
+        2,  -8,   0,  -1, -2,   6,   0,   4,
+        -3,   9,  12,   9, 14,  10,   3,   2,
+        -6,   3,  13,  19,  7,  10,  -3,  -9,
+        -12,  -3,   8,  10, 13,   3,  -7, -15,
+        -14, -18,  -7,  -1,  4,  -9, -15, -27,
+        -23,  -9, -23,  -5, -9, -16,  -5, -17,
+    };
+
+    const mg_rook_table: [64]Value =
+    .{
+        32,  42,  32,  51, 63,  9,  31,  43,
+        27,  32,  58,  62, 80, 67,  26,  44,
+        -5,  19,  26,  36, 17, 45,  61,  16,
+        -24, -11,   7,  26, 24, 35,  -8, -20,
+        -36, -26, -12,  -1,  9, -7,   6, -23,
+        -45, -25, -16, -17,  3,  0,  -5, -33,
+        -44, -16, -20,  -9, -1, 11,  -6, -71,
+        -19, -13,   1,  17, 16,  7, -37, -26,
+    };
+
+    const eg_rook_table: [64]Value =
+    .{
+        13, 10, 18, 15, 12,  12,   8,   5,
+        11, 13, 13, 11, -3,   3,   8,   3,
+        7,  7,  7,  5,  4,  -3,  -5,  -3,
+        4,  3, 13,  1,  2,   1,  -1,   2,
+        3,  5,  8,  4, -5,  -6,  -8, -11,
+        -4,  0, -5, -1, -7, -12,  -8, -16,
+        -6, -6,  0,  2, -9,  -9, -11,  -3,
+        -9,  2,  3, -1, -5, -13,   4, -20,
+    };
+
+    const mg_queen_table: [64]Value =
+    .{
+        -28,   0,  29,  12,  59,  44,  43,  45,
+        -24, -39,  -5,   1, -16,  57,  28,  54,
+        -13, -17,   7,   8,  29,  56,  47,  57,
+        -27, -27, -16, -16,  -1,  17,  -2,   1,
+        -9, -26,  -9, -10,  -2,  -4,   3,  -3,
+        -14,   2, -11,  -2,  -5,   2,  14,   5,
+        -35,  -8,  11,   2,   8,  15,  -3,   1,
+        -1, -18,  -9,  10, -15, -25, -31, -50,
+    };
+
+    const eg_queen_table: [64]Value =
+    .{
+        -9,  22,  22,  27,  27,  19,  10,  20,
+        -17,  20,  32,  41,  58,  25,  30,   0,
+        -20,   6,   9,  49,  47,  35,  19,   9,
+        3,  22,  24,  45,  57,  40,  57,  36,
+        -18,  28,  19,  47,  31,  34,  39,  23,
+        -16, -27,  15,   6,   9,  17,  10,   5,
+        -22, -23, -30, -16, -16, -23, -36, -32,
+        -33, -28, -22, -43,  -5, -32, -20, -41,
+    };
+
+    const mg_king_table: [64]Value =
+    .{
+        -65,  23,  16, -15, -56, -34,   2,  13,
+        29,  -1, -20,  -7,  -8,  -4, -38, -29,
+        -9,  24,   2, -16, -20,   6,  22, -22,
+        -17, -20, -12, -27, -30, -25, -14, -36,
+        -49,  -1, -27, -39, -46, -44, -33, -51,
+        -14, -14, -22, -46, -44, -30, -15, -27,
+        1,   7,  -8, -64, -43, -16,   9,   8,
+        -15,  36,  12, -54,   8, -28,  24,  14,
+    };
+
+    const eg_king_table: [64]Value =
+    .{
+        -74, -35, -18, -18, -11,  15,   4, -17,
+        -12,  17,  14,  17,  17,  38,  23,  11,
+        10,  17,  23,  15,  20,  45,  44,  13,
+        -8,  22,  24,  27,  26,  33,  26,   3,
+        -18,  -4,  21,  24,  27,  23,   9, -11,
+        -19,  -3,  11,  21,  23,  16,   7,  -9,
+        -27, -11,   4,  13,  14,   4,  -5, -17,
+        -53, -34, -21, -11, -28, -14, -24, -43
+    };
 };
-
-const knight_table: HalfTable =
-.{
-    sp( -15,  -15 ), sp(  -3,  -3 ), sp(  -3, -3 ), sp(  -3, -3 ),
-    sp( -10,  -10 ), sp(   3,   3 ), sp(  -2, -2 ), sp(   0,  0 ),
-    sp(  -5,   -5 ), sp(  10,  10 ), sp(  40, 40 ), sp(  55, 55 ),
-    sp(  -5,   -5 ), sp(  15,  15 ), sp(  40, 40 ), sp(  45, 45 ),
-    sp(  -5,   -5 ), sp(  10,  10 ), sp(  30, 30 ), sp(  40, 40 ),
-    sp(  -3,   -3 ), sp(  10,  10 ), sp(  40, 40 ), sp(  30, 30 ),
-    sp(  -1,   -1 ), sp(  -3,  -3 ), sp(  10, 10 ), sp(  10, 10 ),
-    sp( -10,  -10 ), sp(  -5,  -5 ), sp(  -2, -2 ), sp(  -2, -2 ),
-};
-
-const bishop_table: HalfTable =
-.{
-    sp( -20, -20 ), sp( -10,  -5 ), sp( -10,  -5 ), sp( -10,  -5 ),
-    sp( -10,   0 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ),
-    sp( -10,   0 ), sp(   0,  10 ), sp(   5,  15 ), sp(  10,  20 ),
-    sp( -10,   0 ), sp(   5,  10 ), sp(   5,  15 ), sp(  10,  20 ),
-    sp( -10,   0 ), sp(   0,  10 ), sp(  10,  15 ), sp(  10,  20 ),
-    sp( -10,   0 ), sp(  10,  10 ), sp(  10,  15 ), sp(  10,  20 ),
-    sp( -10,   0 ), sp(   5,   0 ), sp(   0,   0 ), sp(   0,  20 ),
-    sp( -20, -10 ), sp( -10,  -5 ), sp( -10,  -5 ), sp( -10,  -5 ),
-};
-
-const rook_table: HalfTable =
-.{
-    sp(   1,   0 ), sp(   2,   2 ), sp(   2,   2 ), sp(   2,   2 ),
-    sp(   5,  10 ), sp(  10,  10 ), sp(  10,  10 ), sp(  10,  10 ),
-    sp(  -5,   0 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ),
-    sp(  -5,   0 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ),
-    sp(  -5,   0 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ),
-    sp(  -5,   0 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,   0 ),
-    sp(  -5,   0 ), sp(   0,   5 ), sp(   0,   5 ), sp(   0,   0 ),
-    sp(   0,   0 ), sp(   0,   0 ), sp(   3,   0 ), sp(   5,   0 ),
-};
-
-const queen_table: HalfTable =
-.{
-    sp( -20, -20 ), sp( -10, -10 ), sp( -10, -10 ), sp(  -5, -5 ),
-    sp( -10, -10 ), sp(   0,   0 ), sp(   0,   0 ), sp(   0,  0 ),
-    sp( -10, -10 ), sp(   0,   0 ), sp(   5,   5 ), sp(   5,  5 ),
-    sp(  -5,  -5 ), sp(   0,   0 ), sp(   5,   8 ), sp(   5, 12 ),
-    sp(   0,   0 ), sp(   0,   0 ), sp(   5,   8 ), sp(   5, 12 ),
-    sp( -10, -10 ), sp(   5,   5 ), sp(   5,   5 ), sp(   5,  5 ),
-    sp( -10, -10 ), sp(   0,   0 ), sp(   5,   5 ), sp(   0,  0 ),
-    sp( -20, -20 ), sp( -10, -10 ), sp( -10, -10 ), sp(  -5, -5 ),
-};
-
-const king_table: HalfTable =
-.{
-    sp( -80, -20 ), sp( -70, -10 ), sp( -70, -10 ), sp( -70, -10 ),
-    sp( -60,  -5 ), sp( -60,   0 ), sp( -60,   5 ), sp( -70,  30 ),
-    sp( -40, -10 ), sp( -50,  -5 ), sp( -50,  20 ), sp( -60,  45 ),
-    sp( -30, -15 ), sp( -40, -10 ), sp( -40,  35 ), sp( -50,  45 ),
-    sp( -20, -20 ), sp( -30, -15 ), sp( -30,  30 ), sp( -40,  40 ),
-    sp( -10, -25 ), sp( -20, -20 ), sp( -20,  20 ), sp( -20,  25 ),
-    sp(  15, -30 ), sp(  20, -25 ), sp(  -5,   0 ), sp(  -5,   0 ),
-    sp(  20, -50 ), sp(  30, -30 ), sp(  10, -30 ), sp( -10, -30 ),
-};
-
-/// Helper table (white) to convert squares to HalfTable indexes.
-const white_indexer: [64]u8 = blk:
-{
-    const us = Color.WHITE;
-    var result: [64]u8 = undefined;
-    for (Square.all) |sq|
-    {
-        const r = sq.rank();
-        const f = sq.file();
-        const rank = if (us.e == .white) 7 - r else r;
-        const file = if (f > 3) 7 - f else f;
-        const idx: usize = @as(usize, rank) * 4 + file;
-        result[sq.u] = idx;
-    }
-    break :blk result;
-};
-
-/// Helper table (black) to convert squares to HalfTable indexes.
-const black_indexer: [64]u8 = blk:
-{
-    const us = Color.BLACK;
-    var result: [64]u8 = undefined;
-    for (Square.all) |sq|
-    {
-        const r = sq.rank();
-        const f = sq.file();
-        const rank = if (us.e == .white) 7 - r else r;
-        const file = if (f > 3) 7 - f else f;
-        const idx: usize = @as(usize, rank) * 4 + file;
-        result[sq.u] = idx;
-    }
-    break :blk result;
-};
-
-/// Values should be in 1...100 indicating a percentage.\
-/// i16 is chosen to avoid typecasting during calculations.
-pub const Weight = enum(Value)
-{
-    ToMove = 20,
-
-    // Territory: i16,
-    // OpenPosition: i16, // engines in general are not the strongest (or at least very boring) in 'blocked' positions.
-
-    // PassedPawn: i16,
-    // ProtectedPawn: i16,
-    // BackwardPawn: i16,
-    // IsolatedPawn: i16,
-    // DoubledPawn: i16,
-    // PawnIslands: i16,
-
-    // KnightProtected: i16,
-    // KnightMobility: i16,
-
-    // BishopProtected: i16,
-    // BishopMobility: i16,
-    // BishopPair: i16,
-
-    RooksConnected = 20,
-
-    // QueenMobility: i16,
-
-    KingSafety = 80, // protected by our pieces
-    // KingAttack: i16, // our pieces close to enemy king or sliders pointing at it indirectly.
-    // CastlingAvailability: i16,
-
-    fn value(comptime self: Weight) Value
-    {
-        return @intFromEnum(self);
-    }
-};
-
-
-
-
-
-
-
-
-
-pub fn matter(pos: *const Position) Value
-{
-    return
-        PieceType.PAWN.material() * @popCount(pos.pawns(Color.WHITE)) +
-        PieceType.KNIGHT.material() * @popCount(pos.knights(Color.WHITE)) +
-        PieceType.BISHOP.material() * @popCount(pos.bishops(Color.WHITE)) +
-        PieceType.ROOK.material() * @popCount(pos.rooks(Color.WHITE)) +
-        PieceType.QUEEN.material() * @popCount(pos.queens(Color.WHITE));
-}

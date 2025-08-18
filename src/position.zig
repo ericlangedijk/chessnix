@@ -1,5 +1,12 @@
 // zig fmt: off
 
+// TODO: maybe staged movegeneration
+// * TT move
+// * Winning captures + checks
+// * Killer moves
+// * Quiet moves.
+// * Losing captures + bad moves (often last or skipped).
+
 const std = @import("std");
 // const builtin = @import("builtin");
 const types = @import("types.zig");
@@ -30,6 +37,7 @@ const Move = types.Move;
 const MoveType = types.MoveType;
 const MoveInfo = types.MoveInfo;
 const CastleType = types.CastleType;
+const GamePhase = types.GamePhase;
 
 pub const fen_classic_startpos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -867,7 +875,10 @@ pub const Position = struct
         // Pawns.
         {
             const their_pawns = self.pawns(them);
-            att |= (pawns_shift(their_pawns, them, .northeast) | pawns_shift(their_pawns, them, .northwest));
+            if (their_pawns > 0)
+            {
+                att |= (pawns_shift(their_pawns, them, .northeast) | pawns_shift(their_pawns, them, .northwest));
+            }
         }
 
         // Knights.
