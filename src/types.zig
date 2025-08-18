@@ -836,6 +836,7 @@ const piece_material_values: [15]Value =
     material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
 
+// TODO: centralize erors.
 /// Parsing errors for uci
 pub const ParseError = error
 {
