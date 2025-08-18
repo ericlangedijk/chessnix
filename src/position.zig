@@ -1573,7 +1573,6 @@ pub const Position = struct
         }
         try lib.out.print("\n", .{});
     }
-
 };
 
 /// 4 bits comptime struct for generating moves.
