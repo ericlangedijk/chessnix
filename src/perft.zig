@@ -6,7 +6,6 @@ const data = @import("data.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
-const notation = @import("notation.zig");
 
 const wtf = lib.wtf;
 

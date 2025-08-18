@@ -26,19 +26,17 @@ pub const PawnShift = enum(u2)
     up, northwest, northeast,
 };
 
-/// TODO: move to position.zig
-pub fn king_castle_to_square(us: Color, dir: CastleType) Square
-{
-    const squares: [2][2]Square = .{ .{.G1, .C1}, .{.G8, .C8} };
-    return squares[us.u][dir.idx()];
-}
+// pub fn king_castle_to_square(us: Color, dir: CastleType) Square
+// {
+//     const squares: [2][2]Square = .{ .{.G1, .C1}, .{.G8, .C8} };
+//     return squares[us.u][dir.u];
+// }
 
-/// TODO: move to position.zig
-pub fn rook_castle_to_square(us: Color, dir: CastleType) Square
-{
-    const squares: [2][2]Square = .{ .{.F1, .D1}, .{.F8, .D8} };
-    return squares[us.u][dir.idx()];
-}
+// pub fn rook_castle_to_square(us: Color, dir: CastleType) Square
+// {
+//     const squares: [2][2]Square = .{ .{.F1, .D1}, .{.F8, .D8} };
+//     return squares[us.u][dir.u];
+// }
 
 pub fn relative_rank_7_bitboard(us: Color) u64
 {
@@ -50,21 +48,10 @@ pub fn relative_rank_8_bitboard(us: Color) u64
     return if (us.e == .white) bitboards.bb_rank_8 else bitboards.bb_rank_1;
 }
 
-
 pub fn relative_rank_3_bitboard(us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
 }
-
-// pub fn relative_south_east(comptime us: Color) i7
-// {
-//     return if (us.e == .white) -7 else 7;
-// }
-
-// pub fn relative_south_west(comptime us: Color) i7
-// {
-//     return if (us.e == .white) -9 else 9;
-// }
 
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64
 {
@@ -198,18 +185,17 @@ pub fn pop_square(bitboard: *u64) Square
 }
 
 /// I cannot make this function as fast as a manual loop.
-// pub fn pop(bitboard: *u64) ?Square
-// {
-//     if (bitboard.* == 0) return null;
-//     defer bitboard.* &= (bitboard.* - 1);
-//     return Square.from(@truncate(@ctz(bitboard.*)));
-// }
+pub fn pop(bitboard: *u64) ?Square
+{
+    if (bitboard.* == 0) return null;
+    defer bitboard.* &= (bitboard.* - 1);
+    return Square.from(@truncate(@ctz(bitboard.*)));
+}
 
 pub fn clear_square(bitboard: *u64, sq: Square) void
 {
     bitboard.* &= ~sq.to_bitboard();
 }
-
 
 /// Unsafe
 pub fn lsb_u64(u: u64) u6
@@ -229,7 +215,6 @@ pub fn test_bit_64(u: u64, bit: u6) bool
     const one: u64 = @as(u64, 1) << bit;
     return u & one != 0;
 }
-
 
 pub fn movenumber_to_ply(movenr: u16, to_move: Color) u16
 {
@@ -251,7 +236,6 @@ pub fn ptr_sub(T: type, ptr: *T, comptime delta: comptime_int) *T
     return @ptrFromInt(@intFromPtr(ptr) - @sizeOf(T) * delta);
 }
 
-/// ### Utility function.
 /// Calculates something per second.
 pub fn nps(count: usize, elapsed_nanoseconds: u64) u64
 {
@@ -262,6 +246,7 @@ pub fn nps(count: usize, elapsed_nanoseconds: u64) u64
     return @intFromFloat(s);
 }
 
+/// Calculates something in millions per second.
 pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64
 {
     if (elapsed_nanoseconds == 0) return 0;
@@ -271,28 +256,22 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64
     return s;
 }
 
-
 pub fn start_timer() std.time.Timer
 {
     return std.time.Timer.start() catch @panic("timer issue");
 }
 
+pub fn float(i: Value) f32
+{
+    return @floatFromInt(i);
+}
 
+pub fn int(f: Float) Value
+{
+    return @intFromFloat(f);
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/// DEBUG
 pub fn print_bitboard(bb: u64) void
 {
     var y: u3 = 7;
@@ -316,6 +295,7 @@ pub fn print_bitboard(bb: u64) void
 
 }
 
+/// DEBUG
 pub fn print_bits(u: u8) void
 {
     const x: std.bit_set.IntegerBitSet(8) = .{.mask = u};
@@ -326,12 +306,3 @@ pub fn print_bits(u: u8) void
     std.debug.print("\n", .{});
 }
 
-pub fn float(i: Value) f32
-{
-    return @floatFromInt(i);
-}
-
-pub fn int(f: Float) Value
-{
-    return @intFromFloat(f);
-}

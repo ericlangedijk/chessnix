@@ -47,7 +47,7 @@ pub fn initialize() void
 
 var passed_pawn_masks_white: [64]u64 = @splat(0);
 var passed_pawn_masks_black: [64]u64 = @splat(0);
-var ep_masks: [64]u64 =  @splat(0); // TODO: not initialized / used.
+var ep_masks: [64]u64 =  @splat(0);
 
 const ptr_passed_pawn_masks_white: [*]const u64 = &passed_pawn_masks_white;
 const ptr_passed_pawn_masks_black: [*]const u64 = &passed_pawn_masks_black;

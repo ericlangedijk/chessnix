@@ -1,5 +1,7 @@
 // zig fmt: off
 
+// TODO: maybe comptime create FEN strings here.
+
 const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");

@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
+const data = @import("data.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
@@ -36,7 +37,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
     defer ctx.galloc.free(file_buffer);
 
     var st: StateInfo = undefined;
-    var pos: Position = .create();
+    var pos: Position = .empty; //.create();
 
     // Read line by line
     var index: usize = 0;
@@ -80,7 +81,7 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
     var total: u64 = 0;
     var totaltime: u64 = 0;
     var st: StateInfo = undefined;
-    var pos: Position = .create();
+    var pos: Position = .empty; //create();
     var timer = funcs.start_timer();
 
     outer: for (testpositions, 0..) |str, index|
@@ -168,7 +169,7 @@ pub fn bench() !void
     var totaltime: u64 = 0;
 
     var st: StateInfo = undefined;
-    var pos = Position.create();
+    var pos: Position = .empty; //.create();
 
     inline for (&testruns) |*testrun|
     {
@@ -398,3 +399,4 @@ const testpositions: [134][]const u8 =
     "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 ;D1 44 ;D2 1486 ;D3 62379 ;D4 2103487 ;D5  89941194", // Extra: https://www.chessprogramming.org/Perft_Results
     "R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1 ;D1 218" // Extra: Theoretical maximum number of moves
 };
+

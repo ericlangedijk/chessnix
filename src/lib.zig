@@ -15,13 +15,12 @@ pub const is_paranoid: bool = if (is_debug) true else false;
 /// The global memory.
 pub const ctx: *const MemoryContext = &private_context;
 
-// io and terminal
-//pub const in: *const std.fs.File.Reader = &private_in;
-//pub const out: *const std.fs.File.Writer = &private_out;
-
-var private_context: MemoryContext = undefined;
+// IO.
 pub var in: std.fs.File.Reader = undefined;
 pub var out: std.fs.File.Writer = undefined;
+
+// Internal.
+var private_context: MemoryContext = undefined;
 var private_is_tty: bool = false;
 
 pub fn initialize() void

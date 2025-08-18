@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const bitboards = @import("bitboards.zig");
+const position = @import("position.zig");
 const funcs = @import("funcs.zig");
 const lib = @import("lib.zig");
 
@@ -69,26 +70,30 @@ pub const Direction = enum(u3)
     }
 };
 
-pub const CastleType = enum(u1)
+pub const CastleType = packed union
 {
-    pub const all: [2]CastleType = .{.short, .long };
+    pub const all: [2]CastleType = .{ SHORT, LONG };
 
-    short, long,
+    pub const SHORT: CastleType = .{ .e = .short };
+    pub const LONG: CastleType = .{ .e = .long };
 
-    pub fn idx(self: CastleType) usize
-    {
-        return @intFromEnum(self);
-    }
+    pub const Enum = enum(u1) { short, long };
+
+    /// The enum value
+    e: Enum,
+    /// The numeric value
+    u: u1,
 };
+
 
 pub const Color = packed union
 {
-    pub const all: [2]Color = .{ Color.WHITE, Color.BLACK };
+    pub const all: [2]Color = .{ WHITE, BLACK };
 
     pub const WHITE: Color = .{ .e = .white };
     pub const BLACK: Color = .{ .e = .black };
 
-    const Enum = enum(u1) { white, black };
+    pub const Enum = enum(u1) { white, black };
 
     /// The enum value
     e: Enum,
@@ -133,7 +138,6 @@ pub const Square = packed union
         A1, B1, C1, D1, E1, F1, G1, H1,
     };
     pub const zero: Square = A1;
-    pub const no_ep: Square = A1;
 
     pub const A1: Square = .{ .u = 0 };
     pub const B1: Square = .{ .u = 1 };
@@ -373,13 +377,12 @@ pub const Square = packed union
         return @tagName(self.e);
     }
 
-    /// TODO: catch errors?
+    /// TODO: catch errors or garbage in garbage out?
     pub fn from_string(str: []const u8) Square
     {
-        //return if (std.meta.stringToEnum(Enum, str)) |e| .{ .e = e } else Square.A1;
-
-        const v: u6 = @truncate((str[1] -| '1') * 8 + (str[0] -| 'a'));
-        //assert(v < 64);
+        if (str.len < 2) return Square.A1;
+        // This math can never crash
+        const v: u6 = @truncate((str[1] -| '1') *% 8 +| (str[0] -| 'a'));
         return .{ .u = v };
     }
 
@@ -643,18 +646,18 @@ pub const Piece = packed union
     {
         return switch(char)
         {
-            'P' => Piece.W_PAWN,
-            'N' => Piece.W_KNIGHT,
-            'B' => Piece.W_BISHOP,
-            'R' => Piece.W_ROOK,
-            'Q' => Piece.W_QUEEN,
-            'K' => Piece.W_KING,
-            'p' => Piece.B_PAWN,
-            'n' => Piece.B_KNIGHT,
-            'b' => Piece.B_BISHOP,
-            'r' => Piece.B_ROOK,
-            'q' => Piece.B_QUEEN,
-            'k' => Piece.B_KING,
+            'P' => W_PAWN,
+            'N' => W_KNIGHT,
+            'B' => W_BISHOP,
+            'R' => W_ROOK,
+            'Q' => W_QUEEN,
+            'K' => W_KING,
+            'p' => B_PAWN,
+            'n' => B_KNIGHT,
+            'b' => B_BISHOP,
+            'r' => B_ROOK,
+            'q' => B_QUEEN,
+            'k' => B_KING,
             else => FenError.InvalidPiece,
         };
     }
@@ -669,28 +672,21 @@ pub const MoveType = enum (u2)
     castle = 3,
 };
 
-pub const Move = packed struct(u16)
+/// Quite a struct for 2 bits.
+pub const MoveInfo = packed union
 {
-    pub const empty: Move = .{ .from = .zero, .to = .zero, .prom = .knight, .movetype = .normal };
+    pub const empty: MoveInfo = .{ .u = 0 };
 
-    /// Encoded promotion piece
     pub const Prom = enum(u2)
     {
-        pub const no_prom: Prom = .knight; // we do not have more bits :)
-
         knight,
         bishop,
         rook,
         queen,
 
-        pub fn bitcast(self: Prom) u2
-        {
-            return @intFromEnum(self);
-        }
-
         pub fn to_piecetype(self: Prom) PieceType
         {
-            const v: u3 = self.bitcast();
+            const v: u3 = @intFromEnum(self);
             return PieceType{ .u = v + 2};
         }
 
@@ -701,7 +697,6 @@ pub const Move = packed struct(u16)
 
         pub fn from_char(ch: u8) Prom
         {
-            //return "nbrq"[@enumFromInt(ch)];
             return switch (ch)
             {
                 'n' => .knight,
@@ -716,47 +711,68 @@ pub const Move = packed struct(u16)
         {
             return "nbrq"[@intFromEnum(self)];
         }
-
     };
 
-    /// 6 bits
-    from: Square,
-    /// 6 bits
-    to: Square,
-    /// 2 bits
+    /// In case of a promotion.
     prom: Prom,
-    /// 2 bits
-    movetype: MoveType,
+    /// In case of castling,
+    castletype: CastleType,
+    /// Raw value.
+    u: u2,
+};
+
+pub const Move = packed struct(u16)
+{
+    pub const empty: Move = .{};
+
+    /// 6 bits.
+    from: Square = Square.zero,
+    /// 6 bits.
+    to: Square = Square.zero,
+    /// 2 bits.
+    type: MoveType = .normal,
+    /// 2 bits.
+    info: MoveInfo = .empty,
 
     pub fn create(from: Square, to: Square) Move
     {
-        return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .normal};
+        return
+        .{
+            .from = from,
+            .to = to,
+        };
     }
 
-    pub fn create_promotion(from: Square, to: Square, prom: Prom) Move
+    pub fn create_promotion(from: Square, to: Square, prom: MoveInfo.Prom) Move
     {
-        return .{ .from = from, .to = to, .prom = prom, .movetype = .promotion};
+        return
+        .{
+            .from = from,
+            .to = to,
+            .type = .promotion,
+            .info = .{ .prom = prom },
+        };
     }
 
     pub fn create_enpassant(from: Square, to: Square) Move
     {
-        return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .enpassant};
+        return
+        .{
+            .from = from,
+            .to = to,
+            .type = .enpassant,
+        };
     }
 
-    pub fn create_castle(from: Square, to: Square) Move
+    pub fn create_castle(from: Square, to: Square, castletype: CastleType) Move
     {
-        return .{ .from = from, .to = to, .prom = .no_prom, .movetype = .castle};
-    }
-
-    /// Only valid if castling
-    pub fn castle_type(self: Move) CastleType
-    {
-        return if (self.to.u > self.from.u) .short else .long;
-    }
-
-    pub fn promotion_piece(self: Move) PieceType
-    {
-        return self.prom.to_piecetype();
+        return
+        .{
+            .from = from,
+            .to = to,
+            .type = .castle,
+            .info = .{ .castletype = castletype },
+        };
     }
 
     pub fn is_empty(self: Move) bool
@@ -771,51 +787,27 @@ pub const Move = packed struct(u16)
         const from: Square = self.from;
         var to: Square = self.to;
 
-        if (self.movetype == .castle)
+        if (self.type == .castle)
         {
-            const castletype: CastleType = self.castle_type();
-            const color: Color = if (to.rank() == 0) Color.WHITE else Color.BLACK;
-            // Change target square. We decode castling as "king takes rook"
-            to = funcs.king_castle_to_square(color, castletype); // TODO: maybe when completing Chess960 we do *not* need to do this. Check the UCI protocol.
+            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+            const castletype: CastleType = self.info.castletype;
+            // Change target square. We decode castling as "king takes rook".
+            to = position.king_castle_destination_squares[color.u][castletype.u];
         }
 
         result.appendSliceAssumeCapacity(@tagName(from.e));
         result.appendSliceAssumeCapacity(@tagName(to.e));
 
-        if (self.movetype == .promotion)
+        if (self.type == .promotion)
         {
-            const ch: u8 = self.prom.to_char();
+            const ch: u8 = self.info.prom.to_char();
             result.appendAssumeCapacity(ch);
         }
         return result;
     }
-
-    pub fn format(self: Move, comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void
-    //pub fn format(self: Move, writer: anytype) !void
-    {
-        const from: Square = self.from;
-        var to: Square = self.to;
-        if (self.movetype == .castle)
-        {
-            const castletype: CastleType = self.castle_type();
-            const color: Color = if (self.to.rank() == 0) Color.WHITE else Color.BLACK;
-            // Change target square. We decode castling as "king takes rook"
-            // TODO: maybe when completing Chess960 we do *not* need to do this. Check the UCI protocol.
-            to = funcs.king_castle_to_square(color, castletype);
-        }
-
-        try writer.writeAll(@tagName(from.e));
-        try writer.writeAll(@tagName(to.e));
-        //try writer.print("{s}", .{ @tagName(from.e) });
-        //try writer.print("{s}", .{ @tagName(to.e) });
-        if (self.movetype == .promotion)
-        {
-            try writer.print("{u}", . { self.prom.to_char() } );
-        }
-    }
-
 };
 
+pub const max_game_length: usize = 1024;
 pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128;
 pub const max_threads: u16 = 32;
@@ -865,7 +857,7 @@ const piece_material_values: [15]Value =
 /// Parsing errors for uci
 pub const ParseError = error
 {
-    Invalid,
+    //Invalid,
     IllegalMove,
 };
 
