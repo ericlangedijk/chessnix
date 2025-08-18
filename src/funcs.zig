@@ -85,8 +85,8 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
             return switch(shift)
             {
                 .up        => to.add(8),
-                .northwest => to.add(7),
-                .northeast => to.add(9),
+                .northwest => to.add(7), // southeast
+                .northeast => to.add(9), // southwest
             };
         }
     }
