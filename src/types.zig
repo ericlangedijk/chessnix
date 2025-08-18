@@ -36,11 +36,6 @@ pub const Direction = enum(u3)
     south_east,
     south_west,
 
-    pub fn to_i8(self: Direction) i8
-    {
-        return @intFromEnum(self);
-    }
-
     pub fn relative(self: Direction, comptime color: Color) Direction
     {
         if (color.e == .white) return self;
@@ -533,11 +528,6 @@ pub const Piece = packed union
         return piece_material_values[self.u];
     }
 
-    // pub fn bitcast(self: Piece) u4
-    // {
-    //     return @bitCast(self);
-    // }
-
     pub fn from_usize(u: usize) Piece
     {
         if (comptime lib.is_paranoid) assert(u <= 14 and u != 7 and u != 8);
@@ -568,15 +558,7 @@ pub const Piece = packed union
     pub fn color(self: Piece) Color
     {
         return .{ .u = @truncate(self.u >> 3) };
-        //if (self.u > 8) return .{ .e = .black } else .{ .e = .white }; // TODO: optimize??
     }
-
-    // pub fn get_piece_type(self: Piece) PieceType
-    // {
-    //     // Filter out the color
-    //     const value: u3 = @truncate(self.u & 0b111);
-    //     return .{ .u = value };
-    // }
 
     pub fn opp(self: Piece) Piece
     {
