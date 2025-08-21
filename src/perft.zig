@@ -8,6 +8,7 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 
 const wtf = lib.wtf;
+const io = lib.io;
 
 const Color = types.Color;
 const Square = types.Square;
@@ -26,7 +27,7 @@ pub fn run(pos: *Position, depth: u8) void
         .black => do_run(true, true, Color.BLACK, depth, pos),
     };
     const time = t.lap();
-    lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{depth, nodes, std.fmt.fmtDuration(time), funcs.nps(nodes, time)});
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)}) catch wtf();
     // if (pos.state.key != 0xabb725b727afbcba) lib.print("WTF.......", .{});
 }
 
@@ -40,7 +41,7 @@ pub fn qrun(pos: *Position, depth: u8) void
         .black => do_run(false, true, Color.BLACK, depth, pos),
     };
     const time = t.lap();
-    lib.print("perft {}: nodes: {}, time {}, nps {}\n", .{depth, nodes, std.fmt.fmtDuration(time), funcs.nps(nodes, time)});
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)}) catch wtf();
 }
 
 /// No output. Just return node count.
@@ -95,7 +96,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
 
         if (output and is_root)
         {
-            lib.print("{s}: {}\n", .{ m.to_string().slice(), count });
+            io.print("{s}: {}\n", .{ m.to_string().slice(), count }) catch wtf();
         }
     }
     return nodes;

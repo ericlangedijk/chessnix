@@ -39,7 +39,8 @@ pub fn finalize() void
 
 pub fn set_startpos() !void
 {
-    try set_position(position.fen_classic_startpos, null);
+   pos.set_startpos(&history[0]);
+   //try set_position(position.fen_classic_startpos, null);
 }
 
 /// Sets the position from fen + moves.

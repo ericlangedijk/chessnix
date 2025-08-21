@@ -45,6 +45,8 @@ pub fn initialize() void
     }
 }
 
+// isolated_pawn_masks_white
+
 var passed_pawn_masks_white: [64]u64 = @splat(0);
 var passed_pawn_masks_black: [64]u64 = @splat(0);
 var ep_masks: [64]u64 =  @splat(0);

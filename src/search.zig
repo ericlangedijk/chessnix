@@ -21,8 +21,8 @@ const wtf = lib.wtf;
 const max_search_depth: u8 = types.max_search_depth;
 const max_threads: u16 = types.max_threads;
 
-const PV = std.BoundedArray(Move, max_search_depth);
-const Nodes = std.BoundedArray(Node, max_search_depth);
+const PV = lib.BoundedArray(Move, max_search_depth);
+const Nodes = lib.BoundedArray(Node, max_search_depth);
 
 pub const SearchManager = struct
 {
@@ -61,14 +61,14 @@ pub const SearchManager = struct
         // std.Thread.spawn
         // std.Thread.detach
         _ = self;
-        try lib.out.print("WE SHOULD START THINKING\n", .{});
+        try lib.io.print("WE SHOULD START THINKING\n", .{});
     }
 
     pub fn stop(self: *SearchManager) !void
     {
         // we should have some atomic value to stop the thread(s)
         _ = self;
-        try lib.out.print("WE SHOULD STTOP THINKING\n", .{});
+        try lib.io.print("WE SHOULD STTOP THINKING\n", .{});
     }
 };
 

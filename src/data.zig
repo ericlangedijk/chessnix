@@ -26,8 +26,10 @@ pub fn initialize() void
 
     for (0..8) |b|
     {
+        const _1: u8 = 1;
+
         const bitpos: u3 = @truncate(b);
-        for (0..255) |o|
+        for (0..256) |o|
         {
             const occ: u8 = @truncate(o);
             var attackmask: u8 = 0;
@@ -35,12 +37,13 @@ pub fn initialize() void
             // Scan bits forwards
             if (bitpos < 7)
             {
-                for (bitpos + 1..8) |bit|
+                var i: u3 = bitpos;
+                while (true)
                 {
-                    const i: u3 = @truncate(bit);
-                    const mask: u8 = @as(u8, 1) << i;
+                    i += 1;
+                    const mask: u8 = _1 << i;
                     attackmask |= mask;
-                    if (occ & mask != 0) break; // occupied
+                    if (i == 7 or occ & mask != 0) break; // border or occupied
                 }
             }
             // Scan bits backwards.
@@ -50,10 +53,9 @@ pub fn initialize() void
                 while (true)
                 {
                     i -= 1;
-                    const mask: u8 = @as(u8, 1) << i;
+                    const mask: u8 = _1 << i;
                     attackmask |= mask;
-                    if (i == 0) break;
-                    if (occ & mask != 0) break;  // occupied
+                    if (i == 0 or occ & mask != 0) break; // border or occupied
                 }
             }
 

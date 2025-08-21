@@ -57,7 +57,7 @@ pub fn evaluate(pos: *const Position, comptime us: Color) Value
 
     var score: Value = 0;
 
-    if (us.e == pos.to_move.e) score += 20;
+    if (us.e == pos.to_move.e) score += 20; // TODO: always?
 
     score += eval_material(&ep, us);
     score -= eval_material(&ep, them);
@@ -104,16 +104,13 @@ fn eval_pawns(e: *const Params, comptime us: Color) Value
 
         // Punish doubled pawns.
         {
-            var bb_file = bitboards.file_bitboards[sq.file()] & e.pos.pawns(us);
-            bb_file &= ~sq.to_bitboard();
-            if (@popCount(bb_file) > 0)
+            const bb_file = bitboards.file_bitboards[sq.file()] & e.pos.pawns(us);
+            if (@popCount(bb_file) > 1)
             {
                 score -= 10;
             }
         }
     }
-
-
     return score;
 }
 
@@ -129,19 +126,20 @@ fn eval_knights(e: *const Params, comptime us: Color) Value
         // Piece on square value.
         s += pc_sq(us, PieceType.KNIGHT, sq, e.non_pawn_material);
 
-        // Reward support by a pawn.
+        // Reward knight is supported by a pawn.
+        if (funcs.is_supported_by_pawn(e.pos, us, sq))
         {
-            const v: Value = if (funcs.is_supported_by_pawn(e.pos, us, sq)) 20 else 0;
-            s += v;
+            s += 20;
         }
 
+        // Reward if never attack possible by pawn
+        // Reward if never attack possible by bishop
+
         // Mobility
-        {
-            const attacks: u64 = data.get_knight_attacks(sq) & ~e.pos.by_color(us);
-            const v = @popCount(attacks);
-            s += v;
-        }
+        const attacks: u64 = data.get_knight_attacks(sq) & ~e.pos.by_color(us);
+        s += @popCount(attacks);
     }
+
     return s;
 }
 
@@ -150,10 +148,9 @@ fn eval_bishops(e: *const Params, comptime us: Color) Value
     var s: Value = 0;
     const bb_bishops = e.pos.bishops(us);
     var bb = bb_bishops;
-
     while (bb != 0)
     {
-        const sq: Square  = funcs.pop_square(&bb);
+        const sq: Square = funcs.pop_square(&bb);
 
         // Piece on square value.
         s += pc_sq(us, PieceType.BISHOP, sq, e.non_pawn_material);
@@ -167,12 +164,10 @@ fn eval_bishops(e: *const Params, comptime us: Color) Value
     }
 
     // Reward bishop pair.
+    const bishop_pair = @popCount(bb_bishops & bitboards.bb_black_squares) + @popCount(bb_bishops & bitboards.bb_white_squares);
+    if (bishop_pair >= 2)
     {
-        const v = @popCount(bb_bishops & bitboards.bb_black_squares) + @popCount(bb_bishops & bitboards.bb_white_squares);
-        if (v >= 2)
-        {
-            s += 20;
-        }
+        s += 20;
     }
     return s;
 }
@@ -203,6 +198,8 @@ fn eval_rooks(e: *const Params, comptime us: Color) Value
         {
             s += 20;
         }
+
+        // Reward rook on seventh if there are enemy pawns or king cutoff.
     }
     return s;
 }
@@ -300,10 +297,10 @@ pub fn see(pos: *const Position, m: Move) bool
         if (bb != 0)
         {
             depth += 1;
-            gain[depth] = PieceType.BISHOP.value() - gain[depth - 1];
+            gain[depth] = PieceType.KNIGHT.value() - gain[depth - 1];
             if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight
-            attackers |= data.get_bishop_attacks(to_sq, occupation) & queens_or_rooks; // reveal next straight attacker.
+            //attackers |= data.get_knight_attacks(to_sq, occupation) & queens_or_rooks; // reveal next straight attacker.
             // Note: a knight move cannot reveal more sliding attackers to the same square.
             continue;
         }
@@ -348,15 +345,17 @@ pub fn see(pos: *const Position, m: Move) bool
         bb = attackers & pos.kings(side);
         if (bb != 0)
         {
-            // When the king captures and there are still opponent attackers, we return a flipped result.
-            // Return true if there are zero attacks to our king left.
-            funcs.clear_square(&occupation, funcs.first_square(bb));
-            bb = pos.get_attackers_to_for_occupation(to_sq, occupation) & occupation & pos.by_side(side.opp());
-            return switch (us.e == side.e)
-            {
-                false => bb == 0,
-                true => bb != 0,
-            };
+            break;
+
+            // // When the king captures and there are still opponent attackers, we return a flipped result.
+            // // Return true if there are zero attacks to our king left.
+            // funcs.clear_square(&occupation, funcs.first_square(bb));
+            // bb = pos.get_attackers_to_for_occupation(to_sq, occupation) & occupation & pos.by_side(side.opp());
+            // return switch (us.e == side.e)
+            // {
+            //     false => bb == 0,
+            //     true => bb != 0,
+            // };
         }
 
         break;

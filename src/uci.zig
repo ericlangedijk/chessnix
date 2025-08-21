@@ -15,6 +15,7 @@ const Position = position.Position;
 const Tokenizer = std.mem.TokenIterator(u8, .scalar);
 
 const ctx = lib.ctx;
+const io = lib.io;
 
 pub fn run() void
 {
@@ -22,42 +23,36 @@ pub fn run() void
     uci_loop() catch |err|
     {
         std.debug.print("ERROR: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
-        _ = lib.in.readByte() catch {};
+        //_ = lib.in.readByte() catch {};
     };
 }
 
 fn uci_loop() !void
 {
-    const in = lib.in;
-    const out = lib.out;
-    const is_tty = lib.is_tty();
-
     try engine.initialize();
     defer engine.finalize();
 
+    const is_tty = lib.is_tty();
+
     if (is_tty)
     {
-        try out.print("chessnix {s} by eric\n", .{ lib.version });
+        try io.print("chessnix {s} by eric\n", .{ lib.version });
     }
-
-    var buffer: [4096]u8 = @splat(0);
 
     command_loop: while (true)
     {
-        const line = try in.readUntilDelimiter(&buffer, '\n');
-        const input: []const u8 = std.mem.trim(u8, line, "\r");
-        if (input.len == 0) continue;
+        const input = try io.readline() orelse continue;
         var tokenizer: Tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :command_loop;
 
         // Uci commands.
         if (eql(cmd, "uci"))
         {
-            try out.print("id chessnix {s}\nauthor eric\nuciok\n", .{ lib.version });
+            try io.print("id chessnix {s}\nauthor eric\nuciok\n", .{ lib.version });
         }
         else if (eql(cmd, "isready"))
         {
-            try out.print("readyok\n", .{});
+            try io.print("readyok\n", .{});
         }
         else if (eql(cmd, "ucinewgame"))
         {
@@ -66,7 +61,7 @@ fn uci_loop() !void
         else if (eql(cmd, "go"))
         {
             const go: Go = parse_go(&tokenizer) catch continue :command_loop;
-            try lib.out.print("{any}\n", .{ go });
+            try io.print("{any}\n", .{ go });
             try engine.start();
             // Each go command must be eventually responded to with bestmove, once the search is completed or interrupted with stop.
         }
@@ -120,8 +115,16 @@ fn uci_loop() !void
             // DEBUG TEMP
             else if (eql(cmd, "deb"))
             {
-                try lib.out.print("size of Stack {}\n", .{@sizeOf(search.Stack)});
-                try lib.out.print("size of SearchManager {}\n", .{@sizeOf(search.SearchManager)});
+                //std.debug.print("{any}", .{ engine.pos.castling_masks });
+                //std.debug.print("{any}", .{ engine.pos.values });
+                //try lib.out.print("size of Stack {}\n", .{@sizeOf(search.Stack)});
+                //try lib.out.print("size of SearchManager {}\n", .{@sizeOf(search.SearchManager)});
+                try io.print("{}\n", .{engine.pos.non_pawn_material()});
+            }
+            // DEBUG TEMP
+            else if (eql(cmd, "r"))
+            {
+                _ = engine.pos.is_threefold_repetition();
             }
             // DEBUG TEMP
             else if (eql(cmd, "m"))
@@ -132,7 +135,7 @@ fn uci_loop() !void
             else if (eql(cmd, "e"))
             {
                 const e = eval.lazy_evaluate(&engine.pos);
-                try lib.out.print("eval = {}\n", .{ e });
+                try io.out.print("eval = {}\n", .{ e });
             }
         }
     }

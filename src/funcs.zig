@@ -127,15 +127,30 @@ pub fn is_passed_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
 pub fn mirror_vertically(u: u64) u64
 {
     var x = u;
-    x = ((x & 0x00000000000000ff) << 56) |
-        ((x & 0x000000000000ff00) << 40) |
-        ((x & 0x0000000000ff0000) << 24) |
-        ((x & 0x00000000ff000000) << 8)  |
-        ((x & 0x000000ff00000000) >> 8)  |
-        ((x & 0x0000ff0000000000) >> 24) |
-        ((x & 0x00ff000000000000) >> 40) |
-        ((x & 0xff00000000000000) >> 56);
+    // x = ((x & 0x00000000000000ff) << 56) |
+    //     ((x & 0x000000000000ff00) << 40) |
+    //     ((x & 0x0000000000ff0000) << 24) |
+    //     ((x & 0x00000000ff000000) << 8)  |
+    //     ((x & 0x000000ff00000000) >> 8)  |
+    //     ((x & 0x0000ff0000000000) >> 24) |
+    //     ((x & 0x00ff000000000000) >> 40) |
+    //     ((x & 0xff00000000000000) >> 56);
+
+    x = ( (x << 56)) |
+        ( (x & 0x000000000000ff00) << 40) |
+        ( (x & 0x0000000000ff0000) << 24) |
+        ( (x & 0x00000000ff000000) << 8 ) |
+        ( (x & 0x000000ff00000000) >> 8 ) |
+        ( (x & 0x0000ff0000000000) >> 24) |
+        ( (x & 0x00ff000000000000) >> 40) |
+        ( (x >> 56));
+
     return x;
+}
+
+pub fn popcount(bitboard: u64) u6
+{
+    return @popCount(bitboard);
 }
 
 pub fn contains_square(bitboard: u64, sq: Square) bool
@@ -177,7 +192,7 @@ pub fn pop(bitboard: *u64) ?Square
 
 pub fn clear_square(bitboard: *u64, sq: Square) void
 {
-    bitboard.* &= ~sq.to_bitboard();
+    bitboard.* &= ~sq.to_bitboard(); // TODO: XOR?
 }
 
 /// Unsafe
@@ -209,12 +224,12 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16
     return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1;
 }
 
-pub fn ptr_add(T: type, ptr: *T, comptime delta: comptime_int) *T
+pub fn ptr_add(T: type, ptr: *const T, comptime delta: comptime_int) *T
 {
     return @ptrFromInt(@intFromPtr(ptr) + @sizeOf(T) * delta);
 }
 
-pub fn ptr_sub(T: type, ptr: *T, comptime delta: comptime_int) *T
+pub fn ptr_sub(T: type, ptr: *const T, comptime delta: comptime_int) *T
 {
     return @ptrFromInt(@intFromPtr(ptr) - @sizeOf(T) * delta);
 }
@@ -275,7 +290,6 @@ pub fn print_bitboard(bb: u64) void
         y -= 1;
     }
     std.debug.print("\n", .{});
-
 }
 
 /// DEBUG
@@ -288,4 +302,3 @@ pub fn print_bits(u: u8) void
     }
     std.debug.print("\n", .{});
 }
-

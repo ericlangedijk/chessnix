@@ -264,7 +264,6 @@ pub const Square = packed union
     pub fn to_bitboard(self: Square) u64
     {
         return bitboards.bb_a1 << self.u;
-        //  @as(u64, 1)
         //return bitboards.square_bitboards[self.u];
     }
 
@@ -313,9 +312,9 @@ pub const Square = packed union
     /// Only used during initialization.\
     /// Returns a ray of squares in the direction `dir`.
     /// * not including self.
-    pub fn ray(self: Square, dir: Direction) std.BoundedArray(Square, 8)
+    pub fn ray(self: Square, dir: Direction) lib.BoundedArray(Square, 8)
     {
-        var result: std.BoundedArray(Square, 8) = .{};
+        var result: lib.BoundedArray(Square, 8) = .{};
         var run: Square = self;
         while (true)
         {
@@ -332,9 +331,9 @@ pub const Square = packed union
     /// Only used during initialization.\
     /// Returns all rays for a range of directions.
     /// * not including self.
-    pub fn rays(self: Square, comptime dirs: []const Direction) std.BoundedArray(Square, 32)
+    pub fn rays(self: Square, comptime dirs: []const Direction) lib.BoundedArray(Square, 32)
     {
-        var result: std.BoundedArray(Square, 32) = .{};
+        var result: lib.BoundedArray(Square, 32) = .{};
         for (dirs) |d|
         {
             result.appendSliceAssumeCapacity(self.ray(d).slice());
@@ -626,7 +625,7 @@ pub const Piece = packed union
         };
     }
 
-    pub fn from_fen_char(char: u8) !Piece
+    pub fn from_fen_char(char: u8) ParsingError!Piece
     {
         return switch(char)
         {
@@ -642,7 +641,7 @@ pub const Piece = packed union
             'r' => B_ROOK,
             'q' => B_QUEEN,
             'k' => B_KING,
-            else => FenError.InvalidPiece,
+            else => ParsingError.InvalidFenPiece,
         };
     }
 
@@ -679,7 +678,7 @@ pub const MoveInfo = packed union
             return Piece.make(self.to_piecetype(), us);
         }
 
-        pub fn from_char(ch: u8) Prom
+        pub fn from_char(ch: u8) ParsingError!Prom
         {
             return switch (ch)
             {
@@ -687,7 +686,7 @@ pub const MoveInfo = packed union
                 'b' => .bishop,
                 'r' => .rook,
                 'q' => .queen,
-                else => unreachable
+                else => ParsingError.InvalidPromotionChar
             };
         }
 
@@ -765,9 +764,9 @@ pub const Move = packed struct(u16)
     }
 
     /// uci string
-    pub fn to_string(self: Move) std.BoundedArray(u8, 5)
+    pub fn to_string(self: Move) lib.BoundedArray(u8, 5)
     {
-        var result: std.BoundedArray(u8, 5) = .{};
+        var result: lib.BoundedArray(u8, 5) = .{};
         const from: Square = self.from;
         var to: Square = self.to;
 
@@ -802,6 +801,7 @@ pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
+// TODO: Better 100, 305, 333, 563, 950
 const value_pawn: Value = 100;
 const value_knight: Value = 300;
 const value_bishop: Value = 300;
@@ -817,6 +817,8 @@ pub const material_queen: Value = 2538;
 
 // startvalue: 18620 WITH pawns
 // startvalue: 16604 WITHOUT pawnsquit
+
+/// The total material value in the starting position including pawns
 pub const max_material_value: Value = 18620;
 
 /// The threshold value for piece square tables.
@@ -841,15 +843,13 @@ const piece_material_values: [15]Value =
     material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
 
-// TODO: centralize erors.
-/// Parsing errors for uci
-pub const ParseError = error
+pub const ParsingError = error
 {
-    //Invalid,
+    /// Garbage piece inside fen string.
+    InvalidFenPiece,
+    /// Garbage or move not found.
     IllegalMove,
+    /// Garbage promotion character.
+    InvalidPromotionChar,
 };
 
-pub const FenError = error
-{
-    InvalidPiece,
-};
