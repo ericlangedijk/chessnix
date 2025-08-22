@@ -71,7 +71,7 @@ pub const StateInfo = struct
     last_move: Move = .empty,
     /// The piece that did the last_move.
     moved_piece: Piece = Piece.NO_PIECE,
-    /// The piece that was captured with last_move.
+    // The piece that was captured with last_move.
     captured_piece: Piece = Piece.NO_PIECE,
     /// The board hashkey.
     key: u64 = 0,
@@ -606,9 +606,12 @@ pub const Position = struct
 
     fn add_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
     {
-        assert(self.get(sq).is_empty());
-        assert(pc.is_piece());
-        assert(pc.color().e == us.e);
+        if (comptime lib.is_paranoid)
+        {
+            assert(self.get(sq).is_empty());
+            assert(pc.is_piece());
+            assert(pc.color().e == us.e);
+        }
         const mask: u64 = sq.to_bitboard();
         self.board[sq.u] = pc;
         self.bb_by_type[0] |= mask;
@@ -620,8 +623,11 @@ pub const Position = struct
 
     fn remove_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
     {
-        assert(self.get(sq).e == pc.e);
-        assert(pc.color().e == us.e);
+        if (comptime lib.is_paranoid)
+        {
+            assert(self.get(sq).e == pc.e);
+            assert(pc.color().e == us.e);
+        }
         const not_mask: u64 = ~sq.to_bitboard();
         self.board[sq.u] = Piece.NO_PIECE;
         self.bb_by_type[0] &= not_mask;
@@ -633,9 +639,12 @@ pub const Position = struct
 
     fn move_piece(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void
     {
-        assert(self.get(from).e == pc.e);
-        assert(self.get(to).is_empty());
-        assert(pc.color().e == us.e);
+        if (comptime lib.is_paranoid)
+        {
+            assert(self.get(from).e == pc.e);
+            assert(self.get(to).is_empty());
+            assert(pc.color().e == us.e);
+        }
         const xor_mask: u64 = from.to_bitboard() | to.to_bitboard();
         self.board[from.u] = Piece.NO_PIECE;
         self.board[to.u] = pc;
@@ -697,7 +706,13 @@ pub const Position = struct
         const to: Square = m.to;
         const movetype: MoveType = m.type;
         const pc: Piece = self.board[from.u];
-        const capt: Piece = if (movetype != .enpassant) self.board[to.u] else comptime Piece.create_pawn(them);
+        const capt: Piece = switch (movetype)
+            {
+                .normal, .promotion => self.board[to.u],
+                .enpassant => Piece.create_pawn(them),
+                .castle => Piece.NO_PIECE,
+            };
+
         const is_pawnmove: bool = pc.is_pawn();
         const is_capture: bool = capt.is_piece();
         const hash_delta = zobrist.piece_square(pc, from) ^ zobrist.piece_square(pc, to);
@@ -705,13 +720,12 @@ pub const Position = struct
         var key: u64 = self.state.key ^ zobrist.btm();
 
         // Copy some state stuff. The rest is done down here and in update_state().
-        st.rule50 = self.state.rule50;
+        st.rule50 = self.state.rule50 + 1;
         st.ep_square = self.state.ep_square;
         st.castling_rights = self.state.castling_rights;
         st.prev = self.state;
         self.state = st;
 
-        st.rule50 += 1;
         st.last_move = m;
         st.moved_piece = pc;
         st.captured_piece = capt;
@@ -722,9 +736,7 @@ pub const Position = struct
 
         // Reset drawcounter by default.
         if (is_pawnmove or is_capture)
-        {
             st.rule50 = 0;
-        }
 
         // Clear ep by default if it is set.
         if (st.ep_square) |ep|
@@ -758,8 +770,7 @@ pub const Position = struct
                 key ^= hash_delta;
                 if (is_pawnmove)
                 {
-                    // Double pawn push.
-                    // We only set the ep-square if it is actually possible to do an ep-capture.
+                    // Double pawn push: only set the ep-square if it is actually possible to do an ep-capture.
                     if (from.u ^ to.u == 16 and masks.get_ep_mask(to) & self.pawns(them) != 0)
                     {
                         const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
@@ -1078,10 +1089,6 @@ pub const Position = struct
     /// See `MoveStorage` for the interface of storage.
     fn gen(self: *const Position, comptime ctp: Params, noalias storage: anytype) void
     {
-        // TODO; I experimented with early exit (MoveStorage returns ?void = null if it wants to stop) and it does not seems to affect performance at all.
-        // So for movefinder (when parsing moves) we could early exit when the move is found.
-        // If implemented Here we can exexute: storemove orelse return.
-
         // Comptimes.
         const us = comptime ctp.us;
         const them = comptime us.opp();
@@ -1511,11 +1518,12 @@ pub const Position = struct
         return true;
     }
 
-    pub fn to_fen(self: *const Position) std.ArrayListUnmanaged(u8)
+    /// Returns fen string. Caller becomes owner of the result.
+    pub fn to_fen(self: *const Position) std.ArrayList(u8)
     {
         const st = self.state;
 
-        var s: std.ArrayListUnmanaged(u8) = std.ArrayListUnmanaged(u8).initCapacity(ctx.galloc, 80) catch wtf();
+        var s: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.galloc, 80) catch wtf();
 
         // Pieces.
         var rank: u3 = 7;
@@ -1598,15 +1606,8 @@ pub const Position = struct
     /// Prints the position to the io.
     pub fn print(self: *const Position) !void
     {
-        //const format = comptime std.fmt.format;
-
-//        var s = std.ArrayListUnmanaged(u8).initCapacity(ctx.galloc, 320) catch wtf();
-//        defer s.deinit(ctx.galloc);
-
         var fen_str = self.to_fen();
         defer fen_str.deinit(ctx.galloc);
-
-//        const writer = s.writer(ctx.galloc);
 
         // Pieces.
         try io.print_buffered("\n", .{});
@@ -1635,13 +1636,12 @@ pub const Position = struct
             }
         }
         try io.print_buffered("\n", .{});
-        //try io.print_buffered("{s}", .{s.items});
         try io.flush();
     }
 
     pub fn print_history(self: *const Position) !void
     {
-        var reversed_stateinfo_list: std.ArrayListUnmanaged(*const StateInfo) = .empty;
+        var reversed_stateinfo_list: std.ArrayList(*const StateInfo) = .empty;
         defer reversed_stateinfo_list.deinit(ctx.galloc);
 
         var movenr: u16 = self.game_ply;

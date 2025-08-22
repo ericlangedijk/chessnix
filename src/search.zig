@@ -27,8 +27,8 @@ const Nodes = lib.BoundedArray(Node, max_search_depth);
 pub const SearchManager = struct
 {
     num_threads: usize,
-    searchers: std.ArrayListUnmanaged(Search),
-    //threads: std.ArrayListUnmanaged(std.Thread),
+    searchers: std.ArrayList(Search),
+    //threads: std.ArrayList(std.Thread),
 
     pub fn init(num_threads: usize) SearchManager
     {
@@ -44,9 +44,9 @@ pub const SearchManager = struct
         self.searchers.deinit(ctx.galloc);
     }
 
-    fn create_searchers(num_threads: usize) std.ArrayListUnmanaged(Search)
+    fn create_searchers(num_threads: usize) std.ArrayList(Search)
     {
-        var list: std.ArrayListUnmanaged(Search) = std.ArrayListUnmanaged(Search).initCapacity(ctx.galloc, num_threads) catch wtf();
+        var list: std.ArrayList(Search) = std.ArrayList(Search).initCapacity(ctx.galloc, num_threads) catch wtf();
         for (0..num_threads) |_|
         {
             list.appendAssumeCapacity(Search.init());

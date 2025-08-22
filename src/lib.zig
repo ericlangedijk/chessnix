@@ -10,12 +10,6 @@ pub fn initialize() void
 
     io_context = .init();
 
-    // stdin = std.fs.File.stdin().reader(&in_buffer);
-    // in = &stdin.interface;
-
-    // stdout = std.fs.File.stdout().writer(&out_buffer);
-    // out = &stdout.interface;
-
     // Then initialize chess.
     @import("squarepairs.zig").initialize();
     @import("zobrist.zig").initialize();
@@ -123,7 +117,7 @@ const IoContext = struct
 /// Are we in terminal mode?
 pub fn is_tty() bool
 {
-    return true; //stdout.isTty();
+    return std.fs.File.stdin().isTty();
 }
 
 pub fn not_in_release() void

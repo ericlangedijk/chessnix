@@ -56,7 +56,7 @@ fn uci_loop() !void
         }
         else if (eql(cmd, "ucinewgame"))
         {
-            try engine.set_startpos();
+            try engine.set_startpos(null);
         }
         else if (eql(cmd, "go"))
         {
@@ -72,23 +72,12 @@ fn uci_loop() !void
         }
         else if (eql(cmd, "position"))
         {
-            const next = tokenizer.next() orelse continue :command_loop;
-            if (eql(next, "fen"))
-            {
-                var fen_and_moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
-                try engine.set_position(fen_and_moves.next(), fen_and_moves.next());
-            }
-            else if (eql(next, "startpos"))
-            {
-                var moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
-                try engine.set_position(position.fen_classic_startpos, moves.next());
-            }
+            parse_position(&tokenizer) catch continue :command_loop;
         }
         else if (eql(cmd, "quit"))
         {
             return;
         }
-
         // Custom commands in terminal.
         else if (is_tty)
         {
@@ -135,12 +124,35 @@ fn uci_loop() !void
             else if (eql(cmd, "e"))
             {
                 const e = eval.lazy_evaluate(&engine.pos);
-                try io.out.print("eval = {}\n", .{ e });
+                try io.print("eval = {}\n", .{ e });
             }
         }
     }
 }
 
+/// Parce uci command after "position"
+fn parse_position(tokenizer: *Tokenizer) !void
+{
+    const next = tokenizer.next() orelse return;
+    if (eql(next, "fen"))
+    {
+        var fen_and_moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
+        try engine.set_position(fen_and_moves.next(), fen_and_moves.next());
+    }
+    else if (eql(next, "startpos"))
+    {
+        if (tokenizer.next()) |n|
+        {
+            if (eql(n, "moves")) try engine.set_startpos(tokenizer.rest());
+        }
+        else
+        {
+            try engine.set_startpos(null);
+        }
+    }
+}
+
+/// Parse uci after "go"
 fn parse_go(tokenizer: *Tokenizer) !Go
 {
     var go: Go = .empty;

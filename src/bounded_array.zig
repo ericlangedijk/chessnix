@@ -1,6 +1,5 @@
 //! Because BoundedArray is gone from the stdlib
 
-
 // TODO: rename functions to eric-style
 
 const std = @import("std");

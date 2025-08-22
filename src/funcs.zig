@@ -41,6 +41,11 @@ pub fn relative_rank_3_bitboard(us: Color) u64
     return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
 }
 
+pub fn relative_rank_7(us: Color) u3
+{
+    return if (us.e == .white) bitboards.rank_7 else bitboards.rank_2;
+}
+
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64
 {
     switch(us.e)

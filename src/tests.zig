@@ -29,7 +29,7 @@ pub fn run_silent_debugmode_test() !void
 
 pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
 {
-    lib.not_in_release();
+    //lib.not_in_release();
 
     const max: u64 = max_depth orelse 10;
     const filename = "C:/Data/zig/chessnix/notes/testpositions.txt";
@@ -50,7 +50,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
     while (iter.next()) |str|
     {
         index += 1;
-        if (output) lib.print("#{}. {s} ", .{index, str});
+        if (output) std.debug.print("#{}. {s}\n", .{index, str});
 
         try pos.set(&st, str);
         //if (index == 536) p.print_pos(&pos);
@@ -70,7 +70,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
             }
             else
             {
-                if (output) lib.print(" ok\n", .{});
+                if (output) std.debug.print(" ok\n", .{});
             }
             if (!ok) return;
         }

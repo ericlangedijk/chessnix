@@ -9,6 +9,7 @@ const position = @import("position.zig");
 const search = @import("search.zig");
 
 const ctx = lib.ctx;
+const io = lib.io;
 const wtf = lib.wtf;
 
 const Value = types.Value;
@@ -27,7 +28,7 @@ var searchmgr: SearchManager = undefined;
 /// * Position is set to the classic startposition.
 pub fn initialize() !void
 {
-    try set_startpos();
+    try set_startpos(null);
     searchmgr = SearchManager.init(1);
 }
 
@@ -37,10 +38,14 @@ pub fn finalize() void
     searchmgr.deinit();
 }
 
-pub fn set_startpos() !void
+pub fn set_startpos(moves: ?[]const u8) !void
 {
-   pos.set_startpos(&history[0]);
-   //try set_position(position.fen_classic_startpos, null);
+    pos.set_startpos(&history[0]);
+
+    if (moves) |str|
+    {
+        parse_moves(str);
+    }
 }
 
 /// Sets the position from fen + moves.
@@ -55,21 +60,26 @@ pub fn set_position(fen: ?[]const u8, moves: ?[]const u8) !void
     }
     else
     {
-        try pos.set(&history[0], position.fen_classic_startpos);
+        pos.set_startpos(&history[0]);
         return;
     }
 
-    // If we have any moves, make them. We stop if we encounter an illegal move.
     if (moves) |str|
     {
-        var tokenizer = std.mem.tokenizeScalar(u8, str, ' ');
-        var idx: usize = 1;
-        while (tokenizer.next()) |m|
-        {
-            const move: Move = pos.parse_move(m) catch break;
-            pos.lazy_make_move(&history[idx], move);
-            idx += 1;
-        }
+        parse_moves(str);
+    }
+}
+
+// If we have any moves, make them. We stop if we encounter an illegal move.
+fn parse_moves(moves: []const u8) void
+{
+    var tokenizer = std.mem.tokenizeScalar(u8, moves, ' ');
+    var idx: usize = 1;
+    while (tokenizer.next()) |m|
+    {
+        const move: Move = pos.parse_move(m) catch break;
+        pos.lazy_make_move(&history[idx], move);
+        idx += 1;
     }
 }
 

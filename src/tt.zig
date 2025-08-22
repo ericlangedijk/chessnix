@@ -40,7 +40,7 @@ pub const Entry = struct
 
 pub const TranspositionTable = struct
 {
-    data: std.ArrayListUnmanaged(Entry),
+    data: std.ArrayList(Entry),
     size: u64,
     filled: u64,
 
@@ -60,9 +60,9 @@ pub const TranspositionTable = struct
         self.data.deinit(ctx.galloc);
     }
 
-    fn create_data(size: u64) !std.ArrayListUnmanaged(Entry)
+    fn create_data(size: u64) !std.ArrayList(Entry)
     {
-        const list = try std.ArrayListUnmanaged(Entry).initCapacity(ctx.galloc, size);
+        const list = try std.ArrayList(Entry).initCapacity(ctx.galloc, size);
         @memset(list.items, Entry.empty);
         return list;
     }

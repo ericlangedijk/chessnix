@@ -1,12 +1,12 @@
 // zig fmt: off
 
 const std = @import("std");
-
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const tests = @import("tests.zig");
 const uci = @import("uci.zig");
+const perft = @import("perft.zig");
 
 const eval = @import("eval.zig");
 const funcs = @import("funcs.zig");

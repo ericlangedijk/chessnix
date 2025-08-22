@@ -57,7 +57,7 @@ pub fn evaluate(pos: *const Position, comptime us: Color) Value
 
     var score: Value = 0;
 
-    if (us.e == pos.to_move.e) score += 20; // TODO: always?
+    // if (us.e == pos.to_move.e) score += 20;
 
     score += eval_material(&ep, us);
     score -= eval_material(&ep, them);
@@ -174,6 +174,7 @@ fn eval_bishops(e: *const Params, comptime us: Color) Value
 
 fn eval_rooks(e: *const Params, comptime us: Color) Value
 {
+    const them: Color = comptime us.opp();
     var s: Value = 0;
     const bb_rooks = e.pos.rooks(us);
     var bb = bb_rooks;
@@ -189,9 +190,7 @@ fn eval_rooks(e: *const Params, comptime us: Color) Value
         const attacks: u64 = data.get_rook_attacks(sq, e.pos.all());
 
         // Mobility.
-        {
-            s += @popCount(attacks & bb_not_us);
-        }
+        s += @popCount(attacks & bb_not_us);
 
         // Reward connected rooks.
         if (@popCount(attacks & bb_rooks) > 0)
@@ -199,7 +198,16 @@ fn eval_rooks(e: *const Params, comptime us: Color) Value
             s += 20;
         }
 
-        // Reward rook on seventh if there are enemy pawns or king cutoff.
+        // Reward pigs on 7th rank if there are also enemy pawns or the king is cutoff on the 8th rank.
+        if (sq.rank() == funcs.relative_rank_7(us))
+        {
+            const their_pawns_on_7th = e.pos.pawns(them) & funcs.relative_rank_7_bitboard(them);
+            const their_king_on_8th: u64 = e.pos.kings(them) & funcs.relative_rank_8_bitboard(us);
+            if (their_pawns_on_7th | their_king_on_8th != 0)
+            {
+                s += 20;
+            }
+        }
     }
     return s;
 }
@@ -230,7 +238,7 @@ fn eval_king(e: *const Params, comptime us: Color) Value
 {
     const them: Color = comptime us.opp();
     var s: Value = 0;
-    const king_sq =e.pos.king_square(us);
+    const king_sq = e.pos.king_square(us);
     var bb: u64 = 0;
 
     // Piece on square value.
@@ -247,6 +255,8 @@ fn eval_king(e: *const Params, comptime us: Color) Value
     // score -= ((bb.popcount() as i16) * 2);
 
     // todo castling + pawn / piece protection.
+    // const piece_protection: u64 = data.get_king_attacks(king_sq) & e.pos.by_color(us);
+
 
     return s;
 }
@@ -432,6 +442,8 @@ const PestoTables = struct
         const idx: u6 = get_index(us, sq);
         return .{ .mg = mg[idx], .eg = eg[idx] };
     }
+
+    // TODO: make less biased and symmetrical
 
     const mg_pawn_table: [64]Value =
     .{
