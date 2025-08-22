@@ -1,6 +1,7 @@
 ### Work in progress version
 
-On Windows run chessnix in administrator mode for better performance.
+- Needs Zig 0.15.1
+- On Windows run chessnix in administrator mode for better performance.
 
 ### Commands:
 - position startpos [optional_moves] -> sets the classic startposition and makes the moves, if there are any.
