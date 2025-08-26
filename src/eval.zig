@@ -62,8 +62,8 @@ pub fn evaluate(pos: *const Position, comptime color_perspective: Color, comptim
             switch (phase)
             {
                 .Opening => return perform_evaluation(pos, .WHITE, .Opening, tracking),
-                .Midgame => return perform_evaluation(pos, .WHITE, .Opening, tracking),
-                .Endgame => return perform_evaluation(pos, .WHITE, .Opening, tracking),
+                .Midgame => return perform_evaluation(pos, .WHITE, .Midgame, tracking),
+                .Endgame => return perform_evaluation(pos, .WHITE, .Endgame, tracking),
             }
             return evaluate(pos, Color.WHITE, tracking);
         },
@@ -72,8 +72,8 @@ pub fn evaluate(pos: *const Position, comptime color_perspective: Color, comptim
             switch (phase)
             {
                 .Opening => return perform_evaluation(pos, .BLACK, .Opening, tracking),
-                .Midgame => return perform_evaluation(pos, .BLACK, .Opening, tracking),
-                .Endgame => return perform_evaluation(pos, .BLACK, .Opening, tracking),
+                .Midgame => return perform_evaluation(pos, .BLACK, .Midgame, tracking),
+                .Endgame => return perform_evaluation(pos, .BLACK, .Endgame, tracking),
             }
         },
     }
