@@ -2,6 +2,14 @@
 
 //! --- NOT USED YET ---
 
+
+// TODO: maybe staged movegeneration
+// * TT move
+// * Winning captures + checks
+// * Killer moves
+// * Quiet moves.
+// * Losing captures + bad moves (often last or skipped).
+
 const std = @import("std");
 
 const lib = @import("lib.zig");
@@ -137,7 +145,7 @@ const Search = struct
         // Clear current node.
         node.pv.len = 0;
         node.eval = 0;
-        if (pos.state().rule50 >= 100) return 0;
+        if (pos.state.rule50 >= 100) return 0;
 
         // Generate the moves (using rootmoves if at _root).
         var movepicker = MovePicker.init();

@@ -8,9 +8,7 @@ const types = @import("types.zig");
 
 const PieceType = types.PieceType;
 
-
 //    see: https://en.wikipedia.org/wiki/Fischer_random_chess_numbering_scheme
-
 //    N = 0...959
 //    a) Divide N by 4, yielding quotient N2 and remainder B1.
 //       Place a Bishop upon the bright square corresponding to B1 (0=b, 1=d, 2=f, 3=h).
@@ -18,10 +16,10 @@ const PieceType = types.PieceType;
 //       Place a second Bishop upon the dark square corresponding to B2 (0=a, 1=c, 2=e, 3=g).
 //    c) Divide N3 by 6, yielding quotient N4 and remainder Q.
 //       Place the Queen according to Q, where 0 is the first free square starting from a, 1 is the second, etc.
-//    d) N4 will be a single digit, 0 ... 9. Ignoring Bishops and Queen, find the positions of two Knights within the remaining five spaces.
+//    d) N4 will be a single digit, 0...9.
+//       Ignoring Bishops and Queen, find the positions of two Knights within the remaining five spaces.
 //       Place the Knights according to its value by consulting the following N5N table:
-
-//    Position 518 is the classical position.
+// Position 518 is the classical position.
 
 /// Returns a chess 960 backrow.
 pub fn decode(number: usize) [8]PieceType

@@ -20,7 +20,8 @@ pub const bb_file_f: u64 = 0x2020202020202020;
 pub const bb_file_g: u64 = 0x4040404040404040;
 pub const bb_file_h: u64 = 0x8080808080808080;
 
-pub const bb_borders = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
+pub const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
+pub const bb_border_inner = (bb_rank_2 | bb_rank_7 | bb_file_b | bb_file_c) & ~bb_border;
 pub const bb_full: u64 = 0xffffffffffffffff;
 pub const bb_black_squares: u64 = 0b01010101_10101010_10101010_01010101_10101010_01010101_10101010_01010101;
 pub const bb_white_squares: u64 = ~bb_black_squares;
@@ -50,6 +51,7 @@ pub const file_h : u3 = 7;
 pub const ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
 pub const files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
 
+// Bitboards of each square
 pub const bb_a1: u64 = 0x0000000000000001;
 pub const bb_b1: u64 = 0x0000000000000002;
 pub const bb_c1: u64 = 0x0000000000000004;
@@ -122,6 +124,7 @@ pub const bb_f8: u64 = 0x2000000000000000;
 pub const bb_g8: u64 = 0x4000000000000000;
 pub const bb_h8: u64 = 0x8000000000000000;
 
+// Array of bitboards of each square
 pub const square_bitboards: [64]u64 =
 .{
     bb_a1, bb_b1, bb_c1, bb_d1, bb_e1, bb_f1, bb_g1, bb_h1,

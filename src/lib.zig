@@ -112,6 +112,11 @@ const IoContext = struct
         try self.out.flush();
     }
 
+    pub fn debugprint(self: *const IoContext, comptime str: []const u8, args: anytype) void
+    {
+        _ = self;
+        std.debug.print(str, args);
+    }
 };
 
 /// Are we in terminal mode?

@@ -80,7 +80,6 @@ pub const CastleType = packed union
     u: u1,
 };
 
-
 pub const Color = packed union
 {
     pub const all: [2]Color = .{ WHITE, BLACK };
@@ -104,6 +103,12 @@ pub const Color = packed union
     {
         return self.u;
     }
+};
+
+pub const Coord = packed struct
+{
+    file: u3,
+    rank: u3,
 };
 
 pub const Square = packed union
@@ -215,6 +220,8 @@ pub const Square = packed union
     e: Enum,
     /// The numeric value
     u: u6,
+    /// The file and rank bits match nicely.
+    coord: Coord,
 
     fn get_all() [64]Square
     {
@@ -245,20 +252,23 @@ pub const Square = packed union
     /// rank == y, file == x.
     pub fn from_rank_file(r: u3, f: u3) Square
     {
-        const v = @as(u6, r) * 8 + f;
-        return .from(v);
+        return .{ .coord = .{.file = f, .rank = r} };
+        //const v = @as(u6, r) * 8 + f;
+        //return .from(v);
     }
 
     /// file == x.
     pub fn file(self: Square) u3
     {
-        return @truncate(self.u & 7);
+        return self.coord.file;
+        //return @truncate(self.u & 7);
     }
 
     /// rank == y.
     pub fn rank(self: Square) u3
     {
-        return @truncate(self.u >> 3);
+        return self.coord.rank;
+        //return @truncate(self.u >> 3);
     }
 
     pub fn to_bitboard(self: Square) u64
@@ -450,6 +460,19 @@ pub const PieceType = packed union
             .rook => 'R',
             .queen => 'Q',
             .king => 'K',
+        };
+    }
+
+    pub fn from_san_char(char: u8) PieceType
+    {
+        return switch(char)
+        {
+            'N' => KNIGHT,
+            'B' => BISHOP,
+            'R' => ROOK,
+            'Q' => QUEEN,
+            'K' => KING,
+            else => unreachable,
         };
     }
 };
@@ -647,7 +670,7 @@ pub const Piece = packed union
 
 };
 
-pub const MoveType = enum (u2)
+pub const MoveType = enum(u2)
 {
     normal = 0,
     promotion = 1,
@@ -690,15 +713,23 @@ pub const MoveInfo = packed union
             };
         }
 
-        pub fn to_char(self: Prom) u8
+        /// Returns the lower case promotion char for UCI move notations.
+        pub fn to_uci_char(self: Prom) u8
         {
             return "nbrq"[@intFromEnum(self)];
         }
+
+        /// Returns the upper case promotion char for SAN move notations.
+        pub fn to_san_char(self: Prom) u8
+        {
+            return "NBRQ"[@intFromEnum(self)];
+        }
+
     };
 
     /// In case of a promotion.
     prom: Prom,
-    /// In case of castling,
+    /// In case of castling.
     castletype: CastleType,
     /// Raw value.
     u: u2,
@@ -709,13 +740,13 @@ pub const Move = packed struct(u16)
     pub const empty: Move = .{};
 
     /// 6 bits.
-    from: Square = Square.zero,
+    from: Square = .zero,
     /// 6 bits.
-    to: Square = Square.zero,
+    to: Square = .zero,
     /// 2 bits.
     type: MoveType = .normal,
     /// 2 bits.
-    info: MoveInfo = .empty,
+    info: MoveInfo = .{ .u = 0 },
 
     pub fn create(from: Square, to: Square) Move
     {
@@ -778,16 +809,23 @@ pub const Move = packed struct(u16)
             to = position.king_castle_destination_squares[color.u][castletype.u];
         }
 
-        result.appendSliceAssumeCapacity(@tagName(from.e));
-        result.appendSliceAssumeCapacity(@tagName(to.e));
+        result.print_assume_capacity("{t}", .{ from.e});
+        result.print_assume_capacity("{t}", .{ to.e});
 
         if (self.type == .promotion)
         {
-            const ch: u8 = self.info.prom.to_char();
-            result.appendAssumeCapacity(ch);
+            const ch: u8 = self.info.prom.to_uci_char();
+            result.print_assume_capacity("{u}", .{ ch });
         }
         return result;
     }
+};
+
+pub const GamePhase = enum
+{
+    Opening,
+    Midgame,
+    Endgame,
 };
 
 pub const max_game_length: usize = 1024;
@@ -803,10 +841,16 @@ pub const draw: Value = 0;
 
 // TODO: Better 100, 305, 333, 563, 950
 const value_pawn: Value = 100;
-const value_knight: Value = 300;
-const value_bishop: Value = 300;
-const value_rook: Value = 500;
-const value_queen: Value = 900;
+const value_knight: Value = 305;
+const value_bishop: Value = 333;
+const value_rook: Value = 563;
+const value_queen: Value = 950;
+
+// const value_pawn: Value = 100;
+// const value_knight: Value = 300;
+// const value_bishop: Value = 300;
+// const value_rook: Value = 500;
+// const value_queen: Value = 900;
 
 // Values used in Position stolen from Stockfish.
 pub const material_pawn: Value = 126;
@@ -815,17 +859,14 @@ pub const material_bishop: Value = 825;
 pub const material_rook: Value = 1276;
 pub const material_queen: Value = 2538;
 
-// startvalue: 18620 WITH pawns
-// startvalue: 16604 WITHOUT pawnsquit
-
 /// The total material value in the starting position including pawns
 pub const max_material_value: Value = 18620;
 
 /// The threshold value for piece square tables.
 pub const max_material_without_pawns: Value = 16604;
 
-// pub const midgame_threshold: Value = 15258; // NOPE
-// pub const endgame_threshold: Value = 3915; // NOPE
+pub const midgame_threshold: Value = 15258;
+pub const endgame_threshold: Value = 3915;
 
 const piece_values: [15]Value =
 .{
@@ -843,6 +884,19 @@ const piece_material_values: [15]Value =
     material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
 
+// TODO: centralize stuff
+pub const ChessChars = struct
+{
+    pub const uci_promotion_chars = "nbrq";
+    pub const san_promotion_chars = "NBRQ";
+
+    pub const fen_piece_chars = "PBNRQKpbnrqk";
+    pub const fen_emptysquare_chars = "12345678";
+
+    pub const file_chars = "abcdefgh";
+    pub const rank_chars = "12345678";
+};
+
 pub const ParsingError = error
 {
     /// Garbage piece inside fen string.
@@ -851,5 +905,6 @@ pub const ParsingError = error
     IllegalMove,
     /// Garbage promotion character.
     InvalidPromotionChar,
+    /// SAN move garabage
+    SanError,
 };
-

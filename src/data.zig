@@ -113,8 +113,8 @@ pub fn initialize() void
 
         // Masks without borders and without square itself.
         entry_file.mask = sq.rays_bitboard(&.{.north, .south}) & ~(bitboards.bb_rank_1 | bitboards.bb_rank_8);
-        entry_main.mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bitboards.bb_borders;
-        entry_anti.mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bitboards.bb_borders;
+        entry_main.mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bitboards.bb_border;
+        entry_anti.mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bitboards.bb_border;
 
         // Magics for each square, deduced from the precalculated ones.
         entry_file.magic = PrecomputedMagics.file_magics[file];
@@ -295,7 +295,7 @@ var file_attacks: [64 * 64]u64 = @splat(0);
 var diag_main_attacks: [64 * 64]u64 = @splat(0);
 var diag_anti_attacks: [64 * 64]u64 = @splat(0);
 
-// Raw.
+// Raw. TODO: move to masks?
 var bb_north: [64]u64 = @splat(0);
 var bb_south: [64]u64 = @splat(0);
 var bb_west: [64]u64 = @splat(0);

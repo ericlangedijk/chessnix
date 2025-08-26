@@ -9,6 +9,8 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type
 {
     return struct
     {
+        pub const empty: Self = .{};
+
         const Self = @This();
         buffer: [buffer_capacity]T = undefined,
         len: usize = 0,
@@ -72,5 +74,29 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type
             self.len += 1;
             return &self.slice()[self.len - 1];
         }
+
+
+        pub fn unusedCapacitySlice(self: *Self) []T
+        {
+            return self.buffer[self.len..];
+        }
+
+        pub fn print_assume_capacity(self: *Self, comptime fmt: []const u8, args: anytype) void
+        {
+            comptime assert(T == u8);
+            assert(self.len < buffer_capacity);
+            var w: std.io.Writer = .fixed(self.unusedCapacitySlice());
+            w.print(fmt, args) catch unreachable; //return error.OutOfMemory;
+            self.len += w.end;
+        }
+
+        // pub fn printBounded(self: *Self, comptime fmt: []const u8, args: anytype) error{OutOfMemory}!void {
+        //     comptime assert(T == u8);
+        //     var w: std.io.Writer = .fixed(self.unusedCapacitySlice());
+        //     w.print(fmt, args) catch return error.OutOfMemory;
+        //     self.items.len += w.end;
+        // }
+
+
     };
 }

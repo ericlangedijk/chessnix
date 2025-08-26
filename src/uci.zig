@@ -17,6 +17,8 @@ const Tokenizer = std.mem.TokenIterator(u8, .scalar);
 const ctx = lib.ctx;
 const io = lib.io;
 
+const eql = funcs.eql;
+
 pub fn run() void
 {
     // TODO: what to do in non-terminal mode? Just crash?
@@ -104,11 +106,7 @@ fn uci_loop() !void
             // DEBUG TEMP
             else if (eql(cmd, "deb"))
             {
-                //std.debug.print("{any}", .{ engine.pos.castling_masks });
-                //std.debug.print("{any}", .{ engine.pos.values });
-                //try lib.out.print("size of Stack {}\n", .{@sizeOf(search.Stack)});
-                //try lib.out.print("size of SearchManager {}\n", .{@sizeOf(search.SearchManager)});
-                try io.print("{}\n", .{engine.pos.non_pawn_material()});
+                try temp();
             }
             // DEBUG TEMP
             else if (eql(cmd, "r"))
@@ -123,7 +121,7 @@ fn uci_loop() !void
             // DEBUG TEMP
             else if (eql(cmd, "e"))
             {
-                const e = eval.lazy_evaluate(&engine.pos);
+                const e = eval.lazy_evaluate(&engine.pos, true);
                 try io.print("eval = {}\n", .{ e });
             }
         }
@@ -201,11 +199,6 @@ fn parse_nr(str: ?[]const u8) ?u64
     return std.fmt.parseInt(u64, str.?, 10) catch null;
 }
 
-fn eql(input: []const u8, comptime line: []const u8) bool
-{
-    return std.mem.eql(u8, input, line);
-}
-
 pub const Go = struct
 {
     const empty: Go = .{};
@@ -222,7 +215,13 @@ pub const Go = struct
     infinite: ?bool = null,
 };
 
+/// Error parsing UCI string.
 const Error = error
 {
     ParsingError,
 };
+
+/// Just some stupid debug function.
+fn temp() !void
+{
+}

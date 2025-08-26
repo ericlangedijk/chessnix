@@ -8,11 +8,6 @@ const types = @import("types.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 
-const uses = struct
-{
-    const rnd = @import("rnd.zig");
-};
-
 const Orientation = types.Orientation;
 const Direction = types.Direction;
 const Color = types.Color;
@@ -44,6 +39,8 @@ pub const SquarePair = struct
     /// * queen       = 101 (value 5)
     ///
     mask: u3 = 0,
+    /// The manhattan distance.
+    distance: u3 = 0,
 };
 
 pub fn initialize() void
@@ -58,6 +55,7 @@ pub fn initialize() void
             {
                 const pair: *SquarePair = get_mut(from, to);
                 const ori = dir.to_orientation();
+                pair.distance = calc_distance(from, to);
                 pair.direction = dir;
                 pair.orientation = ori;
                 if (ori == .diagmain or ori == .diaganti) pair.mask |= 0b001;
@@ -83,6 +81,22 @@ pub fn initialize() void
             }
         }
     }
+}
+
+fn calc_distance(a: Square, b: Square) u3
+{
+    const ar: i32 = a.rank();
+    const br: i32 = b.rank();
+
+    const af: i32 = a.file();
+    const bf: i32 = b.file();
+
+    const d: u32 = @max
+    (
+        @abs(ar - br),
+        @abs(af - bf)
+    );
+    return @truncate(@abs(d));
 }
 
 fn get_mut(from: Square, to: Square) *SquarePair

@@ -21,7 +21,7 @@ const SearchManager = search.SearchManager;
 const Search = search.Search;
 
 pub var history: [types.max_game_length]StateInfo = @splat(.empty);
-pub var pos: Position = .empty; //create();
+pub var pos: Position = .empty;
 var searchmgr: SearchManager = undefined;
 
 /// Initialize the engine.
@@ -38,6 +38,8 @@ pub fn finalize() void
     searchmgr.deinit();
 }
 
+/// Sets the classical startposition + optional moves.
+/// * After an illegal move we stop without crashing.
 pub fn set_startpos(moves: ?[]const u8) !void
 {
     pos.set_startpos(&history[0]);
@@ -50,8 +52,8 @@ pub fn set_startpos(moves: ?[]const u8) !void
 
 /// Sets the position from fen + moves.
 /// * If fen is illegal we crash.
-/// * If fen is null the startpostion will be set.
-/// * Any illegal move in moves will stop the history without crashing.
+/// * If fen is null the startpostiion will be set.
+/// * After an illegal move we stop without crashing.
 pub fn set_position(fen: ?[]const u8, moves: ?[]const u8) !void
 {
     if (fen) |str|
@@ -92,8 +94,3 @@ pub fn stop() !void
 {
     try searchmgr.stop();
 }
-
-
-
-
-

@@ -14,11 +14,13 @@ const position = @import("position.zig");
 const Value = types.Value;
 const Float = types.Float;
 const Color = types.Color;
+const Piece = types.Piece;
 const Square = types.Square;
 const CastleType = types.CastleType;
 const Position = position.Position;
 
 const assert = std.debug.assert;
+const wtf = lib.wtf;
 
 /// Enum for shifting pawn moves.
 pub const PawnShift = enum(u2)
@@ -39,6 +41,11 @@ pub fn relative_rank_8_bitboard(us: Color) u64
 pub fn relative_rank_3_bitboard(us: Color) u64
 {
     return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
+}
+
+pub fn relative_rank(us: Color, rank: u3) u3
+{
+    return if (us.e == .white) rank else 7 - rank;
 }
 
 pub fn relative_rank_7(us: Color) u3
@@ -106,21 +113,6 @@ pub fn all_pawns_attacks(pawns: u64, comptime us: Color) u64
     };
 }
 
-pub fn is_supported_by_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
-{
-    const them = comptime us.opp();
-    return data.get_pawn_attacks(sq, them) & pos.pawns(us) != 0; // using inversion trick
-}
-
-pub fn is_passed_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
-{
-    return switch (us.e)
-    {
-        .white => masks.get_passed_pawn_mask(Color.WHITE, sq) & pos.all_pawns() == 0,
-        .black => masks.get_passed_pawn_mask(Color.BLACK, sq) & pos.all_pawns() == 0,
-    };
-}
-
 // fn mirrorHorizontally(bits: u64) u64 {
 //     var x = bits;
 //     x = ((x & 0x5555555555555555) << 1) | ((x >> 1) & 0x5555555555555555);
@@ -153,7 +145,7 @@ pub fn mirror_vertically(u: u64) u64
     return x;
 }
 
-pub fn popcount(bitboard: u64) u6
+pub fn popcnt(bitboard: u64) u7
 {
     return @popCount(bitboard);
 }
@@ -229,6 +221,17 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16
     return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1;
 }
 
+pub fn eql(input: []const u8, comptime line: []const u8) bool
+{
+    return std.mem.eql(u8, input, line);
+}
+
+// TODO: smarter. there must be some std.mem function.
+pub fn in(input: u8, comptime line: []const u8) bool
+{
+    for (line) |e| { if (e == input) return true; } return false;
+}
+
 pub fn ptr_add(T: type, ptr: *const T, comptime delta: comptime_int) *T
 {
     return @ptrFromInt(@intFromPtr(ptr) + @sizeOf(T) * delta);
@@ -261,7 +264,8 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64
 
 pub fn start_timer() std.time.Timer
 {
-    return std.time.Timer.start() catch @panic("timer issue");
+    // TODO: at startup check available.
+    return std.time.Timer.start() catch unreachable; //@panic("timer issue");
 }
 
 pub fn float(i: Value) f32
@@ -273,6 +277,52 @@ pub fn int(f: Float) Value
 {
     return @intFromFloat(f);
 }
+
+pub fn compress_board(pos: *const Position) [32]u8
+{
+    var result: [32]u8 = @splat(0);
+    for (pos.board, 0..) |piece, index|
+    {
+        const u: u8 = piece.u;
+        const idx = index / 2;
+        switch (index % 2)
+        {
+            0 => result[idx] |= u,
+            1 => result[idx] |= (u << 4),
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+pub fn decompress_board(src: [32]u8) [64]Piece
+{
+    var result: [64]Piece = @splat(Piece.NO_PIECE);
+
+    var sq: u8 = 0;
+    for (src) |u|
+    {
+        const a: u8 = u & 0b1111;
+        const b: u8 = u >> 4;
+        result[sq]     = .{ .u = @truncate(a) };
+        result[sq + 1] = .{ .u = @truncate(b) };
+        sq += 2;
+    }
+    return result;
+}
+
+pub const Timer = struct
+{
+    system_timer: std.time.Timer,
+
+    pub fn start() Timer
+    {
+        return
+        .{
+            .system_timer = .time.Timer.start() catch wtf()
+        };
+    }
+};
 
 /// DEBUG
 pub fn print_bitboard(bb: u64) void
@@ -307,3 +357,5 @@ pub fn print_bits(u: u8) void
     }
     std.debug.print("\n", .{});
 }
+
+

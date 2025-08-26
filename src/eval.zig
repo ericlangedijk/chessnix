@@ -2,16 +2,30 @@
 
 //! --- NOT USED YET ---
 
+// TODO: remember to prevent doing useless moves in the endgame -> adjust score with drawcounter!
+// TODO: if overwhelmingly winning (900??) skip positional stuff.
+// TODO: draw by insufficient material.
+// TODO: if (color_perspective.e == pos.to_move.e) score += 20;
+// TODO: filter / taper / cap the feature scores by game phase.
+// TODO: make pesto less biased and more symmetrical?
+// TODO: rooks like open files
+// TODO: backward pawn
+// TODO: knights reward if never attack possible by pawn (outpost)
+// TODO: knights reward if never attack possible by bishop (outpost + other color bishop)
+
 const std = @import("std");
 
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
+const squarepairs = @import("squarepairs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const data = @import("data.zig");
+const masks = @import("masks.zig");
 const funcs = @import("funcs.zig");
 
 const wtf = lib.wtf;
+const io = lib.io;
 
 const Value = types.Value;
 const Float = types.Float;
@@ -21,244 +35,364 @@ const Piece = types.Piece;
 const PieceType = types.PieceType;
 const Square = types.Square;
 const Move = types.Move;
+const GamePhase = types.GamePhase;
 const Position = position.Position;
 
 const float = funcs.float;
 const int = funcs.int;
-
-/// Passed to all eval methods.
-const Params = struct
-{
-    pos: *const Position,
-    /// We cache the material value here.
-    non_pawn_material: Value,
-};
+const popcnt = funcs.popcnt;
 
 /// Debug only.
-pub fn lazy_evaluate(pos: *const Position) Value
+pub fn lazy_evaluate(pos: *const Position, comptime tracking: bool) Value
 {
     return switch (pos.to_move.e)
     {
-        .white => evaluate(pos, Color.WHITE),
-        .black => evaluate(pos, Color.BLACK),
+        .white => evaluate(pos, .WHITE, tracking),
+        .black => evaluate(pos, .BLACK, tracking),
     };
 }
 
-/// `us` must be the color to move.
-pub fn evaluate(pos: *const Position, comptime us: Color) Value
+pub fn evaluate(pos: *const Position, comptime color_perspective: Color, comptime tracking: bool) Value
 {
-    const them = comptime us.opp();
+    const phase: GamePhase = pos.phase();
+    switch (color_perspective.e)
+    {
+        .white =>
+        {
+            switch (phase)
+            {
+                .Opening => return perform_evaluation(pos, .WHITE, .Opening, tracking),
+                .Midgame => return perform_evaluation(pos, .WHITE, .Opening, tracking),
+                .Endgame => return perform_evaluation(pos, .WHITE, .Opening, tracking),
+            }
+            return evaluate(pos, Color.WHITE, tracking);
+        },
+        .black =>
+        {
+            switch (phase)
+            {
+                .Opening => return perform_evaluation(pos, .BLACK, .Opening, tracking),
+                .Midgame => return perform_evaluation(pos, .BLACK, .Opening, tracking),
+                .Endgame => return perform_evaluation(pos, .BLACK, .Opening, tracking),
+            }
+        },
+    }
+}
 
-    const ep: Params =
-    .{
-        .pos = pos,
-        .non_pawn_material = pos.non_pawn_material(),
+/// `color_perspective` must be the color to move.
+pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Color, comptime phase: GamePhase, comptime tracking: bool) Value
+{
+    const Feature = enum
+    {
+        // Pawn
+        passed_pawn,
+        doubled_pawn,
+        isolated_pawn,
+
+        // Bishop
+        bishop_pair,
+
+        // Rook
+        rook_on_seventh,
+        rooks_connected,
+
+        // King,
+        rooks_or_queens_staring_at_king,
+        bishops_or_queens_staring_at_king,
+        attacks_close_to_king,
+        king_protection_by_pawns,
+        king_protection_by_pieces,
+
+        // Generic
+        pesto_mg,
+        pesto_eg,
+        supported_by_pawn,
+        mobility,
+        in_check,
     };
 
-    var score: Value = 0;
+    const Addition = fn (score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, comptime track: bool, sq: ?Square) void;
 
-    // if (us.e == pos.to_move.e) score += 20;
-
-    score += eval_material(&ep, us);
-    score -= eval_material(&ep, them);
-    score += eval_pawns(&ep, us);
-    score -= eval_pawns(&ep, them);
-    score += eval_knights(&ep, us);
-    score -= eval_knights(&ep, them);
-    score += eval_bishops(&ep, us);
-    score -= eval_bishops(&ep, them);
-    score += eval_rooks(&ep, us);
-    score -= eval_rooks(&ep, them);
-    score += eval_queens(&ep, us);
-    score -= eval_queens(&ep, them);
-    score += eval_king(&ep, us);
-    score -= eval_king(&ep, them);
-
-    return score;
-}
-
-fn eval_material(e: *const Params, comptime us: Color) Value
-{
-    const v: Value = e.pos.values[us.u];
-    return v;
-}
-
-fn eval_pawns(e: *const Params, comptime us: Color) Value
-{
-    const bb_pawns = e.pos.pawns(us);
-    var score: Value = 0;
-    var bb = bb_pawns;
-
-    while (bb != 0)
+    const Operation = struct
     {
-        const sq: Square = funcs.pop_square(&bb);
-
-        // Piece on square value.
-        score += pc_sq(us, PieceType.PAWN, sq, e.non_pawn_material);
-
-        // Reward passed pawns.
-        if (funcs.is_passed_pawn(e.pos, us, sq))
+        fn add(score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, comptime track: bool, sq: ?Square) void
         {
-            score += 20;
+            score.* += delta;
+            if (track) print(score, delta, piece, feature, sq);
         }
 
-        // Punish doubled pawns.
+        fn sub(score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, comptime track: bool, sq: ?Square) void
         {
-            const bb_file = bitboards.file_bitboards[sq.file()] & e.pos.pawns(us);
-            if (@popCount(bb_file) > 1)
+            score.* -= delta;
+            if (track) print(score, delta, piece, feature, sq);
+        }
+
+        fn print(score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, sq: ?Square) void
+        {
+            const s: []const u8 = if (sq) |q| q.to_string() else "  ";
+            lib.io.debugprint("{s} {t:<8} {t:<32} {d:<6} -> {d:<6}\n", .{ s, piece.e, feature, delta, score.* });
+        }
+    };
+
+    const non_pawn_material: Value = pos.non_pawn_material();
+    const bb_all = pos.all();
+
+    const simple_score: Value = pos.values[color_perspective.u] - pos.values[color_perspective.opp().u];
+
+    // Sliding values, which we taper at the end.
+    var piece_square_score_mg: Value = 0;
+    var piece_square_score_eg: Value = 0;
+
+    // Positional scores per piece.
+    var pawn_score: Value = 0;
+    var knight_score: Value = 0;
+    var bishop_score: Value = 0;
+    var rook_score: Value = 0;
+    var queen_score: Value = 0;
+    var king_score: Value = 0;
+
+    // Generic.
+    var mobility: Value = 0;
+    var king_safety: Value = 0;
+
+    inline for (Color.all) |us|
+    {
+        //const add: fn (score: *Value, delta: Value) void = comptime if (us.e == color_perspective.e) Operation.add else Operation.sub;
+        const add: Addition = comptime if (us.e == color_perspective.e) Operation.add else Operation.sub;
+
+        const them = comptime us.opp();
+        const bb_us = pos.by_color(us);
+        const our_king_sq = pos.king_square(us);
+        //const their_king_sq = pos.king_square(them);
+        const check: bool = pos.state.checkers != 0;
+
+        inline for (PieceType.all) |piecetype|
+        {
+            const piece: Piece = comptime Piece.make(piecetype, us);
+            var is_first_piece: bool = true;
+            const bb_current = pos.pieces(piecetype, us);
+            var bb_running = bb_current;
+
+            while (bb_running != 0) : (is_first_piece = false)
             {
-                score -= 10;
+                const sq: Square = funcs.pop_square(&bb_running);
+                const file: u3 = sq.file();
+                const rank: u3 = sq.rank();
+                const relative_rank: u3 = funcs.relative_rank(us, rank);
+
+                // Piece on square table square.
+                const pair = Tables.get_scorepair(us, piecetype, sq);
+                add(&piece_square_score_mg, pair.mg, piece, .pesto_mg, false, sq);
+                add(&piece_square_score_eg, pair.eg, piece, .pesto_eg, false, sq);
+
+                // Individual piece on square.
+                switch (piecetype.e)
+                {
+                    .pawn =>
+                    {
+                        const our_pawns: u64 = bb_current;
+
+                        // Reward passed pawn.
+                        if (is_passed_pawn(pos, us, sq))
+                        {
+                            add(&pawn_score, Tables.passed_pawn_push_scores[relative_rank], piece, .passed_pawn, tracking, sq);
+                        }
+
+                        // Punish doubled pawn.
+                        const bb_doubled = bitboards.file_bitboards[file] & our_pawns;
+                        if (popcnt(bb_doubled) > 1)
+                        {
+                            add(&pawn_score, -10, piece, .doubled_pawn, tracking, sq);
+                        }
+
+                        // Punish isolated pawn.
+                        const bb_isolated = masks.get_isolated_pawn_mask(sq) & our_pawns;
+                        if (bb_isolated == 0)
+                        {
+                            add(&pawn_score, -15, piece, .isolated_pawn, tracking, sq);
+                            //lib.io.print("ISOLATED PAWN {t}\n", .{sq.e}) catch wtf();
+                        }
+                        // Reward connected pawn.
+                        else
+                        {
+                            //add(&pawn_score, 10);
+                        }
+
+                    },
+                    .knight =>
+                    {
+                        // Reward knight is supported by a pawn.
+                        if (is_supported_by_pawn(pos, us, sq))
+                        {
+                            add(&knight_score, 10, piece, .supported_by_pawn, tracking, sq);
+                        }
+
+                        // Knight mobility
+                        const knight_attacks: u64 = data.get_knight_attacks(sq) & ~bb_us;
+                        add(&mobility, popcnt(knight_attacks), piece, .mobility, tracking, sq);
+
+                    },
+                    .bishop =>
+                    {
+                        const our_bishops: u64 = bb_current;
+
+                        // Reward bishop pair.
+                        if (is_first_piece and our_bishops & bitboards.bb_black_squares & bitboards.bb_white_squares != 0)
+                        {
+                            add(&bishop_score, 20, piece, .bishop_pair, tracking, sq);
+                        }
+
+                        // Bishop mobility.
+                        const bishop_attacks: u64 = data.get_bishop_attacks(sq, pos.all()) & ~bb_us;
+                        add(&mobility, popcnt(bishop_attacks), piece, .mobility, tracking, sq);
+                    },
+                    .rook =>
+                    {
+                        const our_rooks: u64 = bb_current;
+                        const rook_attacks: u64 = data.get_rook_attacks(sq, bb_all);
+
+                        // Reward pigs on 7th rank if there are also enemy pawns or the king is cutoff on the 8th rank.
+                        if (rank == funcs.relative_rank_7(us))
+                        {
+                            const their_pawns_on_7th = pos.pawns(them) & funcs.relative_rank_7_bitboard(them);
+                            //const their_king_on_8th: u64 = pos.kings(them) & funcs.relative_rank_8_bitboard(us);
+                            if (their_pawns_on_7th != 0)
+                            {
+                                add(&rook_score, 20, piece, .rook_on_seventh, tracking, sq);
+                            }
+                        }
+
+                        // Reward connected rooks.
+                        if (is_first_piece and popcnt(rook_attacks & our_rooks) > 0)
+                        {
+                            add(&rook_score, 20, piece, .rooks_connected, tracking, sq);
+                        }
+
+                        // Rook mobility
+                        add(&mobility, popcnt(rook_attacks & ~bb_us), piece, .mobility, tracking, sq);
+                    },
+                    .queen =>
+                    {
+                        //const our_queens: u64 = bb_current;
+                        const queen_attacks: u64 = data.get_queen_attacks(sq, bb_all);
+
+                        //add(&queen_score, 0);
+                        queen_score += 0;
+
+                        // Queen mobility
+                        add(&mobility, popcnt(queen_attacks & ~bb_us), piece, .mobility, tracking, sq);
+                    },
+                    .king =>
+                    {
+                        if (check)
+                        {
+                            add(&king_score, -20, piece, .in_check, tracking, sq);
+                        }
+
+                        king_safety += 0;
+                        //add(&king_safety, 0);
+                        // TODO: if endgame reward king close to enemyking
+
+                        // TODO: remove this one?
+                        if (!check)
+                        {
+                            // Punish when enemy pieces are indirectly pointing at our king.
+                            var rooks_queens: u64 = data.get_rook_attacks(our_king_sq, 0) & pos.queens_rooks(them);
+                            while (rooks_queens != 0)
+                            {
+                                const q: Square = funcs.pop_square(&rooks_queens);
+                                const in_between = squarepairs.in_between_bitboard(q, sq) & bb_all;
+                                const popcount = popcnt(in_between);
+                                if (popcount <= 2)
+                                {
+                                    add(&king_score, -5, piece, .rooks_or_queens_staring_at_king, tracking, sq);
+                                }
+                            }
+                            var bishop_queens: u64 = data.get_bishop_attacks(our_king_sq, 0) & pos.queens_bishops(them);
+                            while (bishop_queens != 0)
+                            {
+                                const q: Square = funcs.pop_square(&bishop_queens);
+                                const in_between = squarepairs.in_between_bitboard(q, sq) & bb_all;
+                                const popcount = popcnt(in_between);
+                                if (popcount <= 2)
+                                {
+                                    add(&king_score, -5, piece, .bishops_or_queens_staring_at_king, tracking, sq);
+                                }
+                            }
+                        }
+
+                        // Rather naive danger heuristic.
+                        const bb = pos.attacks_by_for_occupation(them, 0) & data.get_king_attacks(our_king_sq);
+                        const danger: Value = popcnt(bb);
+                        add(&king_score, -danger, piece, .attacks_close_to_king, tracking, sq);
+
+                        // King protection
+                        const protection = data.get_king_attacks(our_king_sq) & bb_us;
+                        const pawn_protection = protection & pos.pawns(us);
+                        add(&king_score, popcnt(pawn_protection) * 4, piece, .king_protection_by_pawns, tracking, sq);
+
+                        if (phase != .Endgame)
+                        {
+                            const piece_protection = protection & pos.non_pawns(us);
+                            add(&king_score, popcnt(piece_protection) * 2, piece, .king_protection_by_pieces, tracking, sq);
+                        }
+                    },
+                    else =>
+                    {
+                        unreachable;
+                    },
+                }
             }
         }
     }
-    return score;
-}
 
-fn eval_knights(e: *const Params, comptime us: Color) Value
-{
-    var s: Value = 0;
-    var bb = e.pos.knights(us);
+    // Taper sliding values.
+    const pesto: Value = Tables.sliding_score(non_pawn_material, piece_square_score_mg, piece_square_score_eg);
 
-    while (bb != 0)
+    if (tracking)
     {
-        const sq: Square = funcs.pop_square(&bb);
-
-        // Piece on square value.
-        s += pc_sq(us, PieceType.KNIGHT, sq, e.non_pawn_material);
-
-        // Reward knight is supported by a pawn.
-        if (funcs.is_supported_by_pawn(e.pos, us, sq))
-        {
-            s += 20;
-        }
-
-        // Reward if never attack possible by pawn
-        // Reward if never attack possible by bishop
-
-        // Mobility
-        const attacks: u64 = data.get_knight_attacks(sq) & ~e.pos.by_color(us);
-        s += @popCount(attacks);
+        lib.io.debugprint(
+            \\perspective : {t}
+            \\material    : {}
+            \\pestotables : {}
+            \\mobility    : {}
+            \\pawn        : {}
+            \\knight      : {}
+            \\bishop      : {}
+            \\rook        : {}
+            \\queen       : {}
+            \\king        : {}
+            \\
+            ,
+            .{ color_perspective.e, simple_score, pesto, mobility, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
     }
 
-    return s;
+    const to_move_score: Value = if (pos.to_move.e == color_perspective.e) 12 else 0;
+
+    const big: Value =
+        (simple_score * 10) +
+        (pesto * 8) +
+        ((pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety) * 6) +
+        (mobility * 6);
+
+    return @divTrunc(big, 30) + to_move_score;
+
 }
 
-fn eval_bishops(e: *const Params, comptime us: Color) Value
+fn clamp(v: Value, limit: Value) Value
 {
-    var s: Value = 0;
-    const bb_bishops = e.pos.bishops(us);
-    var bb = bb_bishops;
-    while (bb != 0)
-    {
-        const sq: Square = funcs.pop_square(&bb);
-
-        // Piece on square value.
-        s += pc_sq(us, PieceType.BISHOP, sq, e.non_pawn_material);
-
-        // Mobility.
-        {
-            const attacks: u64 = data.get_bishop_attacks(sq, e.pos.all()) & ~e.pos.by_color(us);
-            const v = @popCount(attacks);
-            s += v;
-        }
-    }
-
-    // Reward bishop pair.
-    const bishop_pair = @popCount(bb_bishops & bitboards.bb_black_squares) + @popCount(bb_bishops & bitboards.bb_white_squares);
-    if (bishop_pair >= 2)
-    {
-        s += 20;
-    }
-    return s;
+    //std.math.clamp(val: anytype, lower: anytype, upper: anytype)
+    return @max(-limit, @min(limit, v));
 }
 
-fn eval_rooks(e: *const Params, comptime us: Color) Value
+pub fn is_draw_by_insufficient_material(pos: *const Position) bool
 {
-    const them: Color = comptime us.opp();
-    var s: Value = 0;
-    const bb_rooks = e.pos.rooks(us);
-    var bb = bb_rooks;
-
-    while (bb != 0)
-    {
-        const sq: Square = funcs.pop_square(&bb);
-
-        // Piece on square value.
-        s += pc_sq(us, PieceType.ROOK, sq, e.non_pawn_material);
-
-        const bb_not_us: u64 = ~e.pos.by_color(us);
-        const attacks: u64 = data.get_rook_attacks(sq, e.pos.all());
-
-        // Mobility.
-        s += @popCount(attacks & bb_not_us);
-
-        // Reward connected rooks.
-        if (@popCount(attacks & bb_rooks) > 0)
-        {
-            s += 20;
-        }
-
-        // Reward pigs on 7th rank if there are also enemy pawns or the king is cutoff on the 8th rank.
-        if (sq.rank() == funcs.relative_rank_7(us))
-        {
-            const their_pawns_on_7th = e.pos.pawns(them) & funcs.relative_rank_7_bitboard(them);
-            const their_king_on_8th: u64 = e.pos.kings(them) & funcs.relative_rank_8_bitboard(us);
-            if (their_pawns_on_7th | their_king_on_8th != 0)
-            {
-                s += 20;
-            }
-        }
-    }
-    return s;
-}
-
-fn eval_queens(e: *const Params, comptime us: Color) Value
-{
-    var s: Value = 0;
-    const bb_queens = e.pos.queens(us);
-    var bb = bb_queens;
-
-    while (bb != 0)
-    {
-        const sq: Square = funcs.pop_square(&bb);
-
-        // Piece on square value.
-        s += pc_sq(us, PieceType.QUEEN, sq, e.non_pawn_material);
-
-        // Mobility.
-        const bb_not_us: u64 = ~e.pos.by_color(us);
-        const attacks: u64 = data.get_rook_attacks(sq, e.pos.all());
-        const v = @popCount(attacks & bb_not_us);
-        s += v;
-    }
-    return s;
-}
-
-fn eval_king(e: *const Params, comptime us: Color) Value
-{
-    const them: Color = comptime us.opp();
-    var s: Value = 0;
-    const king_sq = e.pos.king_square(us);
-    var bb: u64 = 0;
-
-    // Piece on square value.
-    s += pc_sq(us, PieceType.KING, king_sq,e.non_pawn_material);
-
-    // punish pieces pointing at us, disregarding what is in between.
-    bb = data.get_rook_attacks(king_sq, 0) & e.pos.queens_rooks(them);
-    const v = @popCount(bb); // this is the number of queens or rooks indirectly pointing at the king.
-    s -= v;
-
-    // todo enemy knights close by? enemy pieces pointing closeby (3x3)
-
-    // let bb: u64 = calc_rook_attacks(king_sq.idx(), 0) & pos.queens_rooks_c::<THEM>();
-    // score -= ((bb.popcount() as i16) * 2);
-
-    // todo castling + pawn / piece protection.
-    // const piece_protection: u64 = data.get_king_attacks(king_sq) & e.pos.by_color(us);
-
-
-    return s;
+    // Only kings left.
+    if (pos.non_pawn_material() == 0) return true;
+    const w: Value = pos.materials[0];
+    const b: Value = pos.materials[1];
+    if (w + b <= types.material_bishop) return true;
+    return false;
 }
 
 /// Static exchange evaluation. Quickly decide if a (capture) move is good or bad.
@@ -322,7 +456,7 @@ pub fn see(pos: *const Position, m: Move) bool
             depth += 1;
             gain[depth] = PieceType.BISHOP.value() - gain[depth - 1];
             if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 rook
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 bishop
             attackers |= data.get_bishop_attacks(to_sq, occupation) & queens_or_rooks; // reveal next diagonal attacker.
             continue;
         }
@@ -383,28 +517,33 @@ pub fn see(pos: *const Position, m: Move) bool
     return gain[0] >= 0;
 }
 
-/// Piece on square value for a certain phase of the game, using the materials value.
-pub fn pc_sq(comptime us: Color, comptime pt: PieceType, sq: Square, pos_material: Value) Value
+pub fn is_supported_by_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
 {
-    const pair = PestoTables.get_scorepair(us, pt, sq);
-    return sliding_score(pos_material, pair.mg, pair.eg);
+    const them = comptime us.opp();
+    return data.get_pawn_attacks(sq, them) & pos.pawns(us) != 0; // using inversion trick
 }
 
-/// TODO: check check check.
-fn sliding_score(non_pawn_material: Value, opening: Value, endgame: Value) Value
+pub fn is_passed_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
 {
-    // const maximum: Value = comptime types.max_material_without_pawns;
-    // const range: Value = endgame - opening;
-    // const min: Value = @min(non_pawn_material, maximum);
-    // const step: Float = (float(min) / float(maximum)) * float(range);
-    // return int(float(endgame) - step);
-
-    const maximum: i32 = comptime types.max_material_without_pawns;
-    const phase: i32 = @min(non_pawn_material, maximum);
-    return @truncate(@divTrunc(opening * phase + endgame * (maximum - phase), maximum));
+    return switch (us.e)
+    {
+        .white => masks.get_passed_pawn_mask(Color.WHITE, sq) & pos.all_pawns() == 0,
+        .black => masks.get_passed_pawn_mask(Color.BLACK, sq) & pos.all_pawns() == 0,
+    };
 }
 
-const PestoTables = struct
+pub fn is_pinned(pos: *const Position, sq: Square) bool
+{
+    return pos.pins & sq.to_bitboard() != 0;
+}
+
+const Weights = struct
+{
+    const passed_pawn_bonus_per_rank: [8]Value = .{ 0, 2, 2, 3, 4, 8, 16, 0 };
+    const doubled_pawn_punishment: Value = -5;
+};
+
+const Tables = struct
 {
     fn get_index(comptime us: Color, sq: Square) u6
     {
@@ -443,8 +582,14 @@ const PestoTables = struct
         return .{ .mg = mg[idx], .eg = eg[idx] };
     }
 
-    // TODO: make less biased and symmetrical
+    fn sliding_score(non_pawn_material: Value, opening: Value, endgame: Value) Value
+    {
+        const max: i32 = comptime types.max_material_without_pawns;
+        const phase: i32 = @min(non_pawn_material, max);
+        return @truncate(@divTrunc(opening * phase + endgame * (max - phase), max));
+    }
 
+    // Pesto tables.
     const mg_pawn_table: [64]Value =
     .{
           0,   0,   0,   0,   0,   0,  0,   0,
@@ -588,4 +733,12 @@ const PestoTables = struct
         -27, -11,   4,  13,  14,   4,  -5, -17,
         -53, -34, -21, -11, -28, -14, -24, -43
     };
+
+    /// Bonus per rank for passed pawns.
+    const passed_pawn_push_scores: [8]Value =
+    .{
+        0, 2, 4, 6, 8, 20, 40, 0
+    };
+
 };
+

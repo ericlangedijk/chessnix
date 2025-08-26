@@ -13,7 +13,6 @@ const wtf = lib.wtf();
 const Value = types.Value;
 const Move = types.Move;
 
-
 pub const Kind = enum(u2)
 {
     Empty,
