@@ -12,6 +12,7 @@
 // TODO: backward pawn
 // TODO: knights reward if never attack possible by pawn (outpost)
 // TODO: knights reward if never attack possible by bishop (outpost + other color bishop)
+// TODO: if endgame reward king close to enemyking
 
 const std = @import("std");
 
@@ -24,8 +25,12 @@ const data = @import("data.zig");
 const masks = @import("masks.zig");
 const funcs = @import("funcs.zig");
 
-const wtf = lib.wtf;
+const assert = std.debug.assert;
 const io = lib.io;
+const wtf = lib.wtf;
+const float = funcs.float;
+const int = funcs.int;
+const popcnt = funcs.popcnt;
 
 const Value = types.Value;
 const Float = types.Float;
@@ -37,10 +42,6 @@ const Square = types.Square;
 const Move = types.Move;
 const GamePhase = types.GamePhase;
 const Position = position.Position;
-
-const float = funcs.float;
-const int = funcs.int;
-const popcnt = funcs.popcnt;
 
 /// Debug only.
 pub fn lazy_evaluate(pos: *const Position, comptime tracking: bool) Value
@@ -82,34 +83,8 @@ pub fn evaluate(pos: *const Position, comptime color_perspective: Color, comptim
 /// `color_perspective` must be the color to move.
 pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Color, comptime phase: GamePhase, comptime tracking: bool) Value
 {
-    const Feature = enum
-    {
-        // Pawn
-        passed_pawn,
-        doubled_pawn,
-        isolated_pawn,
+    if (comptime lib.is_paranoid) assert(pos.to_move.e == color_perspective.e);
 
-        // Bishop
-        bishop_pair,
-
-        // Rook
-        rook_on_seventh,
-        rooks_connected,
-
-        // King,
-        rooks_or_queens_staring_at_king,
-        bishops_or_queens_staring_at_king,
-        attacks_close_to_king,
-        king_protection_by_pawns,
-        king_protection_by_pieces,
-
-        // Generic
-        pesto_mg,
-        pesto_eg,
-        supported_by_pawn,
-        mobility,
-        in_check,
-    };
 
     const Addition = fn (score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, comptime track: bool, sq: ?Square) void;
 
@@ -139,7 +114,7 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
 
     const simple_score: Value = pos.values[color_perspective.u] - pos.values[color_perspective.opp().u];
 
-    // Sliding values, which we taper at the end.
+    // Sliding values of the Pesto tables, which we taper at the end.
     var piece_square_score_mg: Value = 0;
     var piece_square_score_eg: Value = 0;
 
@@ -152,35 +127,40 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
     var king_score: Value = 0;
 
     // Generic.
+    var space: Value = 0;
     var mobility: Value = 0;
     var king_safety: Value = 0;
 
     inline for (Color.all) |us|
     {
-        //const add: fn (score: *Value, delta: Value) void = comptime if (us.e == color_perspective.e) Operation.add else Operation.sub;
         const add: Addition = comptime if (us.e == color_perspective.e) Operation.add else Operation.sub;
 
+        // Colored consts.
         const them = comptime us.opp();
         const bb_us = pos.by_color(us);
         const our_king_sq = pos.king_square(us);
-        //const their_king_sq = pos.king_square(them);
         const check: bool = pos.state.checkers != 0;
 
         inline for (PieceType.all) |piecetype|
         {
+            // Piece consts.
             const piece: Piece = comptime Piece.make(piecetype, us);
             var is_first_piece: bool = true;
             const bb_current = pos.pieces(piecetype, us);
             var bb_running = bb_current;
 
+            // Naive space heuristic.
+            space += 0;
+
             while (bb_running != 0) : (is_first_piece = false)
             {
+                // Square consts.
                 const sq: Square = funcs.pop_square(&bb_running);
                 const file: u3 = sq.file();
                 const rank: u3 = sq.rank();
                 const relative_rank: u3 = funcs.relative_rank(us, rank);
 
-                // Piece on square table square.
+                // Keep track of Pesto table scores.
                 const pair = Tables.get_scorepair(us, piecetype, sq);
                 add(&piece_square_score_mg, pair.mg, piece, .pesto_mg, false, sq);
                 add(&piece_square_score_eg, pair.eg, piece, .pesto_eg, false, sq);
@@ -195,42 +175,44 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                         // Reward passed pawn.
                         if (is_passed_pawn(pos, us, sq))
                         {
-                            add(&pawn_score, Tables.passed_pawn_push_scores[relative_rank], piece, .passed_pawn, tracking, sq);
+                            const e: Value = Tables.passed_pawn_by_rank_scores[relative_rank];
+                            add(&pawn_score, e, piece, .passed_pawn, tracking, sq);
                         }
 
                         // Punish doubled pawn.
                         const bb_doubled = bitboards.file_bitboards[file] & our_pawns;
                         if (popcnt(bb_doubled) > 1)
                         {
-                            add(&pawn_score, -10, piece, .doubled_pawn, tracking, sq);
+                            const e: Value = Tables.doubled_pawn;
+                            add(&pawn_score, e, piece, .doubled_pawn, tracking, sq);
                         }
 
                         // Punish isolated pawn.
                         const bb_isolated = masks.get_isolated_pawn_mask(sq) & our_pawns;
                         if (bb_isolated == 0)
                         {
-                            add(&pawn_score, -15, piece, .isolated_pawn, tracking, sq);
-                            //lib.io.print("ISOLATED PAWN {t}\n", .{sq.e}) catch wtf();
+                            const e: Value = Tables.isolated_pawn;
+                            add(&pawn_score, e, piece, .isolated_pawn, tracking, sq);
                         }
                         // Reward connected pawn.
                         else
                         {
                             //add(&pawn_score, 10);
                         }
-
                     },
                     .knight =>
                     {
                         // Reward knight is supported by a pawn.
                         if (is_supported_by_pawn(pos, us, sq))
                         {
-                            add(&knight_score, 10, piece, .supported_by_pawn, tracking, sq);
+                            const e: Value = Tables.supported_by_pawn;
+                            add(&knight_score, e, piece, .supported_by_pawn, tracking, sq);
                         }
 
                         // Knight mobility
                         const knight_attacks: u64 = data.get_knight_attacks(sq) & ~bb_us;
                         add(&mobility, popcnt(knight_attacks), piece, .mobility, tracking, sq);
-
+                        //add(&mobility, Tables.mobility(piecetype, phase, knight_attacks), piece, .mobility, tracking, sq);
                     },
                     .bishop =>
                     {
@@ -239,7 +221,8 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                         // Reward bishop pair.
                         if (is_first_piece and our_bishops & bitboards.bb_black_squares & bitboards.bb_white_squares != 0)
                         {
-                            add(&bishop_score, 20, piece, .bishop_pair, tracking, sq);
+                            const e = Tables.bishop_pair;
+                            add(&bishop_score, e, piece, .bishop_pair, tracking, sq);
                         }
 
                         // Bishop mobility.
@@ -258,14 +241,16 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                             //const their_king_on_8th: u64 = pos.kings(them) & funcs.relative_rank_8_bitboard(us);
                             if (their_pawns_on_7th != 0)
                             {
-                                add(&rook_score, 20, piece, .rook_on_seventh, tracking, sq);
+                                const e = Tables.rook_on_seventh;
+                                add(&rook_score, e, piece, .rook_on_seventh, tracking, sq);
                             }
                         }
 
                         // Reward connected rooks.
                         if (is_first_piece and popcnt(rook_attacks & our_rooks) > 0)
                         {
-                            add(&rook_score, 20, piece, .rooks_connected, tracking, sq);
+                            const e = Tables.rooks_connected;
+                            add(&rook_score, e, piece, .rooks_connected, tracking, sq);
                         }
 
                         // Rook mobility
@@ -284,19 +269,17 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                     },
                     .king =>
                     {
+                        king_safety += 0; // not yet used.
+
                         if (check)
                         {
-                            add(&king_score, -20, piece, .in_check, tracking, sq);
+                            const e: Value = Tables.in_check;
+                            add(&king_score, e, piece, .in_check, tracking, sq);
                         }
 
-                        king_safety += 0;
-                        //add(&king_safety, 0);
-                        // TODO: if endgame reward king close to enemyking
-
-                        // TODO: remove this one?
+                        // Punish when enemy pieces are indirectly pointing at our king.
                         if (!check)
                         {
-                            // Punish when enemy pieces are indirectly pointing at our king.
                             var rooks_queens: u64 = data.get_rook_attacks(our_king_sq, 0) & pos.queens_rooks(them);
                             while (rooks_queens != 0)
                             {
@@ -305,7 +288,8 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                                 const popcount = popcnt(in_between);
                                 if (popcount <= 2)
                                 {
-                                    add(&king_score, -5, piece, .rooks_or_queens_staring_at_king, tracking, sq);
+                                    const e: Value = Tables.rooks_or_queens_staring_at_king;
+                                    add(&king_score, e, piece, .rooks_or_queens_staring_at_king, tracking, sq);
                                 }
                             }
                             var bishop_queens: u64 = data.get_bishop_attacks(our_king_sq, 0) & pos.queens_bishops(them);
@@ -316,7 +300,8 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                                 const popcount = popcnt(in_between);
                                 if (popcount <= 2)
                                 {
-                                    add(&king_score, -5, piece, .bishops_or_queens_staring_at_king, tracking, sq);
+                                    const e: Value = Tables.bishops_or_queens_staring_at_king;
+                                    add(&king_score, e, piece, .bishops_or_queens_staring_at_king, tracking, sq);
                                 }
                             }
                         }
@@ -348,11 +333,13 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
 
     // Taper sliding values.
     const pesto: Value = Tables.sliding_score(non_pawn_material, piece_square_score_mg, piece_square_score_eg);
+    const to_move_score: Value = 12;
 
     if (tracking)
     {
         lib.io.debugprint(
             \\perspective : {t}
+            \\to_move     : {}
             \\material    : {}
             \\pestotables : {}
             \\mobility    : {}
@@ -364,10 +351,9 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             \\king        : {}
             \\
             ,
-            .{ color_perspective.e, simple_score, pesto, mobility, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
+            .{ color_perspective.e, to_move_score, simple_score, pesto, mobility, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
     }
 
-    const to_move_score: Value = if (pos.to_move.e == color_perspective.e) 12 else 0;
 
     const big: Value =
         (simple_score * 10) +
@@ -527,8 +513,8 @@ pub fn is_passed_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
 {
     return switch (us.e)
     {
-        .white => masks.get_passed_pawn_mask(Color.WHITE, sq) & pos.all_pawns() == 0,
-        .black => masks.get_passed_pawn_mask(Color.BLACK, sq) & pos.all_pawns() == 0,
+        .white => masks.get_passed_pawn_mask(.WHITE, sq) & pos.all_pawns() == 0,
+        .black => masks.get_passed_pawn_mask(.BLACK, sq) & pos.all_pawns() == 0,
     };
 }
 
@@ -537,10 +523,35 @@ pub fn is_pinned(pos: *const Position, sq: Square) bool
     return pos.pins & sq.to_bitboard() != 0;
 }
 
-const Weights = struct
+const Feature = enum
 {
-    const passed_pawn_bonus_per_rank: [8]Value = .{ 0, 2, 2, 3, 4, 8, 16, 0 };
-    const doubled_pawn_punishment: Value = -5;
+    // Pawn.
+    passed_pawn,
+    doubled_pawn,
+    isolated_pawn,
+
+    // Bishop.
+    bishop_pair,
+
+    // Rook.
+    rook_on_seventh,
+    rooks_connected,
+
+    // King.
+    rooks_or_queens_staring_at_king,
+    bishops_or_queens_staring_at_king,
+    attacks_close_to_king,
+    king_protection_by_pawns,
+    king_protection_by_pieces,
+
+    // Generic.
+    pesto_mg,
+    pesto_eg,
+
+    supported_by_pawn,
+    space,
+    mobility,
+    in_check,
 };
 
 const Tables = struct
@@ -554,6 +565,7 @@ const Tables = struct
         };
     }
 
+    /// Returns the table values for opening and endgame, between which we slide the final score.
     fn get_scorepair(comptime us: Color, comptime pc: PieceType, sq: Square) struct { mg: Value, eg: Value}
     {
         const mg: [*]const Value = switch (pc.e)
@@ -734,11 +746,79 @@ const Tables = struct
         -53, -34, -21, -11, -28, -14, -24, -43
     };
 
-    /// Bonus per rank for passed pawns.
-    const passed_pawn_push_scores: [8]Value =
-    .{
-        0, 2, 4, 6, 8, 20, 40, 0
-    };
+    // Pawn.
+    const passed_pawn_by_rank_scores: [8]Value = .{ 0, 2, 4, 6, 8, 20, 40, 0 };
+    const doubled_pawn: Value = -5;
+    const isolated_pawn: Value = -10;
+
+    // Bishop.
+    const bishop_pair: Value = 20;
+
+    // Generic.
+    const supported_by_pawn: Value = 10;
+
+    // Rook.
+    const rook_on_seventh: Value = 20;
+    const rooks_connected: Value = 20;
+
+    // King.
+    const in_check: Value = -20;
+    const rooks_or_queens_staring_at_king: Value = -5;
+    const bishops_or_queens_staring_at_king: Value = -5;
+    // attacks_close_to_king,
+    // king_protection_by_pawns,
+    // king_protection_by_pieces,
+
+    // // Generic.
+    // pesto_mg,
+    // pesto_eg,
+    // supported_by_pawn,
+    // mobility,
+    // in_check,
+
+    pub fn mobility(comptime pt: PieceType, comptime phase: GamePhase, mobility_bitboard: u64) Value
+    {
+        const m: f32 = switch (phase)
+        {
+            .Opening => 0.8,
+            .Midgame => 1.2,
+            .Endgame => 0.2,
+        };
+
+        const bitcount: Value = popcnt(mobility_bitboard);
+        switch (pt.e)
+        {
+            .pawn =>
+            {
+                return funcs.mul(bitcount, m);
+            },
+            .knight =>
+            {
+                return funcs.mul(bitcount, m);
+            },
+            .bishop =>
+            {
+                return bitcount;
+            },
+            .rook =>
+            {
+                return bitcount;
+            },
+            .queen =>
+            {
+                return bitcount;
+            },
+            .king =>
+            {
+                return bitcount;
+            },
+            else =>
+            {
+                unreachable;
+            }
+        }
+        return 0;
+    }
 
 };
 

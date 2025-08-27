@@ -293,6 +293,11 @@ pub const Square = packed union
         return if (us.e == .white) self else .{ .u = self.u ^ 56 };
     }
 
+    pub fn flipped(self: Square) Square
+    {
+        return .{ .u = self.u ^ 56 };
+    }
+
     /// Only used during initialization.
     pub fn next(self: Square, dir: Direction) ?Square
     {
@@ -586,7 +591,7 @@ pub const Piece = packed union
 
     pub fn opp(self: Piece) Piece
     {
-        return .{ .u = self.u ^ 8};
+        return if (self.u != 0) .{ .u = self.u ^ 8} else Piece.NO_PIECE;
     }
 
     pub fn is_pawn(self: Piece) bool
@@ -792,6 +797,19 @@ pub const Move = packed struct(u16)
     pub fn is_empty(self: Move) bool
     {
         return self.from.u == self.to.u;
+    }
+
+    pub fn flipped(self: Move) Move
+    {
+        if (self.is_empty()) return self;
+
+        return.
+        {
+            .from = self.from.flipped(),
+            .to = self.from.flipped(),
+            .type = self.type,
+            .info = self.info,
+        };
     }
 
     /// uci string

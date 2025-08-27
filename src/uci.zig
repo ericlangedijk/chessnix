@@ -124,6 +124,18 @@ fn uci_loop() !void
                 const e = eval.lazy_evaluate(&engine.pos, true);
                 try io.print("eval = {}\n", .{ e });
             }
+            // DEBUG TEMP
+            else if (eql(cmd, "f"))
+            {
+                var tempstate: position.StateInfo = undefined;
+                try engine.pos.print();
+                const e1 = eval.lazy_evaluate(&engine.pos, false);
+                try io.print("eval = {}\n", .{ e1 });
+                engine.pos.flip(&tempstate);
+                try engine.pos.print();
+                const e2 = eval.lazy_evaluate(&engine.pos, false);
+                try io.print("eval = {}\n", .{ e2 });
+            }
         }
     }
 }

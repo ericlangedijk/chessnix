@@ -20,9 +20,10 @@ pub const bb_file_f: u64 = 0x2020202020202020;
 pub const bb_file_g: u64 = 0x4040404040404040;
 pub const bb_file_h: u64 = 0x8080808080808080;
 
+pub const bb_full: u64 = 0xffffffffffffffff;
 pub const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
 pub const bb_border_inner = (bb_rank_2 | bb_rank_7 | bb_file_b | bb_file_c) & ~bb_border;
-pub const bb_full: u64 = 0xffffffffffffffff;
+pub const bb_center = bb_full & ~bb_border & ~bb_border_inner;
 pub const bb_black_squares: u64 = 0b01010101_10101010_10101010_01010101_10101010_01010101_10101010_01010101;
 pub const bb_white_squares: u64 = ~bb_black_squares;
 

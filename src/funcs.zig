@@ -221,6 +221,16 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16
     return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1;
 }
 
+/// Convert "mate in X moves" to an absolute "distance to mate".
+/// * `mv` is always the matevalue from the perspective of white: negative -> white loses, positive -> white wins.
+pub fn mate_to_dtm(mv: Value, to_move: Color) Value
+{
+    if (mv == 0) return 0;
+    const white_wins: bool = mv > 0;
+    const white_to_move: bool = to_move.e == .white;
+    return (if (white_wins) mv * 2 else -mv * 2) - @intFromBool(white_wins == white_to_move);
+}
+
 pub fn eql(input: []const u8, comptime line: []const u8) bool
 {
     return std.mem.eql(u8, input, line);
@@ -276,6 +286,11 @@ pub fn float(i: Value) f32
 pub fn int(f: Float) Value
 {
     return @intFromFloat(f);
+}
+
+pub fn mul(i: Value, f: Float) Value
+{
+    return @intFromFloat(float(i) * f);
 }
 
 pub fn compress_board(pos: *const Position) [32]u8

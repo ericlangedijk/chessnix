@@ -22,7 +22,10 @@ pub fn main() !void
     {
         try tests.run_silent_debugmode_test();
         try tests.run_testfile(false, 1);
+        try tests.test_flip(false);
     }
+
+    //try @import("tools/kaggle.zig").create_anna_files();
 
     uci.run();
 }

@@ -76,7 +76,6 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
         }
     }
     std.debug.print("test from file ok\n", .{});
-
 }
 
 /// Run all testpositions.
@@ -124,6 +123,35 @@ pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime outp
     {
         std.debug.print("!!!\nTHERE ARE ERRORS\n!!!\n", .{});
     }
+}
+
+pub fn test_flip(comptime output: bool) !void
+{
+    lib.not_in_release();
+
+    var pos: Position = .empty;
+    var mirrored: Position = .empty;
+
+    for (testpositions, 0..) |str, index|
+    {
+        var st: StateInfo = undefined;
+        if (output) std.debug.print("#{}. {s}\n", .{index, str});
+        try pos.set(&st, str);
+        var t1: StateInfo = undefined;
+        //var t2: StateInfo = undefined;
+        //var t3: StateInfo = undefined;
+        mirrored.copy_from(&pos, &t1);
+        mirrored.flip(&t1);
+        mirrored.flip(&t1);
+        if (!mirrored.equals(&pos, true))
+        {
+            try pos.print();
+            try mirrored.print();
+            std.debug.print("!!!\nTEST FLIP FOUT\n", .{});
+            return;
+        }
+    }
+    std.debug.print("test flip ok\n", .{});
 }
 
 pub fn bench() !void
