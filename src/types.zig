@@ -252,29 +252,27 @@ pub const Square = packed union
     /// rank == y, file == x.
     pub fn from_rank_file(r: u3, f: u3) Square
     {
+        // Raw bits: rank * 8 + file
         return .{ .coord = .{.file = f, .rank = r} };
-        //const v = @as(u6, r) * 8 + f;
-        //return .from(v);
     }
 
     /// file == x.
     pub fn file(self: Square) u3
     {
+        // Raw bits: self.u & 7.
         return self.coord.file;
-        //return @truncate(self.u & 7);
     }
 
     /// rank == y.
     pub fn rank(self: Square) u3
     {
+        // Raw bits: self.u >> 3.
         return self.coord.rank;
-        //return @truncate(self.u >> 3);
     }
 
     pub fn to_bitboard(self: Square) u64
     {
         return bitboards.bb_a1 << self.u;
-        //return bitboards.square_bitboards[self.u];
     }
 
     pub fn add(self: Square, d: u6) Square
@@ -356,11 +354,10 @@ pub const Square = packed union
         return result;
     }
 
-    /// Only used during initialization.\
+    /// Only used during initialization.
     pub fn ray_bitboard(self: Square, dir: Direction) u64
     {
         var bb: u64 = 0;
-        //const array: []const Square = self.ray(dir).slice();
         var run: Square = self;
         while (run.next(dir)) |n|
         {
@@ -370,7 +367,7 @@ pub const Square = packed union
         return bb;
     }
 
-    /// Only used during initialization.\
+    /// Only used during initialization.
     pub fn rays_bitboard(self: Square, comptime dirs: []const Direction) u64
     {
         var bb: u64 = 0;
@@ -386,7 +383,7 @@ pub const Square = packed union
         return @tagName(self.e);
     }
 
-    /// TODO: catch errors or garbage in garbage out?
+    /// Garbage in garbage out. No crash.
     pub fn from_string(str: []const u8) Square
     {
         if (str.len < 2) return Square.A1;
@@ -672,7 +669,6 @@ pub const Piece = packed union
             else => ParsingError.InvalidFenPiece,
         };
     }
-
 };
 
 pub const MoveType = enum(u2)
@@ -812,7 +808,7 @@ pub const Move = packed struct(u16)
         };
     }
 
-    /// uci string
+    /// UCI string
     pub fn to_string(self: Move) lib.BoundedArray(u8, 5)
     {
         var result: lib.BoundedArray(u8, 5) = .{};
@@ -857,18 +853,11 @@ pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
-// TODO: Better 100, 305, 333, 563, 950
 const value_pawn: Value = 100;
 const value_knight: Value = 305;
 const value_bishop: Value = 333;
 const value_rook: Value = 563;
 const value_queen: Value = 950;
-
-// const value_pawn: Value = 100;
-// const value_knight: Value = 300;
-// const value_bishop: Value = 300;
-// const value_rook: Value = 500;
-// const value_queen: Value = 900;
 
 // Values used in Position stolen from Stockfish.
 pub const material_pawn: Value = 126;

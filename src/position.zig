@@ -59,7 +59,7 @@ pub const StateInfo = struct
     /// (copied) Draw counter. After 50 reversible moves (100 ply) it is a draw.
     rule50: u16 = 0,
     /// (copied) The enpassant square of this state.
-    ep_square: ?Square = null,
+    ep_square: Square = Square.zero,
     /// (copied) Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4 = 0,
     /// The move that was played to reach the current position.
@@ -99,7 +99,8 @@ pub const StateInfo = struct
 
         return
             self.rule50 == other.rule50 and
-            ((self.ep_square == null and other.ep_square == null) or (self.ep_square != null and other.ep_square != null and self.ep_square.?.e == other.ep_square.?.e)) and
+            self.ep_square.u == other.ep_square.u and
+            //((self.ep_square == null and other.ep_square == null) or (self.ep_square != null and other.ep_square != null and self.ep_square.?.e == other.ep_square.?.e)) and
             self.castling_rights == other.castling_rights and
             self.last_move == other.last_move and
             self.moved_piece.u == other.moved_piece.u and
@@ -458,9 +459,9 @@ pub const Position = struct
         }
 
         new_state.rule50 = bk_state.rule50;
-        if (bk_state.ep_square) |ep|
+        if (bk_state.ep_square.u > 0)
         {
-            new_state.ep_square = ep.flipped();
+            new_state.ep_square = bk_state.ep_square.flipped();
         }
 
         new_state.last_move = bk_state.last_move.flipped();
@@ -566,7 +567,7 @@ pub const Position = struct
             k ^= zobrist.piece_square(pc, sq);
         }
         k ^= zobrist.castling(st.castling_rights);
-        if (st.ep_square) |ep| k ^= zobrist.enpassant(ep.file());
+        if (st.ep_square.u > 0) k ^= zobrist.enpassant(st.ep_square.file());
         if (self.to_move.e == .black) k ^= zobrist.btm();
         return k;
     }
@@ -849,10 +850,10 @@ pub const Position = struct
             st.rule50 = 0;
 
         // Clear ep by default if it is set.
-        if (st.ep_square) |ep|
+        if (st.ep_square.u > 0)
         {
-            key ^= zobrist.enpassant(ep.file());
-            st.ep_square = null;
+            key ^= zobrist.enpassant(st.ep_square.file());
+            st.ep_square = Square.zero;
         }
 
         // Update the castling rights.
@@ -1358,8 +1359,9 @@ pub const Position = struct
                     store(from, to, storage) orelse return;
                 }
 
+                const ep: Square = st.ep_square;
                 // Enpassant.
-                if (st.ep_square) |ep|
+                if (ep.u > 0)
                 {
                     var bb_enpassant: u64 = data.get_pawn_attacks(ep, them) & our_pawns; // inversion trick.
                     inline for (0..2) |_|
@@ -1687,9 +1689,9 @@ pub const Position = struct
 
         // Enpassant.
         s.appendAssumeCapacity(' ');
-        if (st.ep_square) |ep|
+        if (st.ep_square.u > 0)
         {
-            s.appendSliceAssumeCapacity(ep.to_string());
+            s.appendSliceAssumeCapacity(st.ep_square.to_string());
         } else
         {
             s.appendAssumeCapacity('-');
@@ -1703,44 +1705,6 @@ pub const Position = struct
         s.fixedWriter().print(" {}", .{movenr}) catch wtf();
 
         return s;
-    }
-
-    /// ### Debug only.
-    /// Compares everything except `state` and `game_ply`.
-    /// * The inner contents of the state *are* compared.
-    /// * If `check_moves` then we also check if the generated moves are the same.
-    pub fn equals(self: *const Position, other: *const Position, comptime check_moves: bool) bool
-    {
-        lib.not_in_release();
-
-        // Types not directly binary comparable with Zig std.
-        inline for (0..64) |i| if (self.board[i].u != other.board[i].u) return false;
-        inline for (0..2) |i| if (self.layout.king_start_squares[i].e != other.layout.king_start_squares[i].e) return false;
-        inline for (0..2, 0..2) |i, j| if (self.layout.rook_start_squares[i][j].e != other.layout.rook_start_squares[i][j].e) return false;
-
-        const eql: bool =
-            std.meta.eql(self.bb_by_type, other.bb_by_type) and
-            std.meta.eql(self.bb_by_color, other.bb_by_color) and
-            std.meta.eql(self.layout.castling_between_bitboards, other.layout.castling_between_bitboards) and
-            std.meta.eql(self.layout.castling_king_paths, other.layout.castling_king_paths) and
-            std.meta.eql(self.layout.castling_masks, other.layout.castling_masks) and
-            std.meta.eql(self.values, other.values) and
-            std.meta.eql(self.materials, other.materials) and
-            self.ply == other.ply and
-            self.is_960 == other.is_960 and
-            self.state.equals(other.state);
-
-        if (!eql) return false;
-
-        if (check_moves)
-        {
-            var store1: MoveStorage = .init();
-            var store2: MoveStorage = .init();
-            self.lazy_generate_moves(&store1);
-            self.lazy_generate_moves(&store2);
-            const ok: bool = std.mem.eql(Move, store1.slice(), store2.slice());
-            return ok;
-        }
     }
 
     /// Prints the position to the io.
@@ -1814,6 +1778,44 @@ pub const Position = struct
         }
         try io.print_buffered("\n", .{});
         try io.flush();
+    }
+
+    /// ### Debug only.
+    /// Compares everything except `state` and `game_ply`.
+    /// * The inner contents of the state *are* compared.
+    /// * If `check_moves` then we also check if the generated moves are the same.
+    pub fn equals(self: *const Position, other: *const Position, comptime check_moves: bool) bool
+    {
+        lib.not_in_release();
+
+        // Types not directly binary comparable with Zig std.
+        inline for (0..64) |i| if (self.board[i].u != other.board[i].u) return false;
+        inline for (0..2) |i| if (self.layout.king_start_squares[i].e != other.layout.king_start_squares[i].e) return false;
+        inline for (0..2, 0..2) |i, j| if (self.layout.rook_start_squares[i][j].e != other.layout.rook_start_squares[i][j].e) return false;
+
+        const eql: bool =
+            std.meta.eql(self.bb_by_type, other.bb_by_type) and
+            std.meta.eql(self.bb_by_color, other.bb_by_color) and
+            std.meta.eql(self.layout.castling_between_bitboards, other.layout.castling_between_bitboards) and
+            std.meta.eql(self.layout.castling_king_paths, other.layout.castling_king_paths) and
+            std.meta.eql(self.layout.castling_masks, other.layout.castling_masks) and
+            std.meta.eql(self.values, other.values) and
+            std.meta.eql(self.materials, other.materials) and
+            self.ply == other.ply and
+            self.is_960 == other.is_960 and
+            self.state.equals(other.state);
+
+        if (!eql) return false;
+
+        if (check_moves)
+        {
+            var store1: MoveStorage = .init();
+            var store2: MoveStorage = .init();
+            self.lazy_generate_moves(&store1);
+            self.lazy_generate_moves(&store2);
+            const ok: bool = std.mem.eql(Move, store1.slice(), store2.slice());
+            return ok;
+        }
     }
 };
 

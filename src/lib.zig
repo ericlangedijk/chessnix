@@ -7,7 +7,6 @@ const assert = std.debug.assert;
 pub fn initialize() void
 {
     memory_context = .init();
-
     io_context = .init();
 
     // Then initialize chess.
