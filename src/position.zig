@@ -72,9 +72,8 @@ pub const StateInfo = struct
     key: u64 = 0,
     /// Bitboard of the pieces that currently give check.
     checkers: u64 = 0,
-    /// The path from the enemy checker to the king (excluding the king, including the checker).
-    /// * Enemy pawns + knights included.
-    /// * Not usable when in doublecheck.
+    /// The paths from the enemy slider checkers to the king (excluding the king, including the checker).
+    /// * Pawns and knights included.
     checkmask: u64 = 0,
     /// Bitboard with the diagonal pin rays (excluding the king, including the attacker).
     pins_diagonal: u64 = 0,
@@ -100,7 +99,6 @@ pub const StateInfo = struct
         return
             self.rule50 == other.rule50 and
             self.ep_square.u == other.ep_square.u and
-            //((self.ep_square == null and other.ep_square == null) or (self.ep_square != null and other.ep_square != null and self.ep_square.?.e == other.ep_square.?.e)) and
             self.castling_rights == other.castling_rights and
             self.last_move == other.last_move and
             self.moved_piece.u == other.moved_piece.u and
@@ -1852,7 +1850,7 @@ pub const MoveStorage = struct
         return result;
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn reset(self: *MoveStorage) void
     {
         self.ptr = &self.moves;
@@ -1886,13 +1884,13 @@ pub const JustCount = struct
         return .{ .moves = 0 };
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn reset(self: *JustCount) void
     {
         self.moves = 0;
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn store(self: *JustCount, move: Move) ?void
     {
         _ = move;
@@ -1914,13 +1912,13 @@ pub const Any = struct
         return .{ .has_moves = false };
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn reset(self: *Any) void
     {
         self.has_moves = false;
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn store(self: *Any, move: Move) ?void
     {
         _ = move;
@@ -1940,13 +1938,13 @@ pub const MoveFinder = struct
         return .{ .to_find = m, .found = false };
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn reset(self: *MoveFinder) void
     {
         self.found = false;
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn store(self: *MoveFinder, move: Move) ?void
     {
         if (self.to_find == move)

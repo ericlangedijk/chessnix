@@ -223,16 +223,6 @@ pub const Square = packed union
     /// The file and rank bits match nicely.
     coord: Coord,
 
-    fn get_all() [64]Square
-    {
-        var out: [64]Square = undefined;
-        for (&out, 0..) |*q, square|
-        {
-            q.* = .{ .u = @truncate(square) };
-        }
-        return out;
-    }
-
     pub fn from(index: u6) Square
     {
         return .{ .u = index };
