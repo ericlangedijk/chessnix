@@ -1841,43 +1841,41 @@ pub const Params = packed struct
 pub const MoveStorage = struct
 {
     moves: [types.max_move_count]Move,
-    ptr: [*]Move,
+    count: u8,
 
     pub fn init() MoveStorage
     {
-        var result: MoveStorage = undefined;
-        result.ptr = &result.moves;
-        return result;
+        return .{ .moves = undefined, .count = 0 };
     }
 
     /// Required function.
     pub fn reset(self: *MoveStorage) void
     {
-        self.ptr = &self.moves;
+        self.count = 0;
     }
 
     /// Required function.
     pub fn store(self: *MoveStorage, move: Move) ?void
     {
-        if (comptime lib.is_paranoid) assert(self.len() < types.max_move_count); // assertion slows down I think.
-        self.ptr[0] = move;
-        self.ptr += 1;
+        assert(self.count < 224);
+        self.moves[self.count] = move;
+        self.count += 1;
     }
 
-    pub fn len(self: *const MoveStorage) usize
+    pub fn len(self: *const MoveStorage) u8
     {
-        return self.ptr - &self.moves;
+        return self.count;
     }
 
     pub fn slice(self: *const MoveStorage) []const Move
     {
-        return self.moves[0..self.len()];
+        return self.moves[0..self.count];
     }
 };
 
 pub const JustCount = struct
 {
-    moves: usize,
+    moves: u8,
 
     pub fn init() JustCount
     {
@@ -1897,7 +1895,7 @@ pub const JustCount = struct
         self.moves += 1;
     }
 
-    pub fn len(self: *const JustCount) usize
+    pub fn len(self: *const JustCount) u8
     {
         return self.moves;
     }
