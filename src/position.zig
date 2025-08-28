@@ -451,9 +451,9 @@ pub const Position = struct
 
         while (bb != 0)
         {
-            const sq: Square = pop_square(&bb);
-            const piece = bk_board[sq.u];
-            self.lazy_add_piece(sq.flipped(), piece.opp());
+            const org_sq: Square = pop_square(&bb);
+            const org_piece = bk_board[org_sq.u];
+            self.lazy_add_piece(org_sq.flipped(), org_piece.opp());
         }
 
         new_state.rule50 = bk_state.rule50;
@@ -944,6 +944,7 @@ pub const Position = struct
 
         const them: Color = comptime us.opp();
         const m: Move = st.last_move;
+        //const moved_piece = st.moved_piece;
         const capt: Piece = st.captured_piece;
         const is_capture: bool = capt.is_piece();
         const from: Square = m.from;
@@ -1596,7 +1597,8 @@ pub const Position = struct
         const a = self.compute_hashkey();
         if (a != self.state.key)
         {
-            std.debug.print("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, a, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
+            //std.debug.print("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, a, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
+            std.debug.print("KEY\n", .{});
             return false;
         }
 
@@ -1723,10 +1725,10 @@ pub const Position = struct
         try io.print_buffered("\n", .{});
 
         // Info.
-        const move_str: []const u8 = if (self.state.last_move.is_empty()) "" else self.state.last_move.to_string().slice();
+        //const move_str: []const u8 = if (self.state.last_move.is_empty()) "" else self.state.last_move.to_string().slice();
         try io.print_buffered("Fen: {s}\n", .{fen_str.items});
         try io.print_buffered("Key: {x:0>16}\n", .{self.state.key});
-        try io.print_buffered("Last move: {s}\n", .{move_str});
+        //try io.print_buffered("Last move: {s}\n", .{move_str});
         try io.print_buffered("Checkers: ", .{});
         if (self.state.checkers != 0)
         {

@@ -14,6 +14,7 @@ pub fn main() !void
     if (comptime lib.is_debug)
     {
         try tests.run_silent_debugmode_tests();
+        tests.print_struct_sizes();
     }
 
     uci.run();

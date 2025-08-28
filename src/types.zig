@@ -591,17 +591,17 @@ pub const Piece = packed union
         return self.piecetype.e == .king;
     }
 
-    pub fn from_char(ch: u8, us: Color) !Piece
-    {
-        return switch (ch)
-        {
-            'n' => make(PieceType.PAWN, us),
-            'b' => make(PieceType.BISHOP, us),
-            'r' => make(PieceType.ROOK, us),
-            'k' => make(PieceType.QUEEN, us),
-            else => unreachable
-        };
-    }
+    // pub fn from_char(ch: u8, us: Color) !Piece
+    // {
+    //     return switch (ch)
+    //     {
+    //         'n' => make(PieceType.PAWN, us),
+    //         'b' => make(PieceType.BISHOP, us),
+    //         'r' => make(PieceType.ROOK, us),
+    //         'k' => make(PieceType.QUEEN, us),
+    //         else => unreachable
+    //     };
+    // }
 
     pub fn to_print_char(self: Piece) u8
     {

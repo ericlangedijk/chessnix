@@ -42,7 +42,8 @@ pub const Timer = struct
         return self.std_timer.read() / std.time.ns_per_ms;
     }
 
-    pub fn tick(self: *Timer, milliseconds: u64) bool
+    /// Handy routine for doing something after an interval.
+    pub fn ticked(self: *Timer, milliseconds: u64) bool
     {
         if (self.elapsed_ms() < milliseconds) return false;
         self.reset();

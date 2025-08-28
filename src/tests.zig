@@ -18,6 +18,11 @@ const Storage = position.MoveStorage;
 const ctx = lib.ctx;
 const io = lib.io;
 
+pub fn print_struct_sizes() void
+{
+    lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
+}
+
 pub fn run_silent_debugmode_tests() !void
 {
     lib.not_in_release();

@@ -32,8 +32,6 @@ pub fn run() void
     };
 }
 
-// var previous: bounded_array.BoundedArray(u8, 1024) = .empty;
-
 fn uci_loop() !void
 {
     try engine.initialize();
