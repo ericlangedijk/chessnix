@@ -792,7 +792,7 @@ pub const Move = packed struct(u16)
         return.
         {
             .from = self.from.flipped(),
-            .to = self.from.flipped(),
+            .to = self.to.flipped(),
             .type = self.type,
             .info = self.info,
         };
