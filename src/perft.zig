@@ -135,7 +135,7 @@ pub fn bench() !void
             var timer = utils.Timer.start();
             const nodes: u64 = run_quick(&pos, @truncate(depth));
             const time = timer.read();
-            try io.print("Perft {s} {}: {D:<12} {d:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
+            try io.print("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
 
             if (depth == testrun.end_depth)
             {
