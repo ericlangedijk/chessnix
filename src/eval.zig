@@ -141,6 +141,21 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
         const our_king_sq = pos.king_square(us);
         const check: bool = pos.state.checkers != 0;
 
+        // Naive general space heuristic.
+        if (phase != .Endgame)
+        {
+            space += 0;
+            var bits: Value = 0;
+            bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_3));
+            bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_4));
+            bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_5)) * 2;
+            bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_6)) * 3;
+            bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_7)) * 3;
+                //if (tracking)
+                //lib.io.debugprint("space {}\n", .{bits});
+            add(&space, bits, Piece.NO_PIECE, .space, true, null);
+        }
+
         inline for (PieceType.all) |piecetype|
         {
             // Piece consts.
@@ -148,9 +163,6 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             var is_first_piece: bool = true;
             const bb_current = pos.pieces(piecetype, us);
             var bb_running = bb_current;
-
-            // Naive space heuristic.
-            space += 0;
 
             while (bb_running != 0) : (is_first_piece = false)
             {
@@ -343,6 +355,7 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             \\material    : {}
             \\pestotables : {}
             \\mobility    : {}
+            \\space       : {}
             \\pawn        : {}
             \\knight      : {}
             \\bishop      : {}
@@ -351,7 +364,7 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             \\king        : {}
             \\
             ,
-            .{ color_perspective.e, to_move_score, simple_score, pesto, mobility, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
+            .{ color_perspective.e, to_move_score, simple_score, pesto, mobility, space, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
     }
 
 
@@ -359,10 +372,10 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
         (simple_score * 10) +
         (pesto * 8) +
         ((pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety) * 6) +
-        (mobility * 6);
+        (mobility * 6) +
+        (space * 4);
 
-    return @divTrunc(big, 30) + to_move_score;
-
+    return @divTrunc(big, 34) + to_move_score;
 }
 
 fn clamp(v: Value, limit: Value) Value

@@ -4,8 +4,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 
-pub fn initialize() void
+pub fn initialize() !void
 {
+    // If no timer available, the program is useless.
+    var timer = try std.time.Timer.start();
+
     memory_context = .init();
     io_context = .init();
 
@@ -14,6 +17,8 @@ pub fn initialize() void
     @import("zobrist.zig").initialize();
     @import("data.zig").initialize();
     @import("masks.zig").initialize();
+
+    startup_time = timer.read();
 }
 
 pub fn finalize() void
@@ -24,7 +29,7 @@ pub fn finalize() void
 /// For now we put it here.
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 
-pub const version= "0.1";
+pub const version = "0.1";
 
 // Some app consts.
 pub const is_debug: bool = builtin.mode == .Debug;
@@ -40,6 +45,8 @@ pub const io: *const IoContext = &io_context;
 var memory_context: MemoryContext = undefined;
 /// Global Io.
 var io_context: IoContext = undefined;
+
+pub var startup_time: u64 = 0;
 
 /// The global memory context of our exe
 pub const MemoryContext = struct

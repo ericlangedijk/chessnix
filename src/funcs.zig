@@ -1,6 +1,6 @@
 // zig fmt: off
 
-//! Misc functions.
+//! Chess related utilities.
 
 const std = @import("std");
 
@@ -46,6 +46,11 @@ pub fn relative_rank_3_bitboard(us: Color) u64
 pub fn relative_rank(us: Color, rank: u3) u3
 {
     return if (us.e == .white) rank else 7 - rank;
+}
+
+pub fn relative_rank_bb(us: Color, rank: u3) u64
+{
+    return if (us.e == .white) bitboards.rank_bitboards[rank] else bitboards.rank_bitboards[7 - rank];
 }
 
 pub fn relative_rank_7(us: Color) u3
@@ -258,7 +263,7 @@ pub fn nps(count: usize, elapsed_nanoseconds: u64) u64
     if (elapsed_nanoseconds == 0) return 0;
     const a: f64 = @floatFromInt(count);
     const b: f64 = @floatFromInt(elapsed_nanoseconds);
-    const s: f64 =  (a * 1_000_000_000.0) / b;
+    const s: f64 = (a * 1_000_000_000.0) / b;
     return @intFromFloat(s);
 }
 
@@ -268,14 +273,8 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64
     if (elapsed_nanoseconds == 0) return 0;
     const a: f64 = @floatFromInt(count);
     const b: f64 = @floatFromInt(elapsed_nanoseconds);
-    const s: f64 =  (a * 1_000.0) / b;
+    const s: f64 = (a * 1_000.0) / b;
     return s;
-}
-
-pub fn start_timer() std.time.Timer
-{
-    // TODO: at startup check available.
-    return std.time.Timer.start() catch unreachable; //@panic("timer issue");
 }
 
 pub fn float(i: Value) f32
@@ -326,19 +325,6 @@ pub fn decompress_board(src: [32]u8) [64]Piece
     return result;
 }
 
-pub const Timer = struct
-{
-    system_timer: std.time.Timer,
-
-    pub fn start() Timer
-    {
-        return
-        .{
-            .system_timer = .time.Timer.start() catch wtf()
-        };
-    }
-};
-
 /// DEBUG
 pub fn print_bitboard(bb: u64) void
 {
@@ -372,5 +358,3 @@ pub fn print_bits(u: u8) void
     }
     std.debug.print("\n", .{});
 }
-
-

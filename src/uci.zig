@@ -1,5 +1,7 @@
 // zig fmt: off
 
+// TODO: when encountering an illegal fen / moves always return a bestmove = '0000' indicating invalid state.
+
 const std = @import("std");
 const lib = @import("lib.zig");
 const funcs = @import("funcs.zig");
@@ -25,7 +27,7 @@ pub fn run() void
     uci_loop() catch |err|
     {
         std.debug.print("ERROR: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
-        //_ = lib.in.readByte() catch {};
+        //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
     };
 }
 
@@ -50,7 +52,14 @@ fn uci_loop() !void
         // Uci commands.
         if (eql(cmd, "uci"))
         {
-            try io.print("id chessnix {s}\nauthor eric\nuciok\n", .{ lib.version });
+            try io.print
+            (
+                \\id chessnix {s}
+                \\nauthor eric
+                \\uciok
+                \\
+                , .{ lib.version }
+            );
         }
         else if (eql(cmd, "isready"))
         {
@@ -89,7 +98,7 @@ fn uci_loop() !void
             }
             else if (eql(cmd, "bench"))
             {
-                try tests.bench();
+                try perft.bench();
             }
             else if (eql(cmd, "perft"))
             {
