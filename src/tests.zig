@@ -1,10 +1,11 @@
 // zig fmt: off
 
-//! Garbage collection of debug tests. Don't look here.
+//! Collection of debug tests.
 
 const std = @import("std");
 const lib = @import("lib.zig");
 const data = @import("data.zig");
+const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
@@ -17,24 +18,83 @@ const Storage = position.MoveStorage;
 const ctx = lib.ctx;
 const io = lib.io;
 
-/// In debug we always run this while changing things.
-pub fn run_silent_debugmode_test() !void
+pub fn run_silent_debugmode_tests() !void
 {
     lib.not_in_release();
 
-    if (lib.is_release) return;
-    try run_tests(3, true, false);
-    std.debug.print("silent test ok\n", .{});
+    var timer = utils.Timer.start();
+
+    try run_tests(3);
+    try run_testfile(1);
+    try test_flip();
+
+    const time = timer.read();
+    lib.io.debugprint("silent debug tests ok ({D})\n", .{ time });
 }
 
-pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
+pub const Error = error
 {
-    //lib.not_in_release();
+    PerftError,
+    FlipError,
+};
 
-    const max: u64 = max_depth orelse 10;
-    const filename = "C:/Data/zig/chessnix/notes/testpositions.txt";
+fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error
+{
+    lib.io.debugprint("catched error: {s}\n", .{ @errorName(err) });
+    lib.io.debugprint(str, args);
+    return err;
+}
+
+/// Run all testpositions.
+pub fn run_tests(max_depth: usize) !void
+{
+    lib.not_in_release();
+
+    const max: u64 = std.math.clamp(max_depth, 1, 6);
+    var total: u64 = 0;
+    var totaltime: u64 = 0;
+    var st: StateInfo = undefined;
+    var pos: Position = .empty;
+    var timer = utils.Timer.start();
+
+    for (testpositions, 0..) |str, index|
+    {
+        try pos.set(&st, str);
+
+        const depths: FenDepths = try decode_depths(str);
+        const end: usize = @min(max + 1, depths.len);
+        for (depths.slice()[1..end], 1..) |expected_nodes, d|
+        {
+            if (d == 0) continue;
+            timer.reset();
+            const perft_nodes: u64 = perft.run_quick(&pos, @truncate(d));
+            totaltime += timer.read();
+            total += perft_nodes;
+            const ok: bool = expected_nodes == perft_nodes;
+            if (!ok)
+            {
+                return catch_error(
+                    Error.PerftError,
+                    \\testposition #{}
+                    \\fen: {s}
+                    \\Error at depth {}, expected {}, found {}
+                    \\
+                    , .{ index, str, d, expected_nodes, perft_nodes }
+                );
+            }
+        }
+    }
+}
+
+// Run our 6000+ testpositions from file.
+fn run_testfile(max_depth: usize) !void
+{
+    lib.not_in_release();
+
+    const max: u64 = std.math.clamp(max_depth, 1, 6);
+
     // Load text file in memory.
-    const file: std.fs.File = try std.fs.openFileAbsolute(filename, .{});
+    const file: std.fs.File = try std.fs.openFileAbsolute("C:/Data/zig/chessnix/notes/testpositions.txt", .{});
     defer file.close();
     const stat = try file.stat();
     const file_size = stat.size;
@@ -50,11 +110,7 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
     while (iter.next()) |str|
     {
         index += 1;
-        if (output) std.debug.print("#{}. {s}\n", .{index, str});
-
         try pos.set(&st, str);
-        //if (index == 536) p.print_pos(&pos);
-
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d|
@@ -63,69 +119,22 @@ pub fn run_testfile(comptime output: bool, max_depth: ?usize) !void
             const ok: bool = expected_nodes == perft_nodes;
             if (!ok)
             {
-                //var f = pos.to_fen();
-                //defer f.deinit(ctx.galloc);
-                //p.print_pos(&pos);
-                std.debug.print(" ERROR D={} expected {} found {} ok = {} {s}\n", .{d, expected_nodes, perft_nodes, ok , str});
+                return catch_error
+                (
+                    Error.PerftError,
+                    \\linenr #{}
+                    \\fen: {s}
+                    \\Error for depth {} expected {} found {}"
+                    \\
+                    , .{ index, str, d, expected_nodes, perft_nodes }
+                );
             }
-            else
-            {
-                if (output) std.debug.print(" ok\n", .{});
-            }
-            if (!ok) return;
         }
-    }
-    std.debug.print("test from file ok\n", .{});
-}
-
-/// Run all testpositions.
-pub fn run_tests(max_depth: ?usize, comptime break_on_error: bool, comptime output: bool) !void
-{
-    var errors: usize = 0;
-    const max: u64 = max_depth orelse 10;
-    var total: u64 = 0;
-    var totaltime: u64 = 0;
-    var st: StateInfo = undefined;
-    var pos: Position = .empty; //create();
-    var timer = funcs.start_timer();
-
-    outer: for (testpositions, 0..) |str, index|
-    {
-        if (output) std.debug.print("#{}. {s}\n", .{index, str});
-        try pos.set(&st, str);
-
-        const depths: FenDepths = try decode_depths(str);
-        const end: usize = @min(max + 1, depths.len);
-        for (depths.slice()[1..end], 1..) |expected_nodes, d|
-        {
-            if (d == 0) continue;
-            timer.reset();
-            const perft_nodes: u64 = perft.run_quick(&pos, @truncate(d));
-            totaltime += timer.read();
-            total += perft_nodes;
-            const ok: bool = expected_nodes == perft_nodes;
-            if (output)
-            {
-                if (!ok)
-                    std.debug.print("    ERROR D={} expected {} found {} ok = {} {s}\n", .{d, expected_nodes, perft_nodes, ok, str})
-                else
-                    std.debug.print("    D={} expected {} found {} ok = {}\n", .{d, expected_nodes, perft_nodes, ok});
-            }
-            if (!ok) errors += 1;
-            if (break_on_error and !ok) break :outer;
-        }
-    }
-
-    if (output) std.debug.print("perft tests: totalnodes: {}, time {}, nps {} errors {}\n", .{total, std.fmt.fmtDuration(totaltime), funcs.nps(total, totaltime), errors});
-
-
-    if (errors != 0)
-    {
-        std.debug.print("!!!\nTHERE ARE ERRORS\n!!!\n", .{});
     }
 }
 
-pub fn test_flip(comptime output: bool) !void
+// Test flip board.
+pub fn test_flip() !void
 {
     lib.not_in_release();
 
@@ -135,74 +144,27 @@ pub fn test_flip(comptime output: bool) !void
     for (testpositions, 0..) |str, index|
     {
         var st: StateInfo = undefined;
-        if (output) std.debug.print("#{}. {s}\n", .{index, str});
         try pos.set(&st, str);
         var t1: StateInfo = undefined;
-        //var t2: StateInfo = undefined;
-        //var t3: StateInfo = undefined;
         mirrored.copy_from(&pos, &t1);
         mirrored.flip(&t1);
         mirrored.flip(&t1);
         if (!mirrored.equals(&pos, true))
         {
-            try pos.print();
-            try mirrored.print();
-            std.debug.print("!!!\nTEST FLIP FOUT\n", .{});
-            return;
+            return catch_error
+            (
+                Error.FlipError,
+                \\testposition #{}
+                \\fen: {s}"
+                \\
+                , .{ index, str }
+            );
         }
     }
-    std.debug.print("test flip ok\n", .{});
 }
 
-pub fn bench() !void
+pub const ParseDepthError = error
 {
-    const Test = struct
-    {
-        name: []const u8,
-        fen: []const u8,
-        end_depth: u8,
-        end_depth_nodes: u64,
-    };
-
-    const testruns: [4]Test =
-    .{
-        .{.name = "Startpos", .fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",                 .end_depth = 7, .end_depth_nodes = 3195901860 },
-        .{.name = "Kiwipete", .fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",     .end_depth = 6, .end_depth_nodes = 8031647685 },
-        .{.name = "Midgame",  .fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", .end_depth = 6, .end_depth_nodes = 6923051137 },
-        .{.name = "Endgame",  .fen = "5nk1/pp3pp1/2p4p/q7/2PPB2P/P5P1/1P5K/3Q4 w - - 1 28",                      .end_depth = 6, .end_depth_nodes = 849167880 },
-    };
-
-    var totalnodes: u64 = 0;
-    var totaltime: u64 = 0;
-
-    var st: StateInfo = undefined;
-    var pos: Position = .empty; //.create();
-
-    inline for (&testruns) |*testrun|
-    {
-        for (1..testrun.end_depth + 1) |depth|
-        {
-            try pos.set(&st, testrun.fen);
-            var timer = funcs.start_timer();
-            const nodes: u64 = perft.run_quick(&pos, @truncate(depth));
-            const time = timer.read();
-            try io.print("Perft {s} {}: {D:<12} {d:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
-
-            if (depth == testrun.end_depth)
-            {
-                totalnodes += nodes;
-                totaltime += time;
-                if (nodes == testrun.end_depth_nodes) try io.print("OK\n\n", .{}) else try io.print("ERROR\n\n", .{});
-            }
-        }
-    }
-
-    try io.print("Total nodes: {} {D} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
-}
-
-pub const DepthError = error
-{
-    BoardChar, Color, DrawCount, Castle, MoveNumber,
     NoSemiColon, NoDepthChar, ExpectedNodes, TooManyPartsInDepth
 };
 
@@ -210,12 +172,12 @@ pub const FenDepths = lib.BoundedArray(u64, 16);
 
 /// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324"
 /// "1B6/1r3Bk1/8/Pp6/4KN1p/8/5b1R/8 b - -;23;728;14764;461899;9440955;292742932"
-pub fn decode_depths(fen: []const u8) DepthError!FenDepths
+pub fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
 {
     var depths: lib.BoundedArray(u64, 16) = .{};
     depths.appendAssumeCapacity(0);
 
-    const first_semicolon: usize = index_of(fen, ';') orelse return DepthError.NoSemiColon;
+    const first_semicolon: usize = index_of(fen, ';') orelse return ParseDepthError.NoSemiColon;
     const last_part = fen[first_semicolon + 1..];
 
     var iter = std.mem.tokenizeScalar(u8, last_part, ';');
@@ -224,14 +186,16 @@ pub fn decode_depths(fen: []const u8) DepthError!FenDepths
     while (iter.next()) |slice| // D1 20
     {
 
+        // Just parse the depth number
         if (std.mem.indexOfScalar(u8, slice, ' ') == null)
         {
-            const nodes: u64 = std.fmt.parseInt(u64, slice, 10) catch return DepthError.ExpectedNodes;
+            const nodes: u64 = std.fmt.parseInt(u64, slice, 10) catch return ParseDepthError.ExpectedNodes;
             depths.appendAssumeCapacity(nodes);
         }
+        // Parse "D 20"
         else
         {
-            if (slice[0] != 'D') return DepthError.NoDepthChar;
+            if (slice[0] != 'D') return ParseDepthError.NoDepthChar;
             var sub_iter = std.mem.tokenizeScalar(u8, slice, ' ');
             var i: usize = 0;
             while (sub_iter.next()) |part|
@@ -243,11 +207,11 @@ pub fn decode_depths(fen: []const u8) DepthError!FenDepths
                 }
                 else if (i == 1) // 20 (node)
                 {
-                    //std.debug.print("PART [{s}], ", .{part});
-                    const nodes: u64 = std.fmt.parseInt(u64, part, 10) catch return DepthError.ExpectedNodes;
+                    //lib.io.debugprint("PART [{s}], ", .{part});
+                    const nodes: u64 = std.fmt.parseInt(u64, part, 10) catch return ParseDepthError.ExpectedNodes;
                     depths.appendAssumeCapacity(nodes);
                 }
-                else return DepthError.TooManyPartsInDepth;
+                else return ParseDepthError.TooManyPartsInDepth;
                 i += 1;
             }
         }
@@ -258,11 +222,7 @@ pub fn decode_depths(fen: []const u8) DepthError!FenDepths
 
 fn index_of(slice: []const u8, value:u8) ?usize
 {
-    for (slice, 0..) |c, i|
-    {
-        if (c == value) return i;
-    }
-    return null;
+    return std.mem.indexOfScalar(u8, slice, value);
 }
 
 pub const testpositions: [134][]const u8 =
@@ -406,4 +366,3 @@ pub const testpositions: [134][]const u8 =
     "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 ;D1 44 ;D2 1486 ;D3 62379 ;D4 2103487 ;D5  89941194", // Extra: https://www.chessprogramming.org/Perft_Results
     "R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1 ;D1 218" // Extra: Theoretical maximum number of moves
 };
-
