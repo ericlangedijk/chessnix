@@ -5,6 +5,7 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const funcs = @import("funcs.zig");
+const bounded_array = @import("bounded_array.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const engine = @import("engine.zig");
@@ -31,6 +32,8 @@ pub fn run() void
     };
 }
 
+// var previous: bounded_array.BoundedArray(u8, 1024) = .empty;
+
 fn uci_loop() !void
 {
     try engine.initialize();
@@ -45,7 +48,7 @@ fn uci_loop() !void
 
     command_loop: while (true)
     {
-        const input = try io.readline() orelse continue;
+        const input = try io.readline() orelse break;
         var tokenizer: Tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :command_loop;
 
