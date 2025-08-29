@@ -73,8 +73,8 @@ fn uci_loop() !void
         else if (eql(cmd, "go"))
         {
             const go: Go = parse_go(&tokenizer) catch continue :command_loop;
-            try io.print("{any}\n", .{ go });
-            try engine.start();
+            //try io.print("{any}\n", .{ go });
+            try engine.start(&go);
             // Each go command must be eventually responded to with bestmove, once the search is completed or interrupted with stop.
         }
         else if (eql(cmd, "stop"))
@@ -133,6 +133,7 @@ fn uci_loop() !void
             {
                 const e = eval.lazy_evaluate(&engine.pos, true);
                 try io.print("eval = {}\n", .{ e });
+                //eval.bench(&engine.pos);
             }
             // DEBUG TEMP
             else if (eql(cmd, "f"))
@@ -207,6 +208,10 @@ fn parse_go(tokenizer: *Tokenizer) !Go
         {
             go.movetime = parse_nr(tokenizer.next()) orelse return Error.ParsingError;
         }
+        else if (eql(next, "depth"))
+        {
+            go.depth = parse_nr(tokenizer.next()) orelse return Error.ParsingError;
+        }
         else if (eql(next, "infinite"))
         {
             go.infinite = true;
@@ -225,15 +230,25 @@ pub const Go = struct
 {
     const empty: Go = .{};
 
+    /// Not used (yet).
     ponder: ?bool = null,
+    /// Not used (yet).
     wtime: ?u64 = null,
+    /// Not used (yet).
     btime: ?u64 = null,
+    /// Not used (yet).
     winc: ?u64 = null,
+    /// Not used (yet).
     binc: ?u64 = null,
+    /// Not used (yet).
     movestogo: ?u64 = null,
+    /// The maximum depth to search.
     depth: ?u64 = null,
+    /// The maximum nodes to search.
     nodes: ?u64 = null,
+    /// The maximum time to search in milliseconds.
     movetime: ?u64 = null,
+    /// Infinite search. Overwrites the other limiting fields.
     infinite: ?bool = null,
 };
 
@@ -246,4 +261,19 @@ const Error = error
 /// Just some stupid debug function.
 fn temp() !void
 {
+    //const fen = "8/kq6/2b5/3p4/4P3/5B2/6QK/8 w - - 0 1";
+    //const fen = "8/kb6/2p5/3q4/4P3/5B2/6QK/8 w - - 0 1";
+    //const fen = "8/kb6/2p5/3q4/4B3/5B2/6QK/8 w - - 0 1";
+    const fen = "3r4/1q1r4/2b5/2Kpk3/4P3/5B2/3R2Q1/3R4 w - - 0 1";
+    try engine.set_position(fen, null);
+    const m = types.Move.create(.E4, .D5);
+
+    // const occ = engine.pos.all() ^ m.to.to_bitboard() ^ m.from.to_bitboard();
+    // funcs.print_bitboard(occ);
+
+    // const bb = engine.pos.attackers_to_for_occupation(occ, .D5, .WHITE);
+
+    //funcs.print_bitboard(bb);
+    const v = eval.see_score(&engine.pos, types.Color.WHITE, m);
+    lib.io.debugprint("{}\n", .{v});
 }

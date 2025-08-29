@@ -2,6 +2,12 @@
 
 //! --- NOT USED YET ---
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// TODO: before going multithreaded get ONE working single threaded search.
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 // TODO: maybe staged movegeneration
 // * TT move
@@ -9,13 +15,19 @@
 // * Killer moves
 // * Quiet moves.
 // * Losing captures + bad moves (often last or skipped).
+// * substract something from time to prevent time-loss.
 
 const std = @import("std");
 
 const lib = @import("lib.zig");
 const types = @import("types.zig");
+const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
+const uci = @import("uci.zig");
+const eval = @import("eval.zig");
+
+const max_u64: u64 = std.math.maxInt(u64);
 
 const Value = types.Value;
 const Color = types.Color;
@@ -32,44 +44,109 @@ const max_threads: u16 = types.max_threads;
 const PV = lib.BoundedArray(Move, max_search_depth);
 const Nodes = lib.BoundedArray(Node, max_search_depth);
 
+const invalid_score: Value = std.math.maxInt(Value) - 1;
+
+pub const SearchParams = struct
+{
+    const infinite_search_params: SearchParams =
+    .{
+        .termination = .infinite,
+        .max_depth = types.max_search_depth,
+        .max_nodes = max_u64,
+        .max_movetime_ms = max_u64,
+    };
+
+    termination: Termination,
+    max_depth: u8,
+    max_nodes: u64,
+    max_movetime_ms: u64,
+
+    /// Convert the UCI go params to something usable for the search.
+    pub fn init(go: *const uci.Go) SearchParams
+    {
+        //lib.io.print("{any}\n", .{go}) catch wtf();
+
+        // (1) infinite.
+        if (go.infinite != null)
+        {
+            return .infinite_search_params;
+        }
+
+        // (2) depth.
+        if (go.depth) |depth|
+        {
+            return
+            .{
+                .termination = .depth,
+                .max_depth = @truncate(@min(depth, types.max_search_depth)),
+                .max_nodes = max_u64,
+                .max_movetime_ms = max_u64,
+            };
+        }
+
+        // (3) nodes.
+        if (go.nodes) |nodes|
+        {
+            return
+            .{
+                .termination = .nodes,
+                .max_depth = types.max_search_depth,
+                .max_nodes = nodes,
+                .max_movetime_ms = max_u64,
+            };
+        }
+
+        // (4) movetime.
+        if (go.movetime) |movetime|
+        {
+            return
+            .{
+                .termination = .movetime,
+                .max_depth = types.max_search_depth,
+                .max_nodes = max_u64,
+                .max_movetime_ms = movetime,
+            };
+        }
+
+        return .infinite_search_params;
+    }
+};
+
+/// This is to become the "thread" manager.
 pub const SearchManager = struct
 {
     num_threads: usize,
-    searchers: std.ArrayList(Search),
-    //threads: std.ArrayList(std.Thread),
+    searchparams: SearchParams,
+    searcher: Search,
 
-    pub fn init(num_threads: usize) SearchManager
+    pub fn init() SearchManager
     {
-        return
-        .{
-            .num_threads = num_threads,
-            .searchers = create_searchers(num_threads),
-        };
+        var mgr: SearchManager = undefined;
+
+        mgr.num_threads = 1;
+        mgr.searchparams = .infinite_search_params;
+        mgr.searcher = Search.init();
+
+        return mgr;
     }
 
     pub fn deinit(self: *SearchManager) void
     {
-        self.searchers.deinit(ctx.galloc);
+        //self.searchers.deinit(ctx.galloc);
+        self.searcher.deinit();
     }
 
-    fn create_searchers(num_threads: usize) std.ArrayList(Search)
-    {
-        var list: std.ArrayList(Search) = std.ArrayList(Search).initCapacity(ctx.galloc, num_threads) catch wtf();
-        for (0..num_threads) |_|
-        {
-            list.appendAssumeCapacity(Search.init());
-        }
-        return list;
-    }
-
-    pub fn start(self: *SearchManager) !void
+    pub fn start(self: *SearchManager, pos: *const Position, go: *const uci.Go) !void
     {
         // we should have some atomic value to check if the threads are not already running.
         // then start them.
         // std.Thread.spawn
         // std.Thread.detach
-        _ = self;
-        try lib.io.print("WE SHOULD START THINKING\n", .{});
+        //_ = self;
+        //try lib.io.print("WE START THINKING\n", .{});
+        self.searchparams = .init(go);
+        //try lib.io.print("{any}\n", .{ self.searchparams });
+        self.searcher.start_search(self, pos);
     }
 
     pub fn stop(self: *SearchManager) !void
@@ -82,152 +159,367 @@ pub const SearchManager = struct
 
 const Search = struct
 {
+    /// Backlink ref. Only valid after start_search. TODO: Bad design still...
+    mgr: *const SearchManager,
+    /// A private copy of the engine pos.
     pos: Position,
+    /// Rootmoves. resorted each iteration.
+    rootmoves: MovePicker,
+    /// We always keep track of the best move a.s.a.p.
+    best_move: Move,
     stack: Stack,
     pv_node: Node,
     nodes: u64,
-    iteration: u8,
+    /// The max reached depth, including quiet depth.
+    seldepth: u16,
+    iteration: u16,
+    stop: bool,
+    timer: utils.Timer,
 
-    pub fn init() Search
+    fn init() Search
     {
         return Search
         {
-            .pos = .empty, //.create(),
+            .mgr = undefined,
+            .pos = .empty,
+            .rootmoves = .init(),
+            .best_move = .empty,
             .stack = .init(),
             .pv_node = .init(),
             .nodes = 0,
+            .seldepth = 0,
             .iteration = 0,
+            .stop = false,
+            .timer = .empty,
         };
     }
 
-    pub fn start(self: *Search) void
-    {
-       switch (self.pos.to_move.e)
-        {
-            .white => self.iterative_deepening(Color.WHITE),
-            .black => self.iterative_deepening(Color.BLACK),
-        }
-    }
-
-    pub fn stop(self: *Search) void
+    fn deinit(self: *Search) void
     {
         _ = self;
+    }
+
+    // fn mgr(self: *const Search) *const SearchManager
+    // {
+    //     const manager_ptr: *const SearchManager = @fieldParentPtr("searcher", self);
+    //     return manager_ptr;
+    // }
+
+    /// Initialize stuff for a new search and go.
+    fn start_search(self: *Search, mgr: *const SearchManager, input_pos: *const Position) void
+    {
+        self.mgr = mgr;
+        self.timer.reset();
+        self.rootmoves.reset();
+        self.best_move = .empty;
+        self.stop = false;
+        self.iteration = 0;
+        self.nodes = 0;
+        self.seldepth = 0;
+        self.pv_node.clear();
+        // stack: Stack,
+        // pv_node: Node,
+
+        // Create our private copy of the position.
+        var rootstate: StateInfo = undefined;
+        self.pos.copy_from(input_pos, &rootstate);
+
+        // Append our rootstate to the history of the source position.
+        rootstate.prev = input_pos.state;
+
+        switch (self.pos.to_move.e)
+         {
+             .white => self.iterative_deepening(Color.WHITE),
+             .black => self.iterative_deepening(Color.BLACK),
+         }
+
+         lib.io.print("bestmove {f}\n", .{ self.best_move }) catch wtf();
+    }
+
+    fn stop_search(self: *Search) void
+    {
+        _ = self;
+    }
+
+    fn is_invalid_score(score: Value) bool
+    {
+        return @abs(score) >= invalid_score;
     }
 
     fn iterative_deepening(self: *Search, comptime us: Color) void
     {
-        // TODO: generate rootmoves.
+        self.rootmoves.generate_moves(&self.pos, us);
+
+        // Have something a.s.a.p.
+        if (self.rootmoves.count > 0)
+        {
+            self.best_move = self.rootmoves.extmoves[0].move;
+        }
+
 
         self.iteration = 1;
         var depth: u8 = 1;
+        var best_score: Value = -types.infinity;
         while (true)
         {
-            const mode: Mode = .{ .is_root = true };
-            const alpha: Value = self.alpha_beta(mode, us, depth, -types.infinity, types.infinity);
-            lib.out.print("alpha {}\n", .{ alpha });
-            // TODO: lib.out print info PV here.
-            if (self.iteration == 3) break;
+            const score: Value = self.alpha_beta(true, us, depth, -types.infinity, types.infinity);
+
+            // Timeout or stop.
+            if (is_invalid_score(score)) break;
+
+            // We found a better and different move.
+            if (score > best_score)
+            {
+                best_score = score;
+            }
+
+            // Copy the last finished pv.
+            self.pv_node.clone_from(&self.stack.nodes.buffer[2]);
+            self.best_move = self.pv_node.best_move();
+
+            // And print.
+            print_pv(&self.pv_node, self.iteration, self.seldepth, self.nodes, self.timer.read());
+
+            if (self.check_stop()) break;
+
+            //if (self.iteration == 7) break;
+
+            //if (self.timer.elapsed_ms() > 5000) break;
+
+            self.iteration += 1;
             depth += 1;
         }
     }
 
-    fn alpha_beta(self: *Search, comptime mode: Mode, comptime us: Color, depth: u8, input_alpha: Value, beta: Value) Value
+    fn alpha_beta(self: *Search, comptime is_root: bool, comptime us: Color, depth: u8, input_alpha: Value, beta: Value) Value
     {
         const them = comptime us.opp();
         const pos: *Position = &self.pos;
-        var alpha: Value = input_alpha;
-        var eval: Value = 0;
-        if (depth == 0) return self.quiet(mode, us, depth, input_alpha, beta);
+        const ply: u16 = pos.ply;
+
+        self.nodes += 1;
+        self.seldepth = @max(self.seldepth, ply);
+
+        // TODO: what to return on timeout?
+
+        // Requested depth reached.
+        if (depth == 0)
+        {
+            return self.quiet(is_root, us, 0, input_alpha, beta);
+        }
+
+        // Too deep.
+        if (ply >= max_search_depth)
+        {
+            return eval.evaluate(pos, us, false);
+        }
+
         const node: *Node = self.stack.get_node(pos.ply + 2);
         const childnode: *const Node = Stack.get_child_node(node);
         const parentnode: *const Node = Stack.get_parent_node(node);
         _ = parentnode;
+
         // Clear current node.
-        node.pv.len = 0;
-        node.eval = 0;
+        node.clear();
+
         if (pos.state.rule50 >= 100) return 0;
 
-        // Generate the moves (using rootmoves if at _root).
-        var movepicker = MovePicker.init();
-        movepicker.generate_moves(pos, us);
-        const any_moves: bool = movepicker.len() > 0;
-        if (any_moves)
-        {
-            for (movepicker.slice()) |extmove|
-            {
-                var st: StateInfo = undefined;
-                const move: Move = extmove.move;
-                self.pos.make_move(us, &st, move);
-                eval = -self.alpha_beta(mode, them, depth - 1, -beta, -alpha);
-                self.pos.unmake_move(us);
+        const in_check: bool = pos.state.checkers > 0;
 
-                // Higher alpha. A new best move is found.
-                if (eval > alpha)
-                {
-                    alpha = eval;
-                    update_pv(move, eval, node, childnode);
-                }
-            }
+        // Generate moves or copy the rootmoves.
+        var movepicker = MovePicker.init();
+        if (is_root)
+        {
+            movepicker.copy_from(&self.rootmoves);
         }
         else
         {
-            if (pos.in_check()) return -types.mate + pos.ply else return types.stalemate;
+            movepicker.generate_moves(pos, us);
+        }
+
+        // Is this checkmate or stalemate?
+        if (movepicker.count == 0)
+        {
+            if (in_check) return -types.mate + pos.ply else return types.stalemate;
+        }
+
+        var alpha: Value = input_alpha;
+
+        // Go trough the moves.
+        for (movepicker.slice()) |extmove|
+        {
+            var st: StateInfo = undefined;
+            const move: Move = extmove.move;
+
+            self.pos.make_move(us, &st, move);
+            const score: Value = -self.alpha_beta(false, them, depth - 1, -beta, -alpha);
+            self.pos.unmake_move(us);
+
+            // We always have to unmake the move, hence then invalid_score. We break and return alpha.
+            if (is_invalid_score(score)) break;
+
+            // Higher alpha. A new best move is found.
+            if (score > alpha)
+            {
+                alpha = score;
+                node.score = score;
+                // Beta cutoff / fail high.
+                if (score >= beta)
+                {
+                    return beta;
+                }
+                update_pv(move, score, node, childnode);
+            }
         }
         return alpha;
     }
 
-    fn quiet(self: *Search, comptime mode: Mode, comptime us: Color, depth: u8, input_alpha: Value, beta: Value) Value
+    fn quiet(self: *Search, comptime is_root: bool, comptime us: Color, quiet_depth: u8, input_alpha: Value, beta: Value) Value
     {
-        _ = self;
-        _ = mode;
-        _ = us;
-        _ = depth;
-        _ = input_alpha;
-        _ = beta;
-        // TODO: generate captures / promotions.
-        return 0;
+         _ = is_root;
+
+        const them = comptime us.opp();
+        const pos: *Position = &self.pos;
+        const ply: u16 = pos.ply;
+        const in_check : bool = pos.state.checkers > 0;
+        var alpha = input_alpha;
+
+        self.nodes += 1;
+        self.seldepth = @max(self.seldepth, ply);
+
+        const static_score: Value = eval.evaluate(pos, us, false);
+
+        // Too deep.
+        if (ply >= max_search_depth)
+        {
+            return static_score;
+        }
+
+        if (static_score >= beta)
+        {
+            return beta;
+        }
+
+        if (static_score > alpha)
+        {
+            alpha = static_score;
+        }
+
+        var movepicker: MovePicker = .init();
+        movepicker.generate_captures(pos, us);
+
+        // Mate or stalemate?
+        if (movepicker.count == 0)
+        {
+            //pos.print() catch wtf();
+            //lib.io.print("WTF, ", .{}) catch wtf();
+            if (in_check and quiet_depth == 0)
+            {
+                 return -types.mate + ply;
+            }
+            return alpha;
+        }
+
+        for (movepicker.slice()) |extmove|
+        {
+            // TODO: skip bad captures if not incheck.
+            const move: Move = extmove.move;
+            var st: StateInfo = undefined;
+            pos.make_move(us, &st, move);
+            const score: Value = -self.quiet(false, them, quiet_depth + 1, -beta, -alpha);
+            pos.unmake_move(us);
+
+            // Better move found.
+            if (score > alpha)
+            {
+                // Beta cutoff.
+                if (score >= beta)
+                {
+                    return beta;
+                }
+                alpha = score;
+            }
+        }
+        return alpha;
     }
 
     /// Copy line from 'childnode' to 'current node'
-    fn update_pv(bestmove: Move, eval: i16, node: *Node, childnode: *const Node) void
+    fn update_pv(bestmove: Move, score: Value, node: *Node, childnode: *const Node) void
     {
         node.pv.len = 0;
         node.pv.appendAssumeCapacity(bestmove);
         node.pv.appendSliceAssumeCapacity(childnode.pv.slice());
-        node.eval = eval;
+        node.score = score;
+    }
+
+    fn check_stop(self: *Search) bool
+    {
+        if (self.stop) return true;
+
+        const sp: *const SearchParams = &self.mgr.searchparams;
+
+        switch (sp.termination)
+        {
+            .infinite =>
+            {
+                return false;
+            },
+            .nodes =>
+            {
+                if (self.nodes >= sp.max_nodes) { self.stop = true; return true; }
+            },
+            // .time =>
+            // {
+            //     return false;
+            // },
+            .movetime =>
+            {
+                //@panic("WTF");
+        //        return false;
+                // if (self.nodes & 1023 == 0) lib.io.print("{}, ", .{ self.nodes } ) catch wtf();
+
+                //lib.io.print("{} {},", .{ self.timer.elapsed_ms(), sp.max_movetime_ms}) catch wtf();
+                if (self.nodes & 1023 == 0 and self.timer.elapsed_ms() >= sp.max_movetime_ms) { self.stop = true; return true; }
+                //if (self.timer.elapsed_ms() >= sp.max_movetime_ms) { self.stop = true; return true; }
+            },
+            .depth =>
+            {
+                if (self.iteration >= sp.max_depth) { self.stop = true; return true; }
+            },
+        }
+
+        return false;
     }
 };
 
 /// Each Search has its own stack.
 pub const Stack = struct
 {
-    movepicker: MovePicker,
     nodes: Nodes,
 
     fn init() Stack
     {
         return Stack
         {
-            .movepicker = .init(),
             .nodes = .{},
         };
     }
 
-    fn get_node(self: *Stack, index: u8) *Node
+    fn get_node(self: *Stack, index: u16) *Node
     {
-        return &self.nodes.items[index];
+        return &self.nodes.buffer[index];
     }
 
     /// This assumes the node is in the stack.
     fn get_child_node(node: *Node) *const Node
     {
-        return funcs.ptr_add(Node, node);
+        return funcs.ptr_add(Node, node, 1);
     }
 
     /// This assumes the node is in the stack.
     fn get_parent_node(node: *Node) *const Node
     {
-        return funcs.ptr_sub(Node, node);
+        return funcs.ptr_sub(Node, node, 1);
     }
 };
 
@@ -238,8 +530,10 @@ const Mode = packed struct
 
 const Node = struct
 {
+    const empty: Node = .{};
+
     pv: PV = .{},
-    eval: Value = 0,
+    score: Value = 0,
     is_check: bool = false,
     is_mate: bool = false,
     is_stalemate: bool = false,
@@ -248,59 +542,230 @@ const Node = struct
     {
         return .{};
     }
+
+    fn clear(self: *Node) void
+    {
+        self.* = .empty;
+    }
+
+    /// This is just the first move.
+    fn best_move(self: *const Node) Move
+    {
+        return self.pv.buffer[0];
+    }
+
+    fn clone_from(self: *Node, other: *const Node) void
+    {
+        self.pv.len = 0;
+        self.pv.appendSliceAssumeCapacity(other.pv.slice());
+        self.score = other.score;
+    }
+
+    // Zig-format for UCI output.
+    pub fn format(self: Node, writer: *std.io.Writer) std.io.Writer.Error!void
+    {
+        const len: usize = self.pv.len;
+        if (len == 0) return;
+
+        for (self.pv.buffer[0..len - 1]) |move|
+        {
+            try writer.print("{f} ", .{ move });
+        }
+
+        const last: Move = self.pv.buffer[len - 1];
+        try writer.print("{f}", .{ last });
+    }
 };
 
-const MovePicker = struct
+pub const MovePicker = struct
 {
     extmoves: [types.max_move_count]ExtMove,
-    store_ptr: [*]ExtMove,
-    //current: [*]ExtMove,
+    count: u8,
+    current: u8,
 
     fn init() MovePicker
     {
-        var result: MovePicker = undefined;
-        result.store_ptr = &result.extmoves;
-        return result;
-        //result.current_selected = null;
+        return
+        .{
+            .extmoves = undefined,
+            .count = 0,
+            .current = 0,
+        };
     }
 
-    /// Required funnction.
+    /// Required function.
     pub fn reset(self: *MovePicker) void
     {
-        self.store_ptr = &self.extmoves;
-        //self.index = null;
+        self.count = 0;
+        self.current = 0;
     }
 
-    /// Required funnction.
-    pub fn store(self: *MovePicker, move: Move) void
+    /// Required function.
+    pub fn store(self: *MovePicker, move: Move) ?void
     {
-        self.ptr[0] = ExtMove{ .move = move, .eval = 0 };
-        self.store_ptr += 1;
+        self.extmoves[self.current] = ExtMove{ .move = move, .score = 0 };
+        self.count += 1;
+        self.current += 1;
     }
 
-    pub fn len(self: *const MovePicker) usize
+    fn copy_from(self: *MovePicker, other: *const MovePicker) void
     {
-        return self.store_ptr - &self.extmoves;
+        const cnt: u8 = other.count;
+        @memcpy(self.extmoves[0..cnt], other.extmoves[0..cnt]);
+        self.count = cnt;
+        self.current = 0;
     }
 
-    fn slice(self: *const MovePicker) []const Move
+    fn slice(self: *const MovePicker) []const ExtMove
     {
-        return self.extmoves[0..self.len()];
+        return self.extmoves[0..self.count];
     }
 
     fn generate_moves(self: *MovePicker, pos: *const Position, comptime us: Color) void
     {
-        pos.generate_moves(pos, us, &self);
+        pos.generate_moves(us, self);
+    }
+
+    /// Generate captures only, but if in check generate all.
+    fn generate_captures(self: *MovePicker, pos: *const Position, comptime us: Color) void
+    {
+        pos.generate_captures(us, self);
+    }
+
+    /// Give each generated move an initial heuristic score.
+    fn score_moves(self: *MovePicker) void
+    {
+        for (self.slice()) |*e|
+        {
+            //const capt: PieceType = if (e.move.movetype == .enpassant) P else if (e.move)
+
+            if (e.move.movetype == .promotion)
+            {
+                //e.score = MoveScoring.promotion + e.move.info.prom.to_piecetype();
+            }
+            else if (e.move.movetype == .enpassant)
+            {
+                e.score = 40;
+            }
+            else if (e.move.movetype == .normal)
+            {
+
+            }
+            e.score = 42;
+        }
     }
 
     fn extract_next(self: *MovePicker) ?ExtMove
     {
-        _ = self;
+        // TODO: params killer moves? pvmove? tt move?
+
+        if (self.count == 0) return null;
+
+        var best_idx = 0;
+        var max_score: i32 = self.extmoves[self.current].score;
+
+        const offset = self.current + 1;
+        for (self.extmoves[offset..self.count], offset..) |e, idx|
+        {
+            const score = e.score;
+            if (score > max_score)
+            {
+                best_idx = idx;
+                max_score = score;
+            }
+        }
+
+        if (best_idx != 0)
+        {
+            // swap.
+            //std.mem.swap(self.extmoves[], a: *T, b: *T)
+        }
+
+        // //pub inline fn get_next_best(move_list: *MoveList, score_list: *ScoreList, i: usize) Move {
+        //     var best_j = i;
+        //     var max_score = score_list.scores[i];
+
+        //     // Start from i+1 and iterate over the remaining elements
+        //     for ((i + 1)..score_list.count) |j| {
+        //         const score = score_list.scores[j];
+        //         if (score > max_score) {
+        //             best_j = j;
+        //             max_score = score;
+        //         }
+        //     }
+
+        //     // Swap if a better move is found
+        //     if (best_j != i) {
+        //         const best_move = move_list.moves[best_j];
+        //         const best_score = score_list.scores[best_j];
+        //         move_list.moves[best_j] = move_list.moves[i];
+        //         score_list.scores[best_j] = score_list.scores[i];
+        //         move_list.moves[i] = best_move;
+        //         score_list.scores[i] = best_score;
+        //     }
+
+        //     return move_list.moves[i];
+        // // }
+
     }
 };
 
-const ExtMove = struct
+/// 64 bits. 2 bytes still available.
+pub const ExtMove = packed struct
 {
     move: Move,
-    eval: Value,
+    score: i32,
 };
+
+/// Criterium for ending the search.
+pub const Termination = enum
+{
+    infinite,
+    nodes,
+    // time,
+    movetime,
+    depth,
+};
+
+pub const TimeControl = struct
+{
+    ponder: bool = false,
+    btime: ?u64 = null,
+    wtime: ?u64 = null,
+    binc: ?u32 = 0,
+    winc: ?u32 = 0,
+    depth: ?u32 = null,
+    nodes: ?u32 = null,
+    mate: ?u32 = null,
+    movetime: ?u64 = null,
+    movestogo: ?u32 = null,
+    infinite: bool = false,
+
+    remaining_time: ?u64 = null,
+    remaining_enemy_time: ?u64 = null,
+    time_inc: ?u32 = null,
+};
+
+const MoveScoring = struct
+{
+    const promotion: i32 = 1_000_000;
+    //const bad_capture
+};
+
+
+fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed_nanoseconds: u64) void
+{
+    // info depth 1 seldepth 2 multipv 1 score cp 17 nodes 20 nps 20000 hashfull 0 tbhits 0 time 1 pv e2e4
+
+    const ms = elapsed_nanoseconds / std.time.ns_per_ms;
+    const nps: u64 = funcs.nps(nodes, elapsed_nanoseconds);
+
+    lib.io.print
+    (
+        "info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {f}\n",
+        .{ depth, seldepth, pv_node.score, nodes, nps, 0, 0, ms, pv_node.* }
+    )
+    catch wtf();
+}
+
+// info depth 3 seldepth 4 multipv 1 score cp 42 nodes 72 nps 72000 hashfull 0 tbhits 0 time 1 pv e2e4

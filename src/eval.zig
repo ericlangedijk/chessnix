@@ -2,6 +2,8 @@
 
 //! --- NOT USED YET ---
 
+// TODO: get rid of the comptime color. just negate the result if needed.
+// TODO: make eval quite simple! depth will beat eval. Don't do too many "attack" stuff.
 // TODO: remember to prevent doing useless moves in the endgame -> adjust score with drawcounter!
 // TODO: if overwhelmingly winning (900??) skip positional stuff.
 // TODO: draw by insufficient material.
@@ -23,6 +25,7 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 const data = @import("data.zig");
 const masks = @import("masks.zig");
+const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 
 const assert = std.debug.assert;
@@ -42,6 +45,13 @@ const Square = types.Square;
 const Move = types.Move;
 const GamePhase = types.GamePhase;
 const Position = position.Position;
+
+const P = types.P;
+const N = types.N;
+const B = types.B;
+const R = types.R;
+const Q = types.Q;
+const K = types.K;
 
 /// Debug only.
 pub fn lazy_evaluate(pos: *const Position, comptime tracking: bool) Value
@@ -83,7 +93,7 @@ pub fn evaluate(pos: *const Position, comptime color_perspective: Color, comptim
 /// `color_perspective` must be the color to move.
 pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Color, comptime phase: GamePhase, comptime tracking: bool) Value
 {
-    if (comptime lib.is_paranoid) assert(pos.to_move.e == color_perspective.e);
+    //if (comptime lib.is_paranoid) assert(pos.to_move.e == color_perspective.e);
 
 
     const Addition = fn (score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, comptime track: bool, sq: ?Square) void;
@@ -113,6 +123,8 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
     const bb_all = pos.all();
 
     const simple_score: Value = pos.values[color_perspective.u] - pos.values[color_perspective.opp().u];
+
+    // if (simple_score > 500) return simple_score;
 
     // Sliding values of the Pesto tables, which we taper at the end.
     var piece_square_score_mg: Value = 0;
@@ -153,7 +165,7 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_7)) * 3;
                 //if (tracking)
                 //lib.io.debugprint("space {}\n", .{bits});
-            add(&space, bits, Piece.NO_PIECE, .space, true, null);
+            add(&space, bits, Piece.NO_PIECE, .space, tracking, null);
         }
 
         inline for (PieceType.all) |piecetype|
@@ -283,6 +295,8 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                     {
                         king_safety += 0; // not yet used.
 
+                        const our_king_area: u64 = data.get_king_attacks(our_king_sq) & bb_us;
+
                         if (check)
                         {
                             const e: Value = Tables.in_check;
@@ -319,18 +333,17 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
                         }
 
                         // Rather naive danger heuristic.
-                        const bb = pos.attacks_by_for_occupation(them, 0) & data.get_king_attacks(our_king_sq);
+                        const bb = pos.attacks_by_for_occupation(them, bb_all) & our_king_area;
                         const danger: Value = popcnt(bb);
                         add(&king_score, -danger, piece, .attacks_close_to_king, tracking, sq);
 
                         // King protection
-                        const protection = data.get_king_attacks(our_king_sq) & bb_us;
-                        const pawn_protection = protection & pos.pawns(us);
+                        const pawn_protection = our_king_area & pos.pawns(us);
                         add(&king_score, popcnt(pawn_protection) * 4, piece, .king_protection_by_pawns, tracking, sq);
 
                         if (phase != .Endgame)
                         {
-                            const piece_protection = protection & pos.non_pawns(us);
+                            const piece_protection = our_king_area & pos.non_pawns(us);
                             add(&king_score, popcnt(piece_protection) * 2, piece, .king_protection_by_pieces, tracking, sq);
                         }
                     },
@@ -345,13 +358,13 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
 
     // Taper sliding values.
     const pesto: Value = Tables.sliding_score(non_pawn_material, piece_square_score_mg, piece_square_score_eg);
-    const to_move_score: Value = 12;
+    //const to_move_score: Value = 12;
 
     if (tracking)
     {
         lib.io.debugprint(
             \\perspective : {t}
-            \\to_move     : {}
+            // \\to_move     : {}
             \\material    : {}
             \\pestotables : {}
             \\mobility    : {}
@@ -364,18 +377,26 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             \\king        : {}
             \\
             ,
-            .{ color_perspective.e, to_move_score, simple_score, pesto, mobility, space, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
+            .{ color_perspective.e, simple_score, pesto, mobility, space, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
     }
 
 
-    const big: Value =
-        (simple_score * 10) +
-        (pesto * 8) +
-        ((pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety) * 6) +
-        (mobility * 6) +
-        (space * 4);
+    // TODO: this is still very clunky.
+    // const big: Value =
+    //     (simple_score * 10) +
+    //     (pesto * 8) +
+    //     ((pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety) * 6) +
+    //     (mobility * 6) +
+    //     (space * 4);
+    // return @divTrunc(big, 34);// + to_move_score;
 
-    return @divTrunc(big, 34) + to_move_score;
+    return
+        simple_score +
+        pesto +
+        pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety +
+        mobility +
+        space;
+
 }
 
 fn clamp(v: Value, limit: Value) Value
@@ -395,8 +416,11 @@ pub fn is_draw_by_insufficient_material(pos: *const Position) bool
 }
 
 /// Static exchange evaluation. Quickly decide if a (capture) move is good or bad.
+/// TODO: this one is wrong. use the algo see_score.
 pub fn see(pos: *const Position, m: Move) bool
 {
+    if (true) @compileError("this one is wrong. use the algo see_score");
+
     if (m.movetype == .promotion) return true;
 
     const us: Color = pos.to_move;
@@ -514,6 +538,126 @@ pub fn see(pos: *const Position, m: Move) bool
         }
     }
     return gain[0] >= 0;
+}
+
+/// TODO: make one SEE with comptimes (bool or threshold or full value). Add threshold for bad capture.
+/// TODO: promotions?
+pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
+{
+    const from: Square = m.from;
+    const to: Square = m.to;
+    const value_them = pos.get(to).value();
+    const value_us = pos.get(from).value();
+    // This is a good capture. For example pawn takes knight.
+    //if (value_them - value_us > @abs(bad_threshold)) return (value_them - value_us);
+    var gain: [24]Value = @splat(0);
+    gain[0] = value_them;
+    gain[1] = value_us - value_them;
+
+    var depth: u8 = 1;
+    const queens_bishops = pos.all_queens_bishops();
+    const queens_rooks = pos.all_queens_rooks();
+    var occupation = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
+    var attackers: u64 = pos.get_all_attacks_to_for_occupation(occupation, to);
+    var bb: u64 = 0;
+    var side: Color = us;
+    while (true)
+    {
+        attackers &= occupation;
+        if (attackers == 0) break;
+        side = side.opp();
+
+        // Pawn.
+        bb = attackers & pos.pawns(side);
+        if (bb != 0)
+        {
+            depth += 1;
+            gain[depth] = P.value() - gain[depth - 1];
+            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 pawn
+            attackers |= (data.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
+            continue;
+        }
+
+        // Knight.
+        bb = attackers & pos.knights(side);
+        if (bb != 0)
+        {
+            depth += 1;
+            gain[depth] = N.value() - gain[depth - 1];
+            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight
+            // Note: a knight move cannot reveal more sliding attackers to the same square.
+            continue;
+        }
+
+        // Bishop.
+        bb = attackers & pos.bishops(side);
+        if (bb != 0)
+        {
+            depth += 1;
+            gain[depth] = B.value() - gain[depth - 1];
+            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 bishop
+            attackers |= (data.get_bishop_attacks(to, occupation) & queens_rooks); // reveal next diagonal attacker.
+            continue;
+        }
+
+        // Rook.
+        bb = attackers & pos.rooks(side);
+        if (bb != 0)
+        {
+            depth += 1;
+            gain[depth] = R.value() - gain[depth - 1];
+            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 rook
+            attackers |= (data.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
+            continue;
+        }
+
+        // Queen.
+        bb = attackers & pos.queens(side);
+        if (bb != 0)
+        {
+            depth += 1;
+            gain[depth] = Q.value() - gain[depth - 1];
+            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 queen
+            attackers |= (data.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
+            attackers |= (data.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
+            continue;
+        }
+
+        bb = attackers & pos.kings(side);
+        if (bb != 0)
+        {
+            break;
+
+            // // When the king captures and there are still opponent attackers, we return a flipped result.
+            // // Return true if there are zero attacks to our king left.
+            // funcs.clear_square(&occupation, funcs.first_square(bb));
+            // bb = pos.get_attackers_to_for_occupation(to_sq, occupation) & occupation & pos.by_side(side.opp());
+            // return switch (us.e == side.e)
+            // {
+            //     false => bb == 0,
+            //     true => bb != 0,
+            // };
+        }
+
+        break;
+    }
+
+    lib.io.debugprint("{any}\n", .{ gain});
+    // Bubble up the score
+    depth -= 1;
+    while (depth > 0) : (depth -= 1)
+    {
+        if (gain[depth] > -gain[depth - 1])
+        {
+            gain[depth - 1] = -gain[depth];
+        }
+    }
+    return gain[0];
 }
 
 pub fn is_supported_by_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
@@ -835,3 +979,33 @@ const Tables = struct
 
 };
 
+/// A little 1 second time eval. around 14 million per second.
+pub fn bench(pos: *const Position) void
+{
+    if (pos.to_move.e == .black)
+    {
+        var v: i64 = 0;
+        var cnt: u64 = 0;
+        var timer = utils.Timer.start();
+        while (timer.elapsed_ms() < 1000)
+        {
+            v += evaluate(pos, Color.WHITE, false);
+            cnt += 1;
+        }
+        const t = timer.read();
+        lib.io.debugprint("v {} cnt {} {}\n", .{v, cnt, funcs.nps(cnt, t)});
+    }
+    else
+    {
+        var v: i64 = 0;
+        var cnt: u64 = 0;
+        var timer = utils.Timer.start();
+        while (timer.elapsed_ms() < 1000)
+        {
+            v += evaluate(pos, Color.BLACK, false);
+            cnt += 1;
+        }
+        const t = timer.read();
+        lib.io.debugprint("v {} cnt {} {}\n", .{v, cnt, funcs.nps(cnt, t)});
+    }
+}

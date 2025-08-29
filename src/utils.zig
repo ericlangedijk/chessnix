@@ -12,8 +12,12 @@ const wtf = lib.wtf;
 /// A little wrapper around the std times.
 pub const Timer = struct
 {
+    pub const empty: Timer = std.mem.zeroes(Timer);
+
     std_timer: std.time.Timer,
 
+    /// NOTE: at program startup we check once if timer is available, otherwise quit.
+    /// From then on we assume it is there.
     pub fn start() Timer
     {
         return
@@ -22,11 +26,13 @@ pub const Timer = struct
         };
     }
 
+    /// Elapsed nanoseconds.
     pub fn read(self: *Timer) u64
     {
         return self.std_timer.read();
     }
 
+    /// Elapsed nanoseconds.
     pub fn lap(self: *Timer) u64
     {
         return self.std_timer.lap();
@@ -86,3 +92,5 @@ pub const TextFileReader = struct
         return std.mem.trimEnd(u8, line, "\r\n");
     }
 };
+
+// const Error = std.fs.File.OpenError || std.io.Reader.DelimiterError || std.mem.Allocator.Error;

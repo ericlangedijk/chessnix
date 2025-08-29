@@ -15,12 +15,15 @@ const StateInfo = position.StateInfo;
 const Position = position.Position;
 const Storage = position.MoveStorage;
 
+const search = @import("search.zig");
+
 const ctx = lib.ctx;
 const io = lib.io;
 
 pub fn print_struct_sizes() void
 {
     lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
+    lib.io.debugprint("ExtMove {}\n", .{ @sizeOf(search.ExtMove)});
 }
 
 pub fn run_silent_debugmode_tests() !void

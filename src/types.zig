@@ -10,8 +10,16 @@ const lib = @import("lib.zig");
 
 const assert = std.debug.assert;
 
+// Much used, we shorten.
+pub const P = PieceType.PAWN;
+pub const N = PieceType.KNIGHT;
+pub const B = PieceType.BISHOP;
+pub const R = PieceType.ROOK;
+pub const Q = PieceType.QUEEN;
+pub const K = PieceType.KING;
+
 /// Used for evaluation.
-pub const Value = i16;
+pub const Value = i32;//16;
 /// Used for evaluation.
 pub const Float = f32;
 
@@ -521,17 +529,17 @@ pub const Piece = packed union
 
     pub fn create_pawn(us: Color) Piece
     {
-        return make(PieceType.PAWN, us);
+        return make(P, us);
     }
 
     pub fn create_rook(us: Color) Piece
     {
-        return make(PieceType.ROOK, us);
+        return make(R, us);
     }
 
     pub fn create_king(us: Color) Piece
     {
-        return make(PieceType.KING, us);
+        return make(K, us);
     }
 
     pub fn value(self: Piece) Value
@@ -822,6 +830,34 @@ pub const Move = packed struct(u16)
             result.print_assume_capacity("{u}", .{ ch });
         }
         return result;
+    }
+
+    // Zig-format for UCI output.
+    pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void
+    {
+        if (self.is_empty())
+        {
+            try writer.print("0000", .{});
+            return;
+        }
+
+        const from: Square = self.from;
+        var to: Square = self.to;
+
+        if (self.type == .castle)
+        {
+            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+            const castletype: CastleType = self.info.castletype;
+            // Change target square. We decode castling as "king takes rook".
+            to = position.king_castle_destination_squares[color.u][castletype.u];
+        }
+        try writer.print("{t}{t}", .{ from.e, to.e });
+
+        if (self.type == .promotion)
+        {
+            const ch: u8 = self.info.prom.to_uci_char();
+            try writer.print("{u}", .{ ch });
+        }
     }
 };
 

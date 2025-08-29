@@ -1,12 +1,16 @@
 // zig fmt: off
 
+// !The central engine in here provides the functions for the UCI loop.
+
 const std = @import("std");
 
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
+const uci = @import("uci.zig");
 const search = @import("search.zig");
+
 
 const ctx = lib.ctx;
 const io = lib.io;
@@ -29,7 +33,7 @@ var searchmgr: SearchManager = undefined;
 pub fn initialize() !void
 {
     try set_startpos(null);
-    searchmgr = SearchManager.init(1);
+    searchmgr = .init();
 }
 
 /// Cleanup.
@@ -85,9 +89,9 @@ fn parse_moves(moves: []const u8) void
     }
 }
 
-pub fn start() !void
+pub fn start(go: *const uci.Go) !void
 {
-    try searchmgr.start();
+    try searchmgr.start(&pos, go);
 }
 
 pub fn stop() !void
