@@ -4,12 +4,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 
-pub fn initialize() !void
+pub fn initialize(comptime is_zig_test: bool) !void
 {
     // If no timer available, the program is useless.
     var timer = try std.time.Timer.start();
 
-    memory_context = .init();
+    memory_context = .init(is_zig_test);
     io_context = .init();
 
     // Then initialize chess.
@@ -34,7 +34,9 @@ pub const version = "0.1";
 // Some app consts.
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-pub const is_paranoid: bool = if (is_debug) true else false;
+
+/// For now we set paranoid false, too speedup debugging.
+pub const is_paranoid: bool = false; // if (is_debug) true else false;
 
 /// The global memory.
 pub const ctx: *const MemoryContext = &memory_context;
@@ -54,12 +56,12 @@ pub const MemoryContext = struct
     gpa: if (is_debug) std.heap.DebugAllocator(.{}) else void,
     galloc: std.mem.Allocator,
 
-    fn init() MemoryContext
+    fn init(comptime is_zig_test: bool) MemoryContext
     {
         return MemoryContext
         {
             .gpa = if (is_debug) std.heap.DebugAllocator(.{}).init else {},
-            .galloc = if (is_debug) memory_context.gpa.allocator() else std.heap.smp_allocator,
+            .galloc = if(is_zig_test) std.testing.allocator else if (is_debug) memory_context.gpa.allocator() else std.heap.smp_allocator,
         };
     }
 

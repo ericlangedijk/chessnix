@@ -29,7 +29,6 @@ pub fn run(pos: *Position, depth: u8) void
     };
     const time = t.lap();
     io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)}) catch wtf();
-    // if (pos.state.key != 0xabb725b727afbcba) lib.print("WTF.......", .{});
 }
 
 /// Only show output when ready.
@@ -48,14 +47,27 @@ pub fn qrun(pos: *Position, depth: u8) void
 /// No output. Just return node count.
 pub fn run_quick(pos: *Position, depth: u8) u64
 {
-    //var cloned = pos.clone(true);
-    //defer cloned.deinit();
     switch (pos.to_move.e)
     {
         .white => return do_run(false, true, Color.WHITE, depth, pos),
         .black => return do_run(false, true, Color.BLACK, depth, pos),
     }
 }
+
+/// ### Debug only.
+/// Run captures.
+pub fn run_captures(pos: *Position, depth: u8) void
+{
+    var t = utils.Timer.start();
+    const nodes: u64 = switch (pos.to_move.e)
+    {
+        .white => do_run_captures(true, true, Color.WHITE, depth, pos),
+        .black => do_run_captures(true, true, Color.BLACK, depth, pos),
+    };
+    const time = t.lap();
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)}) catch wtf();
+}
+
 
 fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, depth: u8, pos: *Position) u64
 {
@@ -89,6 +101,53 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
             else
             {
                 count = do_run(output, false, them, depth - 1, pos); // go recursive
+                nodes += count;
+            }
+            pos.unmake_move(us);
+        }
+
+        if (output and is_root)
+        {
+            io.print("{s}: {}\n", .{ m.to_string().slice(), count }) catch wtf();
+        }
+    }
+    return nodes;
+}
+
+/// ### Debug only.
+/// Run captures.
+fn do_run_captures(comptime output: bool, comptime is_root: bool, comptime us: Color, depth: u8, pos: *Position) u64
+{
+    const is_leaf: bool = depth == 2;
+    const them: Color = comptime us.opp();
+    var count: usize = 0;
+    var nodes: usize = 0;
+
+    var storage: position.MoveStorage = .init();
+    pos.generate_captures(us, &storage);
+    const moves = storage.slice();
+
+    for (moves) |m|
+    {
+        if (is_root and depth <= 1)
+        {
+            count = 1;
+            nodes += 1;
+        }
+        else
+        {
+            var st: position.StateInfo = undefined;
+            pos.make_move(us, &st, m);
+            if (is_leaf)
+            {
+                var counter: JustCount = .init();
+                pos.generate_captures(them, &counter); // just count
+                count = counter.moves;
+                nodes += count;
+            }
+            else
+            {
+                count = do_run_captures(output, false, them, depth - 1, pos); // go recursive
                 nodes += count;
             }
             pos.unmake_move(us);

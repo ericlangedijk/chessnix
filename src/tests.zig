@@ -183,7 +183,7 @@ pub const FenDepths = lib.BoundedArray(u64, 16);
 pub fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
 {
     var depths: lib.BoundedArray(u64, 16) = .{};
-    depths.appendAssumeCapacity(0);
+    depths.append_assume_capacity(0);
 
     const first_semicolon: usize = index_of(fen, ';') orelse return ParseDepthError.NoSemiColon;
     const last_part = fen[first_semicolon + 1..];
@@ -198,7 +198,7 @@ pub fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
         if (std.mem.indexOfScalar(u8, slice, ' ') == null)
         {
             const nodes: u64 = std.fmt.parseInt(u64, slice, 10) catch return ParseDepthError.ExpectedNodes;
-            depths.appendAssumeCapacity(nodes);
+            depths.append_assume_capacity(nodes);
         }
         // Parse "D 20"
         else
@@ -217,7 +217,7 @@ pub fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
                 {
                     //lib.io.debugprint("PART [{s}], ", .{part});
                     const nodes: u64 = std.fmt.parseInt(u64, part, 10) catch return ParseDepthError.ExpectedNodes;
-                    depths.appendAssumeCapacity(nodes);
+                    depths.append_assume_capacity(nodes);
                 }
                 else return ParseDepthError.TooManyPartsInDepth;
                 i += 1;

@@ -44,6 +44,7 @@ const PieceType = types.PieceType;
 const Square = types.Square;
 const Move = types.Move;
 const GamePhase = types.GamePhase;
+const StateInfo = position.StateInfo;
 const Position = position.Position;
 
 const P = types.P;
@@ -53,49 +54,28 @@ const R = types.R;
 const Q = types.Q;
 const K = types.K;
 
-/// Debug only.
-pub fn lazy_evaluate(pos: *const Position, comptime tracking: bool) Value
+/// Returns the evaluation from white perspective.
+pub fn evaluate_abs(pos: *const Position, comptime tracking: bool) Value
 {
-    return switch (pos.to_move.e)
-    {
-        .white => evaluate(pos, .WHITE, tracking),
-        .black => evaluate(pos, .BLACK, tracking),
-    };
+    const v = evaluate(pos, tracking);
+    return if (pos.to_move.e == .white) v else -v;
 }
 
-pub fn evaluate(pos: *const Position, comptime color_perspective: Color, comptime tracking: bool) Value
+pub fn evaluate(pos: *const Position, comptime tracking: bool) Value
 {
     const phase: GamePhase = pos.phase();
-    switch (color_perspective.e)
+    switch (phase)
     {
-        .white =>
-        {
-            switch (phase)
-            {
-                .Opening => return perform_evaluation(pos, .WHITE, .Opening, tracking),
-                .Midgame => return perform_evaluation(pos, .WHITE, .Midgame, tracking),
-                .Endgame => return perform_evaluation(pos, .WHITE, .Endgame, tracking),
-            }
-            return evaluate(pos, Color.WHITE, tracking);
-        },
-        .black =>
-        {
-            switch (phase)
-            {
-                .Opening => return perform_evaluation(pos, .BLACK, .Opening, tracking),
-                .Midgame => return perform_evaluation(pos, .BLACK, .Midgame, tracking),
-                .Endgame => return perform_evaluation(pos, .BLACK, .Endgame, tracking),
-            }
-        },
+        .Opening => return eval(pos, .Opening, tracking),
+        .Midgame => return eval(pos, .Midgame, tracking),
+        .Endgame => return eval(pos, .Endgame, tracking),
     }
+    return evaluate(pos, tracking);
 }
 
-/// `color_perspective` must be the color to move.
-pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Color, comptime phase: GamePhase, comptime tracking: bool) Value
+/// Evaluation from the perspective of the side to move.
+fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool) Value
 {
-    //if (comptime lib.is_paranoid) assert(pos.to_move.e == color_perspective.e);
-
-
     const Addition = fn (score: *Value, delta: Value, comptime piece: Piece, comptime feature: Feature, comptime track: bool, sq: ?Square) void;
 
     const Operation = struct
@@ -121,8 +101,9 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
 
     const non_pawn_material: Value = pos.non_pawn_material();
     const bb_all = pos.all();
+    const negate: bool = pos.to_move.e == .black;
 
-    const simple_score: Value = pos.values[color_perspective.u] - pos.values[color_perspective.opp().u];
+    const simple_score: Value = pos.values[Color.WHITE.u] - pos.values[Color.BLACK.u];
 
     // if (simple_score > 500) return simple_score;
 
@@ -145,7 +126,7 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
 
     inline for (Color.all) |us|
     {
-        const add: Addition = comptime if (us.e == color_perspective.e) Operation.add else Operation.sub;
+        const add: Addition = comptime if (us.e == .white) Operation.add else Operation.sub;
 
         // Colored consts.
         const them = comptime us.opp();
@@ -163,8 +144,6 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_5)) * 2;
             bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_6)) * 3;
             bits += popcnt(bb_us & funcs.relative_rank_bb(us, bitboards.rank_7)) * 3;
-                //if (tracking)
-                //lib.io.debugprint("space {}\n", .{bits});
             add(&space, bits, Piece.NO_PIECE, .space, tracking, null);
         }
 
@@ -377,26 +356,17 @@ pub fn perform_evaluation(pos: *const Position, comptime color_perspective: Colo
             \\king        : {}
             \\
             ,
-            .{ color_perspective.e, simple_score, pesto, mobility, space, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
+            .{ pos.to_move.e, simple_score, pesto, mobility, space, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
     }
 
-
-    // TODO: this is still very clunky.
-    // const big: Value =
-    //     (simple_score * 10) +
-    //     (pesto * 8) +
-    //     ((pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety) * 6) +
-    //     (mobility * 6) +
-    //     (space * 4);
-    // return @divTrunc(big, 34);// + to_move_score;
-
-    return
+    const score: Value =
         simple_score +
         pesto +
         pawn_score + knight_score + bishop_score + rook_score + queen_score + king_score + king_safety +
         mobility +
         space;
 
+    return if (negate) -score else score;
 }
 
 fn clamp(v: Value, limit: Value) Value
@@ -416,140 +386,14 @@ pub fn is_draw_by_insufficient_material(pos: *const Position) bool
 }
 
 /// Static exchange evaluation. Quickly decide if a (capture) move is good or bad.
-/// TODO: this one is wrong. use the algo see_score.
-pub fn see(pos: *const Position, m: Move) bool
-{
-    if (true) @compileError("this one is wrong. use the algo see_score");
-
-    if (m.movetype == .promotion) return true;
-
-    const us: Color = pos.to_move;
-    var side: Color = us;
-    const from_sq = m.from;
-    const to_sq = m.to;
-    const value_them = pos.get(to_sq).value();
-    const value_us = pos.get(from_sq).value();
-    // This is a good capture. For example pawn takes knight.
-    if (value_them - value_us > 100) return true;
-    var gain: [24]Value = @splat(0);
-    gain[0] = value_them;
-    gain[1] = value_us - value_them;
-    var depth: u8 = 1;
-    const queens_or_bishops = pos.all_queens_bishops();
-    const queens_or_rooks = pos.all_queens_rooks();
-    var occupation = pos.all() ^ to_sq.to_bitboard() ^ from_sq.to_bitboard();
-    var attackers: u64 = pos.get_attackers_to_for_occupation(to_sq, occupation);
-    var bb: u64 = 0;
-
-    while (true)
-    {
-        attackers &= occupation;
-        if (attackers == 0) break;
-        side = side.opp();
-
-        // Pawn.
-        bb = attackers & pos.pawns(side);
-        if (bb != 0)
-        {
-            depth += 1;
-            gain[depth] = PieceType.PAWN.value() - gain[depth - 1];
-            if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 pawn
-            attackers |= data.get_bishop_attacks(to_sq, occupation) & queens_or_bishops; // reveal next diagonal attacker.
-            continue;
-        }
-
-        // Knight.
-        bb = attackers & pos.bishops(side);
-        if (bb != 0)
-        {
-            depth += 1;
-            gain[depth] = PieceType.KNIGHT.value() - gain[depth - 1];
-            if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight
-            //attackers |= data.get_knight_attacks(to_sq, occupation) & queens_or_rooks; // reveal next straight attacker.
-            // Note: a knight move cannot reveal more sliding attackers to the same square.
-            continue;
-        }
-
-        // Bishop.
-        bb = attackers & pos.bishops(side);
-        if (bb != 0)
-        {
-            depth += 1;
-            gain[depth] = PieceType.BISHOP.value() - gain[depth - 1];
-            if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 bishop
-            attackers |= data.get_bishop_attacks(to_sq, occupation) & queens_or_rooks; // reveal next diagonal attacker.
-            continue;
-        }
-
-        // Rook.
-        bb = attackers & pos.rooks(side);
-        if (bb != 0)
-        {
-            depth += 1;
-            gain[depth] = PieceType.ROOK.value() - gain[depth - 1];
-            if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 rook
-            attackers |= data.get_rook_attacks(to_sq, occupation) & queens_or_rooks; // reveal next straight attacker.
-            continue;
-        }
-
-        // Queen.
-        bb = attackers & pos.queens(side);
-        if (bb != 0)
-        {
-            depth += 1;
-            gain[depth] = PieceType.QUEEN.value() - gain[depth - 1];
-            if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 queen
-            attackers |= data.get_bishop_attacks(to_sq, occupation) & queens_or_bishops; // reveal next diagonal attacker.
-            attackers |= data.get_rook_attacks(to_sq, occupation) & queens_or_rooks; // reveal next straight attacker.
-            continue;
-        }
-
-        bb = attackers & pos.kings(side);
-        if (bb != 0)
-        {
-            break;
-
-            // // When the king captures and there are still opponent attackers, we return a flipped result.
-            // // Return true if there are zero attacks to our king left.
-            // funcs.clear_square(&occupation, funcs.first_square(bb));
-            // bb = pos.get_attackers_to_for_occupation(to_sq, occupation) & occupation & pos.by_side(side.opp());
-            // return switch (us.e == side.e)
-            // {
-            //     false => bb == 0,
-            //     true => bb != 0,
-            // };
-        }
-
-        break;
-    }
-
-    // Bubble up the score
-    depth -= 1;
-    while (depth > 0) : (depth -= 1)
-    {
-        if (gain[depth] > -gain[depth - 1])
-        {
-            gain[depth - 1] = -gain[depth];
-        }
-    }
-    return gain[0] >= 0;
-}
-
-/// TODO: make one SEE with comptimes (bool or threshold or full value). Add threshold for bad capture.
-/// TODO: promotions?
-pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
+pub fn see_score(pos: *const Position, m: Move) Value
 {
     const from: Square = m.from;
     const to: Square = m.to;
     const value_them = pos.get(to).value();
     const value_us = pos.get(from).value();
     // This is a good capture. For example pawn takes knight.
-    //if (value_them - value_us > @abs(bad_threshold)) return (value_them - value_us);
+    //if (value_them - value_us > P.value()) return true;
     var gain: [24]Value = @splat(0);
     gain[0] = value_them;
     gain[1] = value_us - value_them;
@@ -560,7 +404,7 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
     var occupation = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
     var attackers: u64 = pos.get_all_attacks_to_for_occupation(occupation, to);
     var bb: u64 = 0;
-    var side: Color = us;
+    var side: Color = pos.to_move;
     while (true)
     {
         attackers &= occupation;
@@ -573,7 +417,6 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         {
             depth += 1;
             gain[depth] = P.value() - gain[depth - 1];
-            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 pawn
             attackers |= (data.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
             continue;
@@ -585,7 +428,6 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         {
             depth += 1;
             gain[depth] = N.value() - gain[depth - 1];
-            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight
             // Note: a knight move cannot reveal more sliding attackers to the same square.
             continue;
@@ -597,9 +439,8 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         {
             depth += 1;
             gain[depth] = B.value() - gain[depth - 1];
-            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 bishop
-            attackers |= (data.get_bishop_attacks(to, occupation) & queens_rooks); // reveal next diagonal attacker.
+            attackers |= (data.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
             continue;
         }
 
@@ -609,7 +450,6 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         {
             depth += 1;
             gain[depth] = R.value() - gain[depth - 1];
-            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 rook
             attackers |= (data.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
             continue;
@@ -621,7 +461,6 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         {
             depth += 1;
             gain[depth] = Q.value() - gain[depth - 1];
-            //if (@max(-gain[depth - 1], gain[depth]) < 0) return false; // prune
             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 queen
             attackers |= (data.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
             attackers |= (data.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
@@ -647,7 +486,8 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         break;
     }
 
-    lib.io.debugprint("{any}\n", .{ gain});
+    //lib.io.debugprint("FINAL SEE {any}\n", .{ gain});
+
     // Bubble up the score
     depth -= 1;
     while (depth > 0) : (depth -= 1)
@@ -658,6 +498,97 @@ pub fn see_score(pos: *const Position, comptime us: Color, m: Move) Value
         }
     }
     return gain[0];
+}
+
+/// TODO: add threshold.
+/// TODO: promotions.
+/// TODO: write tests.
+pub fn see(pos: *const Position, m: Move) bool
+{
+    const from: Square = m.from;
+    const to: Square = m.to;
+
+    const victim: Value = pos.get(to).value();
+    const attacker: Value = pos.get(from).value();
+
+    // Fast delta: clearly winning trades (e.g., PxN)
+    if (victim - attacker > P.value()) return true;
+
+    var occ = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
+    var atks: u64 = pos.get_all_attacks_to_for_occupation(occ, to);
+    const qb = pos.all_queens_bishops();
+    const qr = pos.all_queens_rooks();
+
+    var side: Color = pos.to_move;
+    var bb: u64 = 0;
+
+    // balance = margin we must preserve to stay >= 0 (threshold = 0)
+    var balance: Value = victim - attacker; // ???
+
+    while (true) {
+        atks &= occ;
+        if (atks == 0) break;
+        side = side.opp(); // next capturer
+
+        //io.debugprint("score{}, ", .{balance});
+        // Pawn
+        bb = atks & pos.pawns(side);
+        if (bb != 0) {
+            //balance = P.value() - balance;
+            balance = -balance - P.value();
+            if (balance < 0) return (side.e != pos.to_move.e);
+            funcs.clear_square(&occ, funcs.first_square(bb));
+            atks |= data.get_bishop_attacks(to, occ) & qb;
+            continue;
+        }
+        // Knight
+        bb = atks & pos.knights(side);
+        if (bb != 0) {
+            //balance = N.value() - balance;
+            balance = -balance - N.value();
+            if (balance < 0) return (side.e != pos.to_move.e);
+            funcs.clear_square(&occ, funcs.first_square(bb));
+            continue;
+        }
+        // Bishop
+        bb = atks & pos.bishops(side);
+        if (bb != 0) {
+            //balance = B.value() - balance;
+            balance = -balance - B.value();
+            if (balance < 0) return (side.e != pos.to_move.e);
+            funcs.clear_square(&occ, funcs.first_square(bb));
+            atks |= data.get_bishop_attacks(to, occ) & qb;
+            continue;
+        }
+        // Rook
+        bb = atks & pos.rooks(side);
+        if (bb != 0) {
+            //balance = R.value() - balance;
+            balance = -balance - R.value();
+            if (balance < 0) return (side.e != pos.to_move.e);
+            funcs.clear_square(&occ, funcs.first_square(bb));
+            atks |= data.get_rook_attacks(to, occ) & qr;
+            continue;
+        }
+        // Queen
+        bb = atks & pos.queens(side);
+        if (bb != 0) {
+            //balance = Q.value() - balance;
+            balance = -balance - Q.value();
+            if (balance < 0) return (side.e != pos.to_move.e);
+            funcs.clear_square(&occ, funcs.first_square(bb));
+            atks |= (data.get_bishop_attacks(to, occ) & qb);
+            atks |= (data.get_rook_attacks(to, occ) & qr);
+            continue;
+        }
+
+        // King ends the sequence
+        if ((atks & pos.kings(side)) != 0) break;
+        break;
+    }
+
+    // No early fail: if the last side to *have the move* is the opponent, our capture stands.
+    return (side.e != pos.to_move.e);
 }
 
 pub fn is_supported_by_pawn(pos: *const Position, comptime us: Color, sq: Square) bool
@@ -711,7 +642,7 @@ const Feature = enum
     in_check,
 };
 
-const Tables = struct
+pub const Tables = struct
 {
     fn get_index(comptime us: Color, sq: Square) u6
     {
@@ -721,6 +652,11 @@ const Tables = struct
             .black => sq.u,
         };
     }
+
+    // pub fn get_mg_score(pc: Piece, sq: Square) Value
+    // {
+
+    // }
 
     /// Returns the table values for opening and endgame, between which we slide the final score.
     fn get_scorepair(comptime us: Color, comptime pc: PieceType, sq: Square) struct { mg: Value, eg: Value}
@@ -1007,5 +943,28 @@ pub fn bench(pos: *const Position) void
         }
         const t = timer.read();
         lib.io.debugprint("v {} cnt {} {}\n", .{v, cnt, funcs.nps(cnt, t)});
+    }
+}
+
+test "see"
+{
+    try lib.initialize(true);
+    var st: StateInfo = undefined;
+    var pos: Position = .empty;
+
+    // Good.
+    {
+        try pos.set(&st, "rz3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+        const m: Move = .create(.D5, .E6);
+        const good: bool = see(&pos, m);
+        try std.testing.expectEqual(good, true);
+    }
+
+    // Bad
+    {
+        try pos.set(&st, "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1");
+        const m: Move = .create(.E4, .D5);
+        const good: bool = see(&pos, m);
+        try std.testing.expectEqual(good, false);
     }
 }

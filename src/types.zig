@@ -331,7 +331,7 @@ pub const Square = packed union
         {
             if (run.next(dir)) |n|
             {
-                result.appendAssumeCapacity(n);
+                result.append_assume_capacity(n);
                 run = n;
             }
             else break;
@@ -347,7 +347,7 @@ pub const Square = packed union
         var result: lib.BoundedArray(Square, 32) = .{};
         for (dirs) |d|
         {
-            result.appendSliceAssumeCapacity(self.ray(d).slice());
+            result.append_slice_assume_capacity(self.ray(d).slice());
         }
         return result;
     }
@@ -804,6 +804,12 @@ pub const Move = packed struct(u16)
             .type = self.type,
             .info = self.info,
         };
+    }
+
+    /// Only valid when we are a promotion.
+    pub fn promoted(self: Move) PieceType
+    {
+        return self.info.prom.to_piecetype();
     }
 
     /// UCI string

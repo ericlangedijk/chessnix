@@ -1,6 +1,8 @@
 // zig fmt: off
 
 // TODO: when encountering an illegal fen / moves always return a bestmove = '0000' indicating invalid state.
+// TODO: report invalid input with: info string <str>
+// TODO: log or report on crash?
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -27,7 +29,7 @@ pub fn run() void
     // TODO: what to do in non-terminal mode? Just crash?
     uci_loop() catch |err|
     {
-        std.debug.print("ERROR: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
+        lib.io.debugprint("ERROR: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
         //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
     };
 }
@@ -84,7 +86,7 @@ fn uci_loop() !void
         }
         else if (eql(cmd, "position"))
         {
-            parse_position(&tokenizer) catch continue :command_loop;
+            parse_position(&tokenizer) catch |err| { print_error(err); continue :command_loop; };
         }
         else if (eql(cmd, "quit"))
         {
@@ -119,6 +121,13 @@ fn uci_loop() !void
                 try temp();
             }
             // DEBUG TEMP
+            else if (eql(cmd, "c"))
+            {
+                const next = tokenizer.next() orelse continue :command_loop;
+                const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :command_loop;
+                perft.run_captures(&engine.pos, depth);
+            }
+            // DEBUG TEMP
             else if (eql(cmd, "r"))
             {
                 _ = engine.pos.is_threefold_repetition();
@@ -131,8 +140,8 @@ fn uci_loop() !void
             // DEBUG TEMP
             else if (eql(cmd, "e"))
             {
-                const e = eval.lazy_evaluate(&engine.pos, true);
-                try io.print("eval = {}\n", .{ e });
+                const e = eval.evaluate_abs(&engine.pos, true);
+                try io.print("eval abs = {}\n", .{ e });
                 //eval.bench(&engine.pos);
             }
             // DEBUG TEMP
@@ -140,15 +149,21 @@ fn uci_loop() !void
             {
                 var tempstate: position.StateInfo = undefined;
                 try engine.pos.print();
-                const e1 = eval.lazy_evaluate(&engine.pos, false);
+                const e1 = eval.evaluate(&engine.pos, false);
                 try io.print("eval = {}\n", .{ e1 });
                 engine.pos.flip(&tempstate);
                 try engine.pos.print();
-                const e2 = eval.lazy_evaluate(&engine.pos, false);
+                const e2 = eval.evaluate(&engine.pos, false);
                 try io.print("eval = {}\n", .{ e2 });
             }
         }
     }
+}
+
+/// TODO: Not sure yet how and what handling errors in ucimode / terminal mode.
+pub fn print_error(err: anyerror) void
+{
+    lib.io.print("info string error: {t}\n", .{ err }) catch lib.wtf();
 }
 
 /// Parce uci command after "position"
@@ -262,9 +277,12 @@ const Error = error
 fn temp() !void
 {
     //const fen = "8/kq6/2b5/3p4/4P3/5B2/6QK/8 w - - 0 1";
-    //const fen = "8/kb6/2p5/3q4/4P3/5B2/6QK/8 w - - 0 1";
+    const fen = "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1"; // BAD
     //const fen = "8/kb6/2p5/3q4/4B3/5B2/6QK/8 w - - 0 1";
-    const fen = "3r4/1q1r4/2b5/2Kpk3/4P3/5B2/3R2Q1/3R4 w - - 0 1";
+    //const fen = "3r4/1q1r4/2b5/2Kpk3/4P3/5B2/3R2Q1/3R4 w - - 0 1";
+    //const fen = "7k/1q6/2p5/3p4/4P3/8/6B1/K6B w - - 0 1"; // GOOD e4xd5
+    //const fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
     try engine.set_position(fen, null);
     const m = types.Move.create(.E4, .D5);
 
@@ -274,6 +292,7 @@ fn temp() !void
     // const bb = engine.pos.attackers_to_for_occupation(occ, .D5, .WHITE);
 
     //funcs.print_bitboard(bb);
-    const v = eval.see_score(&engine.pos, types.Color.WHITE, m);
-    lib.io.debugprint("{}\n", .{v});
+    const good = eval.see(&engine.pos, m);
+    const v = eval.see_score(&engine.pos, m);
+    lib.io.debugprint("good capture = {}, see = {}\n", .{good, v});
 }

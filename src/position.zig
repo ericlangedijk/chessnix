@@ -65,29 +65,41 @@ pub const StateInfo = struct
 
     /// (copied) Draw counter. After 50 reversible moves (100 ply) it is a draw.
     rule50: u16 = 0,
+
     /// (copied) The enpassant square of this state.
     ep_square: Square = Square.zero,
+
     /// (copied) Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4 = 0,
+
     /// The move that was played to reach the current position.
     last_move: Move = .empty,
+
     /// The piece that did the last_move.
     moved_piece: Piece = Piece.NO_PIECE,
-    // The piece that was captured with last_move.
+
+    /// The piece that was captured with last_move.
     captured_piece: Piece = Piece.NO_PIECE,
+
     /// The board hashkey.
     key: u64 = 0,
+
     /// Bitboard of the pieces that currently give check.
     checkers: u64 = 0,
+
     /// The paths from the enemy slider checkers to the king (excluding the king, including the checker).
     /// * Pawns and knights included.
     checkmask: u64 = 0,
+
     /// Bitboard with the diagonal pin rays (excluding the king, including the attacker).
     pins_diagonal: u64 = 0,
+
     /// Bitboard with the orthogonal pin rays (excluding the king, including the attacker).
     pins_orthogonal: u64 = 0,
+
     // All pins.
     pins: u64 = 0,
+
     /// Pointer to the previous state. For the engine a fixed history array is used. For search the chain only exists in the recursive callstack.
     prev: ?*StateInfo = null,
 
@@ -126,22 +138,22 @@ pub const Layout = struct
     /// The startfiles of [0] left rook, [1] right rook, [2] king file.
     /// * This field *must* be filled before we can initialize the next fields.
     start_files: [3]u3,
-    /// Deduced from start_files [0] white king, [1] black king.
-    /// * Initialized in constructors.
+
+    /// Deduced from start_files [0] white king, [1] black king. Initialized in constructors.
     king_start_squares: [2]Square,
-    /// Deduced from start_files.
-    /// * Indexing: [color][castletype].
+
+    /// Deduced from start_files. Indexing: [color][castletype].
     rook_start_squares: [2][2]Square,
-    /// Deduced from `start_files`.
-    /// * Indexing: [color][castletype].
+
+    /// Deduced from `start_files`. Indexing: [color][castletype].
     castling_between_bitboards: [2][2]u64,
-    /// The king 'walk' when castling, deduced from `start_files`.
+
+    /// The king 'walk' when castling, deduced from `start_files`. Indexing: [color][castletype]
     /// * The king start-square is *not* included.
-    /// * Indexing: [color][castletype].
     castling_king_paths: [2][2]u64,
-    /// Deduced from `start_files`.
+
+    /// Deduced from `start_files`. Indexing: [square]
     /// * Used for quick updates of castling rights during make move.
-    /// * Indexing: [square].`
     castling_masks: [64]u4,
 };
 
@@ -152,24 +164,34 @@ pub const Position = struct
 
     /// The initial layout, supporting Chess960.
     layout: Layout,
+
     /// The pieces on the 64 squares.
     board: [64]Piece,
+
     /// Bitboards occupation indexed by PieceType. [0] full occupation, [1...6] piecetypes.
     bb_by_type: [7]u64,
+
     /// Bitboards occupation indexed by color: [0] white pieces, [1] black pieces.
     bb_by_color: [2]u64,
+
     /// Piece values sum. [0] white, [1] black
     values: [2]Value,
+
     /// Material values sum. [0] white, [1] black
     materials: [2]Value,
+
     /// The current side to move.
     to_move: Color,
+
     /// Depth during search. Must match state chain.
     ply: u16,
+
     /// The real game ply.
     game_ply: u16,
+
     /// Is this chess960?
     is_960: bool,
+
     /// The current state.
     state: *StateInfo,
 
@@ -253,7 +275,7 @@ pub const Position = struct
         return result;
     }
 
-    /// Clears the whole board, clears `st` and the `state` pointer to `st`;
+    /// Clears the whole board, clears `st` and set the `self.state` pointer to `st`.
     fn clear(self: *Position, st: *StateInfo) void
     {
         st.* = .empty;
@@ -966,7 +988,6 @@ pub const Position = struct
 
         const them: Color = comptime us.opp();
         const m: Move = st.last_move;
-        //const moved_piece = st.moved_piece;
         const capt: Piece = st.captured_piece;
         const is_capture: bool = capt.is_piece();
         const from: Square = m.from;
@@ -1022,8 +1043,7 @@ pub const Position = struct
         }
     }
 
-    fn update_state(self: *Position, comptime us: Color) void
-    {
+    fn update_state(self: *Position, comptime us: Color) void {
         const them: Color = comptime us.opp();
         const st: *StateInfo = self.state;
         const king_sq: Square = self.king_square(us);
@@ -1037,28 +1057,24 @@ pub const Position = struct
         st.pins_orthogonal = 0;
         st.pins_diagonal = 0;
 
-        const bb_occupation_without_us: u64 = bb_all & ~bb_us;
+        const bb_occ_without_us: u64 = bb_all & ~bb_us;
         var candidate_attackers: u64 =
-            (data.get_bishop_attacks(king_sq, bb_occupation_without_us) & self.queens_bishops(them)) |
-            (data.get_rook_attacks(king_sq, bb_occupation_without_us) & self.queens_rooks(them));
+            (data.get_bishop_attacks(king_sq, bb_occ_without_us) & self.queens_bishops(them)) |
+            (data.get_rook_attacks(king_sq, bb_occ_without_us) & self.queens_rooks(them));
 
         // Use candidate attackers for both checkers and pins.
-        while (candidate_attackers != 0)
-        {
+        while (candidate_attackers != 0) {
             const attacker_sq: Square = pop_square(&candidate_attackers);
             const attacker_square_bitboard: u64 = attacker_sq.to_bitboard();
             const pair = squarepairs.get(king_sq, attacker_sq);
             const bb_ray: u64 = pair.in_between_bitboard & bb_us;
             // We have a slider checker when there is nothing in between.
-            if (bb_ray == 0)
-            {
+            if (bb_ray == 0) {
                 st.checkmask |= pair.in_between_bitboard | attacker_square_bitboard;
             }
             // We have a pin when exactly 1 bit is set. There is one piece in between.
-            else if (popcnt(bb_ray) == 1)
-            {
-                switch (pair.mask)
-                {
+            else if (popcnt(bb_ray) == 1) {
+                switch (pair.mask) {
                     0b100 => st.pins_orthogonal |= pair.in_between_bitboard | attacker_square_bitboard,
                     0b001 => st.pins_diagonal |= pair.in_between_bitboard | attacker_square_bitboard,
                     else => unreachable,
@@ -1232,8 +1248,8 @@ pub const Position = struct
         const us = comptime ctp.us;
         const them = comptime us.opp();
         const do_all_promotions: bool = comptime !ctp.captures;
-        const st: *const StateInfo = self.state; // In doubt what is faster: ref or copy.
-        //const st: StateInfo = self.state.*;
+        // const st: *const StateInfo = self.state; // In doubt what is faster: ref or copy.
+        const st: StateInfo = self.state.*; // Up until now this seems a bit faster.
 
         const doublecheck: bool = ctp.check and popcnt(st.checkers) > 1;
         const bb_all: u64 = self.all();
@@ -1569,6 +1585,25 @@ pub const Position = struct
         return true;
     }
 
+    /// Meant to be a validation after UCI position command.
+    pub fn validate(self: *const Position) Error!void
+    {
+
+        const wk: u8 = popcnt(self.kings(Color.WHITE));
+        const bk: u8 = popcnt(self.kings(Color.BLACK));
+
+        if (wk == 0 or bk == 0) return Error.MissingKing;
+        if (wk > 1 or bk > 1) return Error.TooManyKings;
+
+        const wk_sq: Square = self.king_square(Color.WHITE);
+        if (self.to_move.e == .black and self.is_square_attacked_by(wk_sq, Color.BLACK)) return Error.InCheckAndNotToMove;
+
+        const bk_sq: Square = self.king_square(Color.BLACK);
+        if (self.to_move.e == .white and self.is_square_attacked_by(bk_sq, Color.WHITE)) return Error.InCheckAndNotToMove;
+
+        // For the rest everything is assumed to be ok.
+    }
+
     /// ### Debug only.
     pub fn pos_ok(self: *const Position) bool
     {
@@ -1576,27 +1611,27 @@ pub const Position = struct
 
         if (popcnt(self.kings(Color.WHITE)) != 1)
         {
-            std.debug.print("WHITE KING ERROR", .{});
+            lib.io.debugprint("WHITE KING ERROR", .{});
             return false;
         }
 
         if (popcnt(self.kings(Color.BLACK)) != 1)
         {
-            std.debug.print("BLACK KING ERROR", .{});
+            lib.io.debugprint("BLACK KING ERROR", .{});
             return false;
         }
 
         if (popcnt(self.all()) > 32)
         {
-            std.debug.print("TOO MANY PIECES", .{});
+            lib.io.debugprint("TOO MANY PIECES", .{});
             return false;
         }
 
         const a = self.compute_hashkey();
         if (a != self.state.key)
         {
-            //std.debug.print("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, a, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
-            std.debug.print("KEY\n", .{});
+            lib.io.debugprint("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, a, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
+            lib.io.debugprint("KEY\n", .{});
             return false;
         }
 
@@ -1604,7 +1639,7 @@ pub const Position = struct
         const king_sq_white: Square = self.king_square(Color.WHITE);
         if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.to_move.e != .white)
         {
-            std.debug.print("CHECK\n", .{});
+            lib.io.debugprint("CHECK\n", .{});
             self.print() catch wtf();
             return false;
         }
@@ -1612,7 +1647,7 @@ pub const Position = struct
         const king_sq_black = self.king_square(Color.BLACK);
         if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.to_move.e != .black)
         {
-            std.debug.print("CHECK\n", .{});
+            lib.io.debugprint("CHECK\n", .{});
             self.print() catch wtf();
 
             return false;
@@ -1862,11 +1897,6 @@ pub const MoveStorage = struct
         self.count += 1;
     }
 
-    pub fn len(self: *const MoveStorage) u8
-    {
-        return self.count;
-    }
-
     pub fn slice(self: *const MoveStorage) []const Move
     {
         return self.moves[0..self.count];
@@ -1951,4 +1981,11 @@ pub const MoveFinder = struct
             return null;
         }
     }
+};
+
+pub const Error = error
+{
+    MissingKing,
+    TooManyKings,
+    InCheckAndNotToMove,
 };

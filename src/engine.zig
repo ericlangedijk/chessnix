@@ -63,6 +63,7 @@ pub fn set_position(fen: ?[]const u8, moves: ?[]const u8) !void
     if (fen) |str|
     {
         try pos.set(&history[0], str);
+        try pos.validate();
     }
     else
     {
