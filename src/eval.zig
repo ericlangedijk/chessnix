@@ -949,15 +949,18 @@ pub fn bench(pos: *const Position) void
 test "see"
 {
     try lib.initialize(true);
+
     var st: StateInfo = undefined;
     var pos: Position = .empty;
 
     // Good.
     {
-        try pos.set(&st, "rz3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+        try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
         const m: Move = .create(.D5, .E6);
         const good: bool = see(&pos, m);
         try std.testing.expectEqual(good, true);
+        const val: Value = see_score(&pos, m);
+        try std.testing.expectEqual(val, 0);
     }
 
     // Bad
@@ -966,5 +969,7 @@ test "see"
         const m: Move = .create(.E4, .D5);
         const good: bool = see(&pos, m);
         try std.testing.expectEqual(good, false);
+        const val: Value = see_score(&pos, m);
+        try std.testing.expectEqual(val, -750);
     }
 }

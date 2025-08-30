@@ -551,7 +551,7 @@ const Node = struct
         self.score = other.score;
     }
 
-    // Zig-format for UCI output.
+    // Zig-format for UCI output the PV.
     pub fn format(self: Node, writer: *std.io.Writer) std.io.Writer.Error!void
     {
         const len: usize = self.pv.len;

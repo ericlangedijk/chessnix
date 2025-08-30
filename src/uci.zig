@@ -75,7 +75,6 @@ fn uci_loop() !void
         else if (eql(cmd, "go"))
         {
             const go: Go = parse_go(&tokenizer) catch continue :command_loop;
-            //try io.print("{any}\n", .{ go });
             try engine.start(&go);
             // Each go command must be eventually responded to with bestmove, once the search is completed or interrupted with stop.
         }
@@ -97,7 +96,7 @@ fn uci_loop() !void
         {
             if (eql(cmd, "d"))
             {
-                try engine.pos.print();
+                try engine.pos.draw();
             }
             else if (eql(cmd, "bench"))
             {
@@ -143,18 +142,6 @@ fn uci_loop() !void
                 const e = eval.evaluate_abs(&engine.pos, true);
                 try io.print("eval abs = {}\n", .{ e });
                 //eval.bench(&engine.pos);
-            }
-            // DEBUG TEMP
-            else if (eql(cmd, "f"))
-            {
-                var tempstate: position.StateInfo = undefined;
-                try engine.pos.print();
-                const e1 = eval.evaluate(&engine.pos, false);
-                try io.print("eval = {}\n", .{ e1 });
-                engine.pos.flip(&tempstate);
-                try engine.pos.print();
-                const e2 = eval.evaluate(&engine.pos, false);
-                try io.print("eval = {}\n", .{ e2 });
             }
         }
     }
@@ -276,12 +263,15 @@ const Error = error
 /// Just some stupid debug function.
 fn temp() !void
 {
+
+    try io.print("{f}\n", .{&engine.pos});
+    if (true) return;
     //const fen = "8/kq6/2b5/3p4/4P3/5B2/6QK/8 w - - 0 1";
-    const fen = "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1"; // BAD
+    //const fen = "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1"; // BAD
     //const fen = "8/kb6/2p5/3q4/4B3/5B2/6QK/8 w - - 0 1";
     //const fen = "3r4/1q1r4/2b5/2Kpk3/4P3/5B2/3R2Q1/3R4 w - - 0 1";
     //const fen = "7k/1q6/2p5/3p4/4P3/8/6B1/K6B w - - 0 1"; // GOOD e4xd5
-    //const fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+    const fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
     try engine.set_position(fen, null);
     const m = types.Move.create(.E4, .D5);

@@ -838,7 +838,7 @@ pub const Move = packed struct(u16)
         return result;
     }
 
-    // Zig-format for UCI output.
+    // Zig-format for UCI move output (e2e4).
     pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void
     {
         if (self.is_empty())
