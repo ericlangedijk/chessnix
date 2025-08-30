@@ -44,8 +44,6 @@ const max_threads: u16 = types.max_threads;
 const PV = lib.BoundedArray(Move, max_search_depth);
 const Nodes = lib.BoundedArray(Node, max_search_depth);
 
-const invalid_score: Value = std.math.maxInt(Value) - 1;
-
 pub const SearchParams = struct
 {
     const infinite_search_params: SearchParams =
@@ -241,11 +239,6 @@ const Search = struct
         _ = self;
     }
 
-    fn is_invalid_score(score: Value) bool
-    {
-        return @abs(score) >= invalid_score;
-    }
-
     fn iterative_deepening(self: *Search, comptime us: Color) void
     {
         self.rootmoves.generate_moves(&self.pos, us);
@@ -263,9 +256,6 @@ const Search = struct
         while (true)
         {
             const score: Value = self.alpha_beta(true, us, depth, -types.infinity, types.infinity);
-
-            // Timeout or stop.
-            if (is_invalid_score(score)) break;
 
             // We found a better and different move.
             if (score > best_score)
@@ -355,19 +345,16 @@ const Search = struct
             const score: Value = -self.alpha_beta(false, them, depth - 1, -beta, -alpha);
             self.pos.unmake_move(us);
 
-            // We always have to unmake the move, hence then invalid_score. We break and return alpha.
-            if (is_invalid_score(score)) break;
-
             // Higher alpha. A new best move is found.
             if (score > alpha)
             {
-                alpha = score;
                 node.score = score;
                 // Beta cutoff / fail high.
                 if (score >= beta)
                 {
-                    return beta;
+                    return score;
                 }
+                alpha = score;
                 update_pv(move, score, node, childnode);
             }
         }
@@ -435,7 +422,7 @@ const Search = struct
                 // Beta cutoff.
                 if (score >= beta)
                 {
-                    return beta;
+                    return score;
                 }
                 alpha = score;
             }
@@ -769,3 +756,41 @@ fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed
 }
 
 // info depth 3 seldepth 4 multipv 1 score cp 42 nodes 72 nps 72000 hashfull 0 tbhits 0 time 1 pv e2e4
+
+
+
+// Case 1 – Fail Low
+
+    // Child’s score <= alpha.
+
+    // Meaning: The position is at most as good as alpha.
+
+    // Return: score.
+
+    // TT flag: UPPERBOUND.
+
+    // No PV update.
+
+// Case 2 – Window Improvement
+
+    // Child’s alpha < score < beta.
+
+    // Meaning: We found a better move that doesn’t cut off.
+
+    // Return: score.
+
+    // TT flag: EXACT.
+
+    // PV update happens here.
+
+// Case 3 – Fail High / Beta Cutoff
+
+    // Child’s score >= beta.
+
+    // Meaning: Opponent can force better than we’re willing to allow.
+
+    // Return: score (not beta).
+
+    // TT flag: LOWERBOUND.
+
+    // No PV update (cutoff line isn’t guaranteed PV).
