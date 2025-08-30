@@ -1655,12 +1655,96 @@ pub const Position = struct
         return true;
     }
 
+    /// OBSOLETE. we use format now
     /// Returns fen string. Caller becomes owner of the result.
-    pub fn to_fen(self: *const Position) std.ArrayList(u8)
+    // pub fn to_fen(self: *const Position) std.ArrayList(u8)
+    // {
+    //     const st = self.state;
+
+    //     var s: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.galloc, 80) catch wtf();
+
+    //     // Pieces.
+    //     var rank: u3 = 7;
+    //     while (true)
+    //     {
+    //         var empty_squares: u4 = 0;
+    //         var file: u3 = 0;
+    //         while (true)
+    //         {
+    //             const sq: Square = .from_rank_file(rank, file);
+    //             const pc: Piece = self.board[sq.u];
+    //             if (pc.is_empty())
+    //             {
+    //                 empty_squares += 1;
+    //             }
+    //             else
+    //             {
+    //                 if (empty_squares > 0)
+    //                 {
+    //                     s.appendAssumeCapacity(@as(u8, '0') + empty_squares);
+    //                     empty_squares = 0;
+    //                 }
+    //                 s.appendAssumeCapacity(pc.to_fen_char());
+    //             }
+    //             if (file == 7)
+    //             {
+    //                 if (empty_squares > 0)
+    //                 {
+    //                     s.appendAssumeCapacity(@as(u8, '0') + empty_squares);
+    //                 }
+    //                 if (rank > 0) s.appendAssumeCapacity('/');
+    //                 break;
+    //             }
+    //             file += 1;
+    //         }
+    //         if (rank == 0) break;
+    //         rank -= 1;
+    //     }
+
+    //     // Color to move.
+    //     if (self.to_move.e == .white)
+    //         s.appendSliceAssumeCapacity(" w")
+    //     else
+    //         s.appendSliceAssumeCapacity(" b");
+
+    //     // Castling rights.
+    //     s.appendAssumeCapacity(' ');
+    //     if (st.castling_rights == 0)
+    //     {
+    //         s.appendAssumeCapacity('-');
+    //     }
+    //     else
+    //     {
+    //         if (st.castling_rights & cf_white_short != 0) s.appendAssumeCapacity('K');
+    //         if (st.castling_rights & cf_white_long != 0)  s.appendAssumeCapacity('Q');
+    //         if (st.castling_rights & cf_black_short != 0) s.appendAssumeCapacity('k');
+    //         if (st.castling_rights & cf_black_long != 0)  s.appendAssumeCapacity('q');
+    //     }
+
+    //     // Enpassant.
+    //     s.appendAssumeCapacity(' ');
+    //     if (st.ep_square.u > 0)
+    //     {
+    //         s.appendSliceAssumeCapacity(st.ep_square.to_string());
+    //     } else
+    //     {
+    //         s.appendAssumeCapacity('-');
+    //     }
+
+    //     // Draw counter.
+    //     s.fixedWriter().print(" {}", .{st.rule50}) catch wtf();
+
+    //     // Move number.
+    //     const movenr: u16 = funcs.ply_to_movenumber(self.game_ply, self.to_move);
+    //     s.fixedWriter().print(" {}", .{movenr}) catch wtf();
+
+    //     return s;
+    // }
+
+    /// Zig-format. Writes the FEN string.
+    pub fn format(self: *const Position, writer: *std.io.Writer) std.io.Writer.Error!void
     {
         const st = self.state;
-
-        var s: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.galloc, 80) catch wtf();
 
         // Pieces.
         var rank: u3 = 7;
@@ -1680,18 +1764,18 @@ pub const Position = struct
                 {
                     if (empty_squares > 0)
                     {
-                        s.appendAssumeCapacity(@as(u8, '0') + empty_squares);
+                        try writer.print("{}", .{ empty_squares });
                         empty_squares = 0;
                     }
-                    s.appendAssumeCapacity(pc.to_fen_char());
+                    try writer.print("{u}", .{ pc.to_fen_char() });
                 }
                 if (file == 7)
                 {
                     if (empty_squares > 0)
                     {
-                        s.appendAssumeCapacity(@as(u8, '0') + empty_squares);
+                        try writer.print("{}", .{ empty_squares });
                     }
-                    if (rank > 0) s.appendAssumeCapacity('/');
+                    if (rank > 0) try writer.print("/", .{});
                     break;
                 }
                 file += 1;
@@ -1702,49 +1786,44 @@ pub const Position = struct
 
         // Color to move.
         if (self.to_move.e == .white)
-            s.appendSliceAssumeCapacity(" w")
+            try writer.print(" w", .{})
         else
-            s.appendSliceAssumeCapacity(" b");
+            try writer.print(" b", .{});
 
         // Castling rights.
-        s.appendAssumeCapacity(' ');
+        try writer.print(" ", .{});
         if (st.castling_rights == 0)
         {
-            s.appendAssumeCapacity('-');
+            try writer.print("-", .{});
         }
         else
         {
-            if (st.castling_rights & cf_white_short != 0) s.appendAssumeCapacity('K');
-            if (st.castling_rights & cf_white_long != 0)  s.appendAssumeCapacity('Q');
-            if (st.castling_rights & cf_black_short != 0) s.appendAssumeCapacity('k');
-            if (st.castling_rights & cf_black_long != 0)  s.appendAssumeCapacity('q');
+            if (st.castling_rights & cf_white_short != 0) try writer.print("K", .{});
+            if (st.castling_rights & cf_white_long != 0)  try writer.print("Q", .{});
+            if (st.castling_rights & cf_black_short != 0) try writer.print("k", .{});
+            if (st.castling_rights & cf_black_long != 0)  try writer.print("q", .{});
         }
 
         // Enpassant.
-        s.appendAssumeCapacity(' ');
+        try writer.print(" ", .{});
         if (st.ep_square.u > 0)
-        {
-            s.appendSliceAssumeCapacity(st.ep_square.to_string());
-        } else
-        {
-            s.appendAssumeCapacity('-');
-        }
+            try writer.print("{t}", .{st.ep_square.e})
+        else
+            try writer.print("-", .{});
 
         // Draw counter.
-        s.fixedWriter().print(" {}", .{st.rule50}) catch wtf();
+        try writer.print(" {}", .{st.rule50});
 
         // Move number.
         const movenr: u16 = funcs.ply_to_movenumber(self.game_ply, self.to_move);
-        s.fixedWriter().print(" {}", .{movenr}) catch wtf();
-
-        return s;
+        try writer.print(" {}", .{movenr});
     }
 
-    /// Prints the position to the io.
-    pub fn print(self: *const Position) !void
+    /// Prints the position diagram + information to the io.
+    pub fn draw(self: *const Position) !void
     {
-        var fen_str = self.to_fen();
-        defer fen_str.deinit(ctx.galloc);
+        //var fen_str = self.to_fen();
+        //defer fen_str.deinit(ctx.galloc);
 
         // Pieces.
         try io.print_buffered("\n", .{});
@@ -1759,7 +1838,7 @@ pub const Position = struct
 
         // Info.
         //const move_str: []const u8 = if (self.state.last_move.is_empty()) "" else self.state.last_move.to_string().slice();
-        try io.print_buffered("Fen: {s}\n", .{fen_str.items});
+        try io.print_buffered("Fen: {f}\n", .{self});
         try io.print_buffered("Key: {x:0>16}\n", .{self.state.key});
         //try io.print_buffered("Last move: {s}\n", .{move_str});
         try io.print_buffered("Checkers: ", .{});
