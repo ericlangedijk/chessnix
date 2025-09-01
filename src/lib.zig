@@ -4,12 +4,14 @@ const std = @import("std");
 const builtin = @import("builtin");
 const assert = std.debug.assert;
 
-pub fn initialize(comptime is_zig_test: bool) !void
+pub fn initialize() !void
 {
+    if (lib_is_initialized) return;
+
     // If no timer available, the program is useless.
     var timer = try std.time.Timer.start();
 
-    memory_context = .init(is_zig_test);
+    memory_context = .init();
     io_context = .init();
 
     // Then initialize chess.
@@ -19,10 +21,12 @@ pub fn initialize(comptime is_zig_test: bool) !void
     @import("masks.zig").initialize();
 
     startup_time = timer.read();
+    lib_is_initialized = true;
 }
 
 pub fn finalize() void
 {
+    lib_is_initialized = false;
     memory_context.deinit();
 }
 
@@ -48,6 +52,8 @@ var memory_context: MemoryContext = undefined;
 /// Global Io.
 var io_context: IoContext = undefined;
 
+var lib_is_initialized: bool = false;
+
 pub var startup_time: u64 = 0;
 
 /// The global memory context of our exe
@@ -56,12 +62,12 @@ pub const MemoryContext = struct
     gpa: if (is_debug) std.heap.DebugAllocator(.{}) else void,
     galloc: std.mem.Allocator,
 
-    fn init(comptime is_zig_test: bool) MemoryContext
+    fn init() MemoryContext
     {
         return MemoryContext
         {
             .gpa = if (is_debug) std.heap.DebugAllocator(.{}).init else {},
-            .galloc = if(is_zig_test) std.testing.allocator else if (is_debug) memory_context.gpa.allocator() else std.heap.smp_allocator,
+            .galloc = if (builtin.is_test) std.testing.allocator else if (is_debug) memory_context.gpa.allocator() else std.heap.smp_allocator,
         };
     }
 

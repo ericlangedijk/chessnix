@@ -10,6 +10,7 @@ const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const perft = @import("perft.zig");
+const tt = @import("tt.zig");
 
 const StateInfo = position.StateInfo;
 const Position = position.Position;
@@ -23,7 +24,10 @@ const io = lib.io;
 pub fn print_struct_sizes() void
 {
     lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
-    lib.io.debugprint("ExtMove {}\n", .{ @sizeOf(search.ExtMove)});
+    lib.io.debugprint("ExtMove {}\n", .{ @sizeOf(types.ExtMove)});
+    lib.io.debugprint("Node {}\n", .{ @sizeOf(search.Node)});
+    lib.io.debugprint("Search {}\n", .{ @sizeOf(search.Search)});
+    lib.io.debugprint("tt.Entr {}\n", .{ @sizeOf(tt.Entry)});
 }
 
 pub fn run_silent_debugmode_tests() !void

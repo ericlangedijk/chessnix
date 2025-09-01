@@ -33,7 +33,7 @@ var searchmgr: SearchManager = undefined;
 pub fn initialize() !void
 {
     try set_startpos(null);
-    searchmgr = .init();
+    searchmgr = try .init();
 }
 
 /// Cleanup.

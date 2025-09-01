@@ -867,6 +867,16 @@ pub const Move = packed struct(u16)
     }
 };
 
+/// 64 bits Move with score, used by Search.
+pub const ExtMove = packed struct
+{
+    move: Move,
+    score: i32,
+    // TODO: we can contemplate putting extra info here if we need (instead of refetching info (when sorting moves for example)).
+    // * generated normal or quiet (1 bit)
+    // * is_capture (1 bit)
+};
+
 pub const GamePhase = enum
 {
     Opening,

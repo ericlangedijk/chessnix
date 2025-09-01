@@ -1241,13 +1241,14 @@ pub const Position = struct
         }
     }
 
-    /// See `MoveStorage` for the interface of storage.
+    /// See `MoveStorage` for the interface of `storage`: required are the functions `reset()` and `store()`.
     fn gen(self: *const Position, comptime ctp: Params, noalias storage: anytype) void
     {
         // Comptimes.
         const us = comptime ctp.us;
         const them = comptime us.opp();
         const do_all_promotions: bool = comptime !ctp.captures;
+
         // const st: *const StateInfo = self.state; // In doubt what is faster: ref or copy.
         const st: StateInfo = self.state.*; // Up until now this seems a bit faster.
 

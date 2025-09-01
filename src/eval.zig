@@ -105,8 +105,6 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
 
     const simple_score: Value = pos.values[Color.WHITE.u] - pos.values[Color.BLACK.u];
 
-    // if (simple_score > 500) return simple_score;
-
     // Sliding values of the Pesto tables, which we taper at the end.
     var piece_square_score_mg: Value = 0;
     var piece_square_score_eg: Value = 0;
@@ -428,8 +426,7 @@ pub fn see_score(pos: *const Position, m: Move) Value
         {
             depth += 1;
             gain[depth] = N.value() - gain[depth - 1];
-            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight
-            // Note: a knight move cannot reveal more sliding attackers to the same square.
+            funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight (knight move cannot reveal more sliding attackers to the same square).
             continue;
         }
 
@@ -468,10 +465,9 @@ pub fn see_score(pos: *const Position, m: Move) Value
         }
 
         bb = attackers & pos.kings(side);
-        if (bb != 0)
-        {
+        if (bb != 0) {
             break;
-
+            // UNDECIDED
             // // When the king captures and there are still opponent attackers, we return a flipped result.
             // // Return true if there are zero attacks to our king left.
             // funcs.clear_square(&occupation, funcs.first_square(bb));
@@ -482,11 +478,8 @@ pub fn see_score(pos: *const Position, m: Move) Value
             //     true => bb != 0,
             // };
         }
-
         break;
     }
-
-    //lib.io.debugprint("FINAL SEE {any}\n", .{ gain});
 
     // Bubble up the score
     depth -= 1;
@@ -501,10 +494,10 @@ pub fn see_score(pos: *const Position, m: Move) Value
 }
 
 /// TODO: add threshold.
-/// TODO: promotions.
-/// TODO: write tests.
 pub fn see(pos: *const Position, m: Move) bool
 {
+    if (m.type == .promotion) return true;
+
     const from: Square = m.from;
     const to: Square = m.to;
 
@@ -523,18 +516,18 @@ pub fn see(pos: *const Position, m: Move) bool
     var bb: u64 = 0;
 
     // balance = margin we must preserve to stay >= 0 (threshold = 0)
-    var balance: Value = victim - attacker; // ???
+    var balance: Value = victim - attacker;
 
-    while (true) {
+    while (true)
+    {
         atks &= occ;
         if (atks == 0) break;
         side = side.opp(); // next capturer
 
-        //io.debugprint("score{}, ", .{balance});
         // Pawn
         bb = atks & pos.pawns(side);
-        if (bb != 0) {
-            //balance = P.value() - balance;
+        if (bb != 0)
+        {
             balance = -balance - P.value();
             if (balance < 0) return (side.e != pos.to_move.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
@@ -543,8 +536,8 @@ pub fn see(pos: *const Position, m: Move) bool
         }
         // Knight
         bb = atks & pos.knights(side);
-        if (bb != 0) {
-            //balance = N.value() - balance;
+        if (bb != 0)
+        {
             balance = -balance - N.value();
             if (balance < 0) return (side.e != pos.to_move.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
@@ -552,8 +545,8 @@ pub fn see(pos: *const Position, m: Move) bool
         }
         // Bishop
         bb = atks & pos.bishops(side);
-        if (bb != 0) {
-            //balance = B.value() - balance;
+        if (bb != 0)
+        {
             balance = -balance - B.value();
             if (balance < 0) return (side.e != pos.to_move.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
@@ -562,8 +555,8 @@ pub fn see(pos: *const Position, m: Move) bool
         }
         // Rook
         bb = atks & pos.rooks(side);
-        if (bb != 0) {
-            //balance = R.value() - balance;
+        if (bb != 0)
+        {
             balance = -balance - R.value();
             if (balance < 0) return (side.e != pos.to_move.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
@@ -572,8 +565,8 @@ pub fn see(pos: *const Position, m: Move) bool
         }
         // Queen
         bb = atks & pos.queens(side);
-        if (bb != 0) {
-            //balance = Q.value() - balance;
+        if (bb != 0)
+        {
             balance = -balance - Q.value();
             if (balance < 0) return (side.e != pos.to_move.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
@@ -948,7 +941,7 @@ pub fn bench(pos: *const Position) void
 
 test "see"
 {
-    try lib.initialize(true);
+    try lib.initialize();
 
     var st: StateInfo = undefined;
     var pos: Position = .empty;
@@ -958,9 +951,19 @@ test "see"
         try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
         const m: Move = .create(.D5, .E6);
         const good: bool = see(&pos, m);
-        try std.testing.expectEqual(good, true);
+        try std.testing.expectEqual(true, good);
         const val: Value = see_score(&pos, m);
-        try std.testing.expectEqual(val, 0);
+        try std.testing.expectEqual(0, val);
+    }
+
+    // Good.
+    {
+        try pos.set(&st, "8/8/5b1k/4n3/K2P4/8/8/8 w - - 0 1");
+        const m: Move = .create(.D4, .E5);
+        const good: bool = see(&pos, m);
+        try std.testing.expectEqual(true, good);
+        const val: Value = see_score(&pos, m);
+        try std.testing.expectEqual(PieceType.KNIGHT.value() - PieceType.PAWN.value(), val);
     }
 
     // Bad
@@ -968,8 +971,18 @@ test "see"
         try pos.set(&st, "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1");
         const m: Move = .create(.E4, .D5);
         const good: bool = see(&pos, m);
-        try std.testing.expectEqual(good, false);
+        try std.testing.expectEqual(false, good);
         const val: Value = see_score(&pos, m);
-        try std.testing.expectEqual(val, -750);
+        try std.testing.expectEqual(-750, val);
+    }
+
+    // Bad
+    {
+        try pos.set(&st, "3q3k/8/4p3/3n4/3R4/8/8/K2R4 w - - 0 1");
+        const m: Move = .create(.D4, .D5);
+        const good: bool = see(&pos, m);
+        try std.testing.expectEqual(false, good);
+        const val: Value = see_score(&pos, m);
+        try std.testing.expectEqual(PieceType.KNIGHT.value() - PieceType.ROOK.value(), val);
     }
 }

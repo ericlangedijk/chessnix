@@ -19,8 +19,9 @@
 // * Losing captures + bad moves (often last or skipped).
 // * substract something from time to prevent time-loss.
 
-const std = @import("std");
+// TODO: extensions (giving check? only 1 move possible? king attack?)
 
+const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 const utils = @import("utils.zig");
@@ -28,6 +29,7 @@ const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const uci = @import("uci.zig");
 const eval = @import("eval.zig");
+const tt = @import("tt.zig");
 
 const max_u64: u64 = std.math.maxInt(u64);
 
@@ -36,6 +38,7 @@ const Color = types.Color;
 const PieceType = types.PieceType;
 const Piece = types.Piece;
 const Move = types.Move;
+const ExtMove = types.ExtMove;
 const StateInfo = position.StateInfo;
 const Position = position.Position;
 
@@ -49,17 +52,29 @@ const max_threads: u16 = types.max_threads;
 const PV = lib.BoundedArray(Move, max_search_depth);
 const Nodes = lib.BoundedArray(Node, max_search_depth);
 
+/// Test phase only.
+const use_tt: bool = true;
+
 /// This is to become the "thread" manager.
 pub const SearchManager = struct
 {
+    /// Shared table for all threads.
+    transpositiontable: tt.TranspositionTable,
+
+    /// The number of threads we use.
     num_threads: usize,
+
+    /// Settings from uci, for timeout etc.
     searchparams: SearchParams,
+
+    /// The actual worker.
     searcher: Search,
 
-    pub fn init() SearchManager
+    pub fn init() !SearchManager
     {
         var mgr: SearchManager = undefined;
 
+        mgr.transpositiontable = try .init(64);
         mgr.num_threads = 1;
         mgr.searchparams = .infinite_search_params;
         mgr.searcher = Search.init();
@@ -69,18 +84,28 @@ pub const SearchManager = struct
 
     pub fn deinit(self: *SearchManager) void
     {
-        //self.searchers.deinit(ctx.galloc);
+        self.transpositiontable.deinit();
         self.searcher.deinit();
     }
 
     pub fn start(self: *SearchManager, pos: *const Position, go: *const uci.Go) !void
     {
+
+        // Zig forum: https://ziggit.dev/t/im-too-dumb-for-zigs-new-io-interface/11645/56
         // we should have some atomic value to check if the threads are not already running.
-        // then start them.
-        // std.Thread.spawn
-        // std.Thread.detach
-        //_ = self;
-        //try lib.io.print("WE START THINKING\n", .{});
+
+        // have a var:
+            // canceled: std.atomic.Value(bool),
+
+        // check:
+            // if (cw.canceled.load(.acquire)) stop
+
+        // cancel:
+            // pub fn cancel(w: *CancelableWriter) void
+            // {
+            //     w.canceled.store(true, .release);
+            // }
+
         self.searchparams = .init(go);
         //try lib.io.print("{any}\n", .{ self.searchparams });
         self.searcher.start_search(self, pos);
@@ -94,28 +119,48 @@ pub const SearchManager = struct
     }
 };
 
-const Search = struct
+pub const Search = struct
 {
-    /// Backlink ref. Only valid after start_search. TODO: Bad design still...
-    mgr: *const SearchManager,
+    /// Backlink ref. Only valid after start_search. TODO: Bad design still. Maybe use @fieldParentPtr().
+    mgr: *SearchManager,
+
+    /// Copied from mgr, for direct access.
+    transpositiontable: *tt.TranspositionTable,
+
+    /// Copied from mgr, for direct access.
+    termination: Termination,
+
     /// A private copy of the engine pos.
     pos: Position,
-    /// Rootmoves. resorted each iteration.
+
+    /// Rootmoves, resorted each iteration.
     rootmoves: MovePicker,
+
+    /// Our node stack.
+    nodes: Nodes,
+
     /// We always keep track of the best move a.s.a.p.
     best_move: Move,
-    stack: Stack,
+
     /// Updated after each iteration.
     pv_node: Node,
+
     // Updated inside alpha beta if at root.
     worker_pv_node: Node,
-    nodes: u64,
-    /// The max reached depth, including quiet depth.
+
+    /// The total amount
+    processed_nodes: u64,
+
+    /// The max reached depth, including quiet depth and possible extensions.
     seldepth: u16,
+
+    /// Iterative deepening nr.
     iteration: u16,
-    /// This one is copied from mgr, for direct access.
-    termination: Termination,
+
+    /// Timeout
     stopped: bool,
+
+    /// Tracking search time.
     timer: utils.Timer,
 
     fn init() Search
@@ -123,16 +168,17 @@ const Search = struct
         return Search
         {
             .mgr = undefined,
+            .transpositiontable = undefined,
+            .termination = .infinite,
             .pos = .empty,
             .rootmoves = .init(),
+            .nodes = .empty,
             .best_move = .empty,
-            .stack = .init(),
             .pv_node = .init(),
             .worker_pv_node = .init(),
-            .nodes = 0,
+            .processed_nodes = 0,
             .seldepth = 0,
             .iteration = 0,
-            .termination = .infinite,
             .stopped = false,
             .timer = .empty,
         };
@@ -143,33 +189,28 @@ const Search = struct
         _ = self;
     }
 
-    // fn mgr(self: *const Search) *const SearchManager
-    // {
-    //     const manager_ptr: *const SearchManager = @fieldParentPtr("searcher", self);
-    //     return manager_ptr;
-    // }
-
-    /// Initialize stuff for a new search and go.
-    fn start_search(self: *Search, mgr: *const SearchManager, input_pos: *const Position) void
+    fn start_search(self: *Search, mgr: *SearchManager, input_pos: *const Position) void
     {
+        // Shared stuff.
         self.mgr = mgr;
         self.termination = mgr.searchparams.termination;
+        self.transpositiontable = &mgr.transpositiontable;
+
+        // Reset stuff.
         self.timer.reset();
         self.rootmoves.reset();
+        self.nodes = .empty;
         self.best_move = .empty;
         self.stopped = false;
         self.iteration = 0;
-        self.nodes = 0;
+        self.processed_nodes = 0;
         self.seldepth = 0;
         self.pv_node.clear();
         self.worker_pv_node.clear();
-        // stack: Stack,
-        // pv_node: Node,
 
         // Create our private copy of the position.
         var rootstate: StateInfo = undefined;
         self.pos.copy_from(input_pos, &rootstate);
-
         // Append our rootstate to the history of the source position.
         rootstate.prev = input_pos.state;
 
@@ -179,8 +220,11 @@ const Search = struct
              .black => self.iterative_deepening(Color.BLACK),
          }
 
+        // TODO: when threading put this out!
         lib.io.print("info string used time {}\n", .{ self.timer.elapsed_ms() }) catch wtf();
-         lib.io.print("bestmove {f}\n", .{ self.best_move }) catch wtf();
+
+        // UCI write bestmove after search.
+        lib.io.print("bestmove {f}\n", .{ self.best_move }) catch wtf();
     }
 
     fn stop_search(self: *Search) void
@@ -202,12 +246,6 @@ const Search = struct
 
         self.rootmoves.score_moves(pos);
 
-        for (self.rootmoves.slice()) |e|
-        {
-            io.print("{f} {}, ", .{ e.move, e.score}) catch wtf();
-        }
-            io.print("\n", .{}) catch wtf();
-
         self.iteration = 1;
         var depth: u8 = 1;
         var best_score: Value = -types.infinity;
@@ -218,18 +256,18 @@ const Search = struct
             // Discard result.
             if (self.stopped) break;
 
-            // We found a better and different move.
+            // We found a better move.
             if (score > best_score)
             {
                 best_score = score;
             }
 
             // Copy the last finished pv.
-            self.pv_node.clone_from(&self.stack.nodes.buffer[2]);
-            self.best_move = self.pv_node.best_move();
+            self.pv_node.clone_from(self.get_node(2));
+            self.best_move = self.pv_node.first_move();
 
             // And print.
-            print_pv(&self.pv_node, self.iteration, self.seldepth, self.nodes, self.timer.read());
+            print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
 
             if (self.check_stop(.iterative_deepening))
             {
@@ -241,43 +279,45 @@ const Search = struct
             depth += 1;
         }
 
-
         const ms = self.timer.read();
         // Final print.
         lib.io.print("P: ", .{}) catch wtf();
-        print_pv(&self.pv_node, self.iteration, self.seldepth, self.nodes, ms);
+        print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, ms, self.transpositiontable.filled);
         lib.io.print("W: ", .{}) catch wtf();
-        print_pv(&self.worker_pv_node, self.iteration, self.seldepth, self.nodes, ms);
+        print_pv(&self.worker_pv_node, self.iteration, self.seldepth, self.processed_nodes, ms, self.transpositiontable.filled);
     }
 
     fn alpha_beta(self: *Search, comptime is_root: bool, comptime us: Color, depth: u8, input_alpha: Value, beta: Value) Value
     {
         const them = comptime us.opp();
         const pos: *Position = &self.pos;
+        const key: u64 = pos.state.key;
         const ply: u16 = pos.ply;
 
-        self.nodes += 1;
+        self.processed_nodes += 1;
+        self.seldepth = @max(self.seldepth, ply);
 
-        if (self.check_stop(.alpha_beta))
+        // Timeout?
+        if (self.check_stop(.alpha_beta)) return 0;
+
+        // TT probe.
+        if (use_tt and !is_root)
         {
-            return 0;
+            if (self.transpositiontable.probe(key, depth, ply, input_alpha, beta)) |result|
+            {
+                return result.eval;
+            }
         }
 
-        // Requested depth reached.
-        if (depth == 0)
-        {
-            return self.quiet(is_root, us, 0, input_alpha, beta);
-        }
+        // Requested depth reached: go quiet.
+        if (depth == 0) return self.quiet(is_root, us, 0, input_alpha, beta);
 
         // Too deep.
-        if (ply >= max_search_depth)
-        {
-            return eval.evaluate(pos, false);
-        }
+        if (ply >= max_search_depth) return eval.evaluate(pos, false);
 
-        const node: *Node = self.stack.get_node(ply + 2);
-        const childnode: *const Node = Stack.get_child_node(node);
-        const parentnode: *const Node = Stack.get_parent_node(node);
+        const node: *Node = self.get_node(ply + 2);
+        const childnode: *const Node = get_child_node(node);
+        const parentnode: *const Node = get_parent_node(node);
         _ = parentnode;
 
         // Clear current node.
@@ -285,7 +325,7 @@ const Search = struct
 
         if (pos.state.rule50 >= 100) return 0;
 
-        const in_check: bool = pos.state.checkers > 0;
+        const is_check: bool = pos.is_check();
 
         // Generate moves or copy the rootmoves.
         var movepicker = MovePicker.init();
@@ -301,20 +341,20 @@ const Search = struct
         // Is this checkmate or stalemate?
         if (movepicker.count == 0)
         {
-            if (in_check) return -types.mate + pos.ply else return types.stalemate;
+            if (is_check) return -types.mate + pos.ply else return types.stalemate;
         }
 
+        var st: StateInfo = undefined;
         var alpha: Value = input_alpha;
 
         // Go trough the moves.
-        for (movepicker.slice()) |extmove|
+        for (0..movepicker.count) |move_idx|
         {
-            var st: StateInfo = undefined;
-            const move: Move = extmove.move;
+            const e: ExtMove = movepicker.extract_next(move_idx);
+            const move: Move = e.move;
 
             pos.make_move(us, &st, move);
             const score: Value = -self.alpha_beta(false, them, depth - 1, -beta, -alpha);
-            self.seldepth = @max(self.seldepth, pos.ply);
             pos.unmake_move(us);
 
             // Discard result.
@@ -326,17 +366,27 @@ const Search = struct
                 // Beta cutoff / fail high.
                 if (score >= beta)
                 {
+                    // TT store
+                    if (use_tt) self.transpositiontable.store(.Beta, key, depth, ply, move, score);
                     return score;
                 }
                 node.score = score;
                 alpha = score;
-                update_pv(move, score, node, childnode);
+                update_local_pv(move, score, node, childnode);
                 if (is_root)
                 {
                     self.worker_pv_node.clone_from(node);
                 }
             }
         }
+
+        if (use_tt)
+        {
+            // TT store
+            const kind: tt.Kind = if (alpha <= input_alpha) .Alpha else .Exact;
+            self.transpositiontable.store(kind, key, depth, ply, node.first_move(), alpha);
+        }
+
         return alpha;
     }
 
@@ -350,7 +400,8 @@ const Search = struct
         const in_check : bool = pos.state.checkers > 0;
         var alpha = input_alpha;
 
-        self.nodes += 1;
+        self.processed_nodes += 1;
+        self.seldepth = @max(self.seldepth, pos.ply);
 
         if (self.check_stop(.quiet)) return 0;
 
@@ -363,10 +414,7 @@ const Search = struct
         if (static_score > alpha) alpha = static_score;
 
         // Too deep.
-        if (ply >= max_search_depth)
-        {
-            return static_score;
-        }
+        if (ply >= max_search_depth) return static_score;
 
         var movepicker: MovePicker = .init();
         movepicker.generate_captures(pos, us);
@@ -374,7 +422,7 @@ const Search = struct
         // Mate or stalemate?
         if (movepicker.count == 0)
         {
-            if (in_check and quiet_depth == 0)
+            if (in_check) // TODO: only at root?
             {
                  return -types.mate + ply;
             }
@@ -387,7 +435,6 @@ const Search = struct
             const move: Move = extmove.move;
             var st: StateInfo = undefined;
             pos.make_move(us, &st, move);
-            self.seldepth = @max(self.seldepth, pos.ply);
             const score: Value = -self.quiet(false, them, quiet_depth + 1, -beta, -alpha);
             pos.unmake_move(us);
 
@@ -409,10 +456,10 @@ const Search = struct
     }
 
     /// Append the line from 'childnode' to 'current node'
-    fn update_pv(bestmove: Move, score: Value, node: *Node, childnode: *const Node) void
+    fn update_local_pv(bestmove: Move, score: Value, node: *Node, childnode: *const Node) void
     {
-        node.pv.len = 0;
-        node.pv.append_assume_capacity(bestmove);
+        node.pv.len = 1;
+        node.pv.buffer[0] = bestmove;
         node.pv.append_slice_assume_capacity(childnode.pv.slice());
         node.score = score;
     }
@@ -430,7 +477,7 @@ const Search = struct
             {
                 .nodes =>
                 {
-                    if (self.nodes >= self.mgr.searchparams.max_nodes)
+                    if (self.processed_nodes >= self.mgr.searchparams.max_nodes)
                     {
                         self.stopped = true;
                         return true;
@@ -439,7 +486,7 @@ const Search = struct
                 },
                 .movetime =>
                 {
-                    if (self.nodes & 2047 == 0 and self.timer.elapsed_ms() >= self.mgr.searchparams.max_movetime_ms)
+                    if (self.processed_nodes & 2047 == 0 and self.timer.elapsed_ms() >= self.mgr.searchparams.max_movetime_ms)
                     {
                         self.stopped = true;
                         return true;
@@ -485,48 +532,39 @@ const Search = struct
         // We should handle everything above.
         unreachable;
     }
-};
 
-/// Each Search has its own stack.
-pub const Stack = struct
-{
-    nodes: Nodes,
-
-    fn init() Stack
-    {
-        return Stack
-        {
-            .nodes = .{},
-        };
-    }
-
-    fn get_node(self: *Stack, index: u16) *Node
+    fn get_node(self: *Search, index: u16) *Node
     {
         return &self.nodes.buffer[index];
     }
 
-    /// This assumes the node is in the stack.
+    /// NOTE: I think we just use `ply + 1` if it is the same speed.
     fn get_child_node(node: *Node) *const Node
     {
         return funcs.ptr_add(Node, node, 1);
     }
 
-    /// This assumes the node is in the stack.
+    /// NOTE: I think we just use `ply - 1` if it is the same speed.
     fn get_parent_node(node: *Node) *const Node
     {
         return funcs.ptr_sub(Node, node, 1);
     }
 };
 
-const Node = struct
+pub const Node = struct
 {
     const empty: Node = .{};
 
+    /// Local PV during search.
     pv: PV = .{},
+
+    /// Current eval.
     score: Value = 0,
-    is_check: bool = false,
-    is_mate: bool = false,
-    is_stalemate: bool = false,
+
+    /// Can be set by childnode, when searching.
+    will_give_check: bool = false,
+    will_give_mate: bool = false,
+    will_give_stalemate: bool = false,
 
     fn init() Node
     {
@@ -535,11 +573,14 @@ const Node = struct
 
     fn clear(self: *Node) void
     {
-        self.* = .empty;
+        self.pv.len = 0;
+        self.score = 0;
+        self.will_give_check = false;
+        self.will_give_mate = false;
+        self.will_give_stalemate = false;
     }
 
-    /// This is just the first move.
-    fn best_move(self: *const Node) Move
+    fn first_move(self: *const Node) Move
     {
         return self.pv.buffer[0];
     }
@@ -551,7 +592,7 @@ const Node = struct
         self.score = other.score;
     }
 
-    // Zig-format for UCI output the PV.
+    /// Zig-format for UCI output the PV.
     pub fn format(self: Node, writer: *std.io.Writer) std.io.Writer.Error!void
     {
         const len: usize = self.pv.len;
@@ -622,6 +663,7 @@ pub const MovePicker = struct
         pos.generate_captures(us, self);
     }
 
+    /// TODO: params killer moves? pvmove? tt move?
     /// Give each generated move an initial heuristic score in the attempt to get the best or most interesting moves at the beginning.\
     /// Must obviously be called *before* the move is made.
     fn score_moves(self: *MovePicker, pos: *const Position) void
@@ -677,67 +719,30 @@ pub const MovePicker = struct
         }
     }
 
-    fn extract_next(self: *MovePicker) ?ExtMove
+    fn extract_next(self: *MovePicker, current_idx: usize) ExtMove
     {
-        // TODO: params killer moves? pvmove? tt move?
+        const ptr: [*]ExtMove = &self.extmoves;
 
-        if (self.count == 0) return null;
+        var best_idx: usize = current_idx;
+        var max_score: Value = ptr[current_idx].score;
 
-        var best_idx = 0;
-        var max_score: i32 = self.extmoves[self.current].score;
-
-        const offset = self.current + 1;
-        for (self.extmoves[offset..self.count], offset..) |e, idx|
+        for (current_idx + 1..self.count) |idx|
         {
-            const score = e.score;
+            const score = ptr[idx].score;
             if (score > max_score)
             {
-                best_idx = idx;
                 max_score = score;
+                best_idx = idx;
             }
         }
 
-        if (best_idx != 0)
+        if (best_idx != current_idx)
         {
-            // swap.
-            //std.mem.swap(self.extmoves[], a: *T, b: *T)
+            std.mem.swap(ExtMove, &ptr[best_idx], &ptr[current_idx]);
         }
 
-        // //pub inline fn get_next_best(move_list: *MoveList, score_list: *ScoreList, i: usize) Move {
-        //     var best_j = i;
-        //     var max_score = score_list.scores[i];
-
-        //     // Start from i+1 and iterate over the remaining elements
-        //     for ((i + 1)..score_list.count) |j| {
-        //         const score = score_list.scores[j];
-        //         if (score > max_score) {
-        //             best_j = j;
-        //             max_score = score;
-        //         }
-        //     }
-
-        //     // Swap if a better move is found
-        //     if (best_j != i) {
-        //         const best_move = move_list.moves[best_j];
-        //         const best_score = score_list.scores[best_j];
-        //         move_list.moves[best_j] = move_list.moves[i];
-        //         score_list.scores[best_j] = score_list.scores[i];
-        //         move_list.moves[i] = best_move;
-        //         score_list.scores[i] = best_score;
-        //     }
-
-        //     return move_list.moves[i];
-        // // }
-
+        return ptr[current_idx];
     }
-};
-
-/// 64 bits. 2 bytes still available.
-pub const ExtMove = packed struct
-{
-    move: Move,
-    score: i32,
-    // TODO: we can contemplate putting extra info here if we need (instead of refetching info (when sorting moves for example)).
 };
 
 pub const SearchParams = struct
@@ -823,16 +828,7 @@ const CallSite = enum
     quiet,
 };
 
-const MoveScoring = struct
-{
-    const promotion    : Value =  1_000_000;
-    const capture      : Value =    500_000;
-    const castle       : Value =    100_000;
-    const good_capture : Value =    500_000;
-    const bad_capture  : Value = -1_000_000;
-};
-
-fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed_nanoseconds: u64) void
+fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed_nanoseconds: u64, hash_full: usize) void
 {
     // info depth 1 seldepth 2 multipv 1 score cp 17 nodes 20 nps 20000 hashfull 0 tbhits 0 time 1 pv e2e4
 
@@ -842,7 +838,7 @@ fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed
     lib.io.print
     (
         "info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {f}\n",
-        .{ depth, seldepth, pv_node.score, nodes, nps, 0, 0, ms, pv_node.* }
+        .{ depth, seldepth, pv_node.score, nodes, nps, hash_full, 0, ms, pv_node.* }
     )
     catch wtf();
 }

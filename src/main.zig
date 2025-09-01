@@ -7,7 +7,7 @@ const uci = @import("uci.zig");
 
 pub fn main() !void
 {
-    try lib.initialize(false);
+    try lib.initialize();
     defer lib.finalize();
 
     //  Debug tests.
@@ -16,7 +16,6 @@ pub fn main() !void
         try tests.run_silent_debugmode_tests();
         tests.print_struct_sizes();
     }
-
 
     uci.run();
 }

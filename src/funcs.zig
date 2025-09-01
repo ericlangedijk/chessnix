@@ -292,6 +292,22 @@ pub fn mul(i: Value, f: Float) Value
     return @intFromFloat(float(i) * f);
 }
 
+pub fn percent(max: usize, count: usize) usize
+{
+    assert(max > 0);
+    const c: f32 = @floatFromInt(count);
+    const m: f32 = @floatFromInt(max);
+    return @intFromFloat((c * 100) / m);
+}
+
+pub fn permille(max: usize, count: usize) usize
+{
+    assert(max > 0);
+    const c: f32 = @floatFromInt(count);
+    const m: f32 = @floatFromInt(max);
+    return @intFromFloat((c * 1000) / m);
+}
+
 pub fn compress_board(pos: *const Position) [32]u8
 {
     var result: [32]u8 = @splat(0);
