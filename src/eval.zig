@@ -105,6 +105,11 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
 
     const simple_score: Value = pos.values[Color.WHITE.u] - pos.values[Color.BLACK.u];
 
+    // if (@abs(simple_score) > 500)
+    // {
+    //     return if (negate) -simple_score else simple_score;
+    // }
+
     // Sliding values of the Pesto tables, which we taper at the end.
     var piece_square_score_mg: Value = 0;
     var piece_square_score_eg: Value = 0;
@@ -356,6 +361,8 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
             ,
             .{ pos.to_move.e, simple_score, pesto, mobility, space, pawn_score, knight_score, bishop_score, rook_score, queen_score, king_score });
     }
+
+    //const tm: Value = if (pos.to_move.e == .white) 12 else 0;
 
     const score: Value =
         simple_score +
@@ -637,7 +644,8 @@ const Feature = enum
 
 pub const Tables = struct
 {
-    fn get_index(comptime us: Color, sq: Square) u6
+    //fn get_index(comptime us: Color, sq: Square) u6
+    fn get_index(us: Color, sq: Square) u6
     {
         return switch(us.e)
         {
@@ -646,13 +654,18 @@ pub const Tables = struct
         };
     }
 
-    // pub fn get_mg_score(pc: Piece, sq: Square) Value
-    // {
-
-    // }
+    pub fn get_move_ordering_score(non_pawn_material: Value, us: Color, m: Move, pt: PieceType) Value
+    {
+        const pair_from = get_scorepair(us, pt, m.from);
+        const pair_to = get_scorepair(us, pt, m.to);
+        const score_from = sliding_score(non_pawn_material, pair_from.mg, pair_from.eg);
+        const score_to = sliding_score(non_pawn_material, pair_to.mg, pair_to.eg);
+        return score_to - score_from;
+    }
 
     /// Returns the table values for opening and endgame, between which we slide the final score.
-    fn get_scorepair(comptime us: Color, comptime pc: PieceType, sq: Square) struct { mg: Value, eg: Value}
+    //fn get_scorepair(comptime us: Color, comptime pc: PieceType, sq: Square) struct { mg: Value, eg: Value}
+    pub fn get_scorepair(us: Color, pc: PieceType, sq: Square) struct { mg: Value, eg: Value}
     {
         const mg: [*]const Value = switch (pc.e)
         {
@@ -680,7 +693,7 @@ pub const Tables = struct
         return .{ .mg = mg[idx], .eg = eg[idx] };
     }
 
-    fn sliding_score(non_pawn_material: Value, opening: Value, endgame: Value) Value
+    pub fn sliding_score(non_pawn_material: Value, opening: Value, endgame: Value) Value
     {
         const max: i32 = comptime types.max_material_without_pawns;
         const phase: i32 = @min(non_pawn_material, max);

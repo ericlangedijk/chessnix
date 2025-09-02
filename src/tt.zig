@@ -14,47 +14,57 @@ const wtf = lib.wtf();
 const Value = types.Value;
 const Move = types.Move;
 
-pub const Kind = enum(u2)
+/// Test phase only.
+pub const using_tt: bool = true;
+
+pub const Bound = enum(u2)
 {
+    None,
     Exact,
-    Alpha,
-    Beta,
+    Lower,
+    Upper,
 };
 
-pub const Entry = struct
+/// Must be 16 bytes.
+pub const Entry = packed struct
 {
-    const empty: Entry = .{};
+    const empty: Entry =
+    .{
+        .bound = .None,
+        .key = 0,
+        .depth = 0,
+        .move = .empty,
+        .score = 0,
+        .age = 0,
+    };
 
     /// The kind (exact, alpha or beta) with which this entry was stored..
-    kind: Kind = .Exact,
+    bound: Bound,
 
     /// The position hash key. If key == 0 we assume this entry is empty.
-    key: u64 = 0,
+    key: u64,
 
     /// The search depth when this entry was stored,
-    depth: u8 = 0,
+    depth: u8,
 
     /// The best move according to search.
-    move: Move = .empty,
+    move: Move,
 
     /// The evaluation according to search.
-    eval: Value = 0,
+    score: Value,
 
-    fn to_result(self: *const Entry) Result
-    {
-        return .{ .move = self.move, .eval = self.eval };
-    }
+    /// The age
+    age: u6,
 
-    fn to_result_adjusted(self: *const Entry, adjusted_eval: Value) Result
-    {
-        return .{ .move = self.move, .eval = adjusted_eval };
-    }
-};
+    // fn to_result(self: *const Entry) Result
+    // {
+    //     return .{ .move = self.move, .score = self.score };
+    // }
 
-pub const Result = struct
-{
-    move: Move,
-    eval: Value,
+    // fn to_result_adjusted(self: *const Entry, adjusted_score: Value) Result
+    // {
+    //     return .{ .move = self.move, .score = adjusted_score };
+    // }
 };
 
 // 64 MB = ok, 256 MB = very good.
@@ -64,19 +74,30 @@ pub const TranspositionTable = struct
     data: []Entry,
 
     /// The number of entries.
-    size: u64,
+    len: u64,
+
+    /// Used bytes
+    mb: u64,
 
     /// Number of filled entries.
     filled: u64,
 
+    /// Number of probe counts.
+    probes: u64,
+
+    /// Number of succesful probes.
+    hits: u64,
+
+    age: u6,
+
     pub fn init(size_in_megabytes: u64) !TranspositionTable
     {
+        comptime if (@sizeOf(Entry) != 16) @compileError("TT Entry must be 16 bytes");
         if (!std.math.isPowerOfTwo(size_in_megabytes)) return Error.TTSizeMustBeAPowerOfTwo;
-
-        const size: u64 = size_in_megabytes * 1024 * 1024;
-        const data: []Entry = try ctx.galloc.alloc(Entry, size);
+        const len: u64 = (size_in_megabytes * 1024 * 1024) / 16;
+        const data: []Entry = try ctx.galloc.alloc(Entry, len);
         @memset(data, Entry.empty);
-        return .{ .data = data, .size = size, .filled = 0 };
+        return .{ .data = data, .len = len, .mb = size_in_megabytes, .filled = 0, .probes = 0, .hits = 0, .age = 0 };
     }
 
     pub fn deinit(self: *TranspositionTable) void
@@ -88,145 +109,141 @@ pub const TranspositionTable = struct
     {
         @memset(self.data, Entry.empty);
         self.filled = 0;
+        self.probes = 0;
+        self.hits = 0;
     }
 
-    /// TODO: atomic
-    pub fn store(self: *TranspositionTable, kind: Kind, key: u64, depth: u8, ply: u16, move: Move, eval: Value) void
+    pub fn increase_age(self: *TranspositionTable) void
     {
-        const entry: *Entry = self.get(key);
-        const was_empty = entry.key == 0;
-        const overwrite: bool = was_empty or entry.key != key or depth >= entry.depth;
-        if (!overwrite) return;
-        const corrected_eval: Value = get_corrected_eval_for_store(eval, ply);
-        entry.kind = kind;
-        entry.key = key;
-        entry.depth = depth;
-        entry.move = move;
-        entry.eval = corrected_eval;
-        if (was_empty) self.filled += 1;
-    }
-
-    pub fn probe(self: *TranspositionTable, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value) ?Result
-    {
-        const entry: *Entry = self.get(key);
-        if (entry.key == key and entry.depth >= depth)
-        {
-            switch (entry.kind)
-            {
-                .Exact =>
-                {
-                    return entry.to_result();
-                },
-                .Beta =>
-                {
-                    const corr: Value = get_corrected_eval_for_probe(entry.eval, ply);
-                    return if (corr >= beta) entry.to_result_adjusted(corr) else null;
-                },
-                .Alpha =>
-                {
-                    const corr: Value = get_corrected_eval_for_probe(entry.eval, ply);
-                    return if (corr <= alpha) entry.to_result_adjusted(corr) else null;
-                },
-            }
-        }
-        return null;
+        self.age +%= 1;
     }
 
     pub fn permille(self: *const TranspositionTable) usize
     {
-        return funcs.permille(self.size, self.filled);
+        return funcs.permille(self.len, self.filled);
+    }
+
+    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: u8, move: Move, score: Value) void
+    {
+        // TODO: atomic store.
+        if (!using_tt) return;
+        const entry: *Entry = self.get_mut(key);
+        const was_empty = entry.key == 0;
+        const overwrite: bool = was_empty or entry.age != self.age or entry.key != key or depth >= entry.depth;
+        if (!overwrite) return;
+        entry.* = .{ .bound = bound, .key = key, .depth = depth, .move = move, .score = score, .age = self.age };
+        if (was_empty) self.filled += 1;
+    }
+
+    pub fn probe(self: *TranspositionTable, key: u64) ?Entry
+    {
+        if (!using_tt) return null;
+        self.probes += 1;
+        const entry: Entry = self.get_entry(key);
+        if (entry.bound == .None or entry.key != key) return null;
+        self.hits += 1;
+        return entry;
     }
 
     fn index_of(self: *const TranspositionTable, key: u64) u64
     {
-        return key & (self.size - 1);
+        return key & (self.len - 1);
     }
 
-    fn get(self: *TranspositionTable, key: u64) *Entry
+    fn get_mut(self: *TranspositionTable, key: u64) *Entry
     {
         const idx = self.index_of(key);
         return &self.data[idx];
     }
 
-    fn get_corrected_eval_for_store(eval: Value, ply: u16) Value
+    pub fn get_entry(self: *TranspositionTable, key: u64) Entry
     {
-        if (@abs(eval) >= types.mate_threshold)
-        {
-            const sign: i8 = if (eval >= 0) 1 else - 1;
-            return ((eval * sign) + ply) * sign;
-        }
-        return eval;
+        const idx = self.index_of(key);
+        return self.data[idx];
     }
 
-    fn get_corrected_eval_for_probe(eval: Value, ply: u16) Value
-    {
-        if (@abs(eval) >= types.mate_threshold)
-        {
-            const sign: i8 = if (eval >= 0) 1 else - 1;
-            return ((eval * sign) - ply) * sign;
-        }
-        return eval;
-    }
 };
 
-test "transpositiontable"
+/// Adjust score for mate in X when storing.
+pub fn get_adjusted_score_for_store(score: Value, ply: u16) Value
 {
-    const position = @import("position.zig");
-
-    try lib.initialize();
-
-    //lib.io.debugprint("testing tt---------------------\n", .{});
-
-    var tt: TranspositionTable = try .init(8);
-    defer tt.deinit();
-
-    try std.testing.expectEqual(8 * 1024 * 1024, tt.size);
-
-    var pos: position.Position = .empty;
-    var st: position.StateInfo = undefined;
-    try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-    const move: types.Move = .create(types.Square.E2, types.Square.A6);
-
-    var e: ?Result = null;
-
-    // Raw get
+    if (@abs(score) >= types.mate_threshold)
     {
-        const eq_entry: Entry = .{ .kind = .Exact, .key = pos.state.key, .depth = 1, .move = move, .eval = 42 };
-        tt.store(.Exact, pos.state.key, 1, 1, move, 42);
-        const retrieved: *const Entry = tt.get(pos.state.key);
-        try std.testing.expect(std.meta.eql(retrieved.*, eq_entry));
+        const sign: i8 = if (score > 0) 1 else - 1;
+        return ((score * sign) + ply) * sign;
     }
-
-    // Some probings
-    {
-        // Exact
-        tt.store(.Exact, pos.state.key, 1, 1, move, 600);
-
-        e = tt.probe(pos.state.key, 1, 1, -50, 50);
-        try std.testing.expect(e != null);
-
-        e = tt.probe(pos.state.key, 2, 1, -50, 50);
-        try std.testing.expect(e == null);
-
-        // // Alpha
-        // tt.store(.Alpha, pos.state.key, 1, 1, move, 42);
-        // e = tt.probe(pos.state.key, 1, 1, 43, -50);
-        // try std.testing.expect(e == null);
-
-        // // Beta
-        // tt.store(.Beta, pos.state.key, 1, 1, move, 42);
-
-        // e = tt.probe(pos.state.key, 1, 1, 50, -50);
-        // try std.testing.expect(e != null);
-
-        // e = tt.probe(pos.state.key, 1, 1, 50, 43);
-        // try std.testing.expect(e == null);
-
-
-    }
-
-    try std.testing.expectEqual(1, tt.filled);
+    return score;
 }
+
+/// Adjust score for mate in X when probing.
+pub fn get_adjusted_score_for_probe(score: Value, ply: u16) Value
+{
+    if (@abs(score) >= types.mate_threshold)
+    {
+        const sign: i8 = if (score > 0) 1 else - 1;
+        return ((score * sign) - ply) * sign;
+    }
+    return score;
+}
+
+// test "transpositiontable"
+// {
+//     const position = @import("position.zig");
+
+//     try lib.initialize();
+
+//     //lib.io.debugprint("testing tt---------------------\n", .{});
+
+//     var tt: TranspositionTable = try .init(8);
+//     defer tt.deinit();
+
+//     try std.testing.expectEqual(8 * 1024 * 1024, tt.size);
+
+//     var pos: position.Position = .empty;
+//     var st: position.StateInfo = undefined;
+//     try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+//     const move: types.Move = .create(types.Square.E2, types.Square.A6);
+
+//     var e: ?Result = null;
+
+//     // Raw get
+//     {
+//         const eq_entry: Entry = .{ .kind = .Exact, .key = pos.state.key, .depth = 1, .move = move, .eval = 42 };
+//         tt.store(.Exact, pos.state.key, 1, 1, move, 42);
+//         const retrieved: *const Entry = tt.get(pos.state.key);
+//         try std.testing.expect(std.meta.eql(retrieved.*, eq_entry));
+//     }
+
+//     // Some probings
+//     {
+//         // Exact
+//         tt.store(.Exact, pos.state.key, 1, 1, move, 600);
+
+//         e = tt.probe(pos.state.key, 1, 1, -50, 50);
+//         try std.testing.expect(e != null);
+
+//         e = tt.probe(pos.state.key, 2, 1, -50, 50);
+//         try std.testing.expect(e == null);
+
+//         // // Alpha
+//         // tt.store(.Alpha, pos.state.key, 1, 1, move, 42);
+//         // e = tt.probe(pos.state.key, 1, 1, 43, -50);
+//         // try std.testing.expect(e == null);
+
+//         // // Beta
+//         // tt.store(.Beta, pos.state.key, 1, 1, move, 42);
+
+//         // e = tt.probe(pos.state.key, 1, 1, 50, -50);
+//         // try std.testing.expect(e != null);
+
+//         // e = tt.probe(pos.state.key, 1, 1, 50, 43);
+//         // try std.testing.expect(e == null);
+
+
+//     }
+
+//     try std.testing.expectEqual(1, tt.filled);
+// }
 
 
 const Error = error

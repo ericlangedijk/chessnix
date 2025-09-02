@@ -23,11 +23,25 @@ const io = lib.io;
 
 pub fn print_struct_sizes() void
 {
-    lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
-    lib.io.debugprint("ExtMove {}\n", .{ @sizeOf(types.ExtMove)});
-    lib.io.debugprint("Node {}\n", .{ @sizeOf(search.Node)});
-    lib.io.debugprint("Search {}\n", .{ @sizeOf(search.Search)});
-    lib.io.debugprint("tt.Entr {}\n", .{ @sizeOf(tt.Entry)});
+    // const array: [5]type =
+    // .{
+    //     position.StateInfo,
+    //     types.ExtMove,
+    //     search.Node,
+    //     search.Search,
+    //     tt.Entry,
+    // };
+
+    // for (array) |t|
+    // {
+    //     lib.io.debugprint("{s} {}\n", .{ @typeName(t),  @sizeOf(t)});
+    // }
+
+    // lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
+    lib.io.debugprint("ExtMove {} {}\n", .{ @sizeOf(types.ExtMove), @bitSizeOf(types.ExtMove)});
+    // lib.io.debugprint("Node {}\n", .{ @sizeOf(search.Node)});
+    // lib.io.debugprint("Search {}\n", .{ @sizeOf(search.Search)});
+    // lib.io.debugprint("tt.Entr {}\n", .{ @sizeOf(tt.Entry)});
 }
 
 pub fn run_silent_debugmode_tests() !void

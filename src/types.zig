@@ -867,11 +867,23 @@ pub const Move = packed struct(u16)
     }
 };
 
+pub const ExtMoveInfo = packed struct
+{
+    pub const empty: ExtMoveInfo = .{ .is_quiet = false, .moved_piece = Piece.NO_PIECE, .captured_piece = Piece.NO_PIECE };
+
+    is_quiet: bool,
+    moved_piece: Piece,
+    captured_piece: Piece,
+};
+
 /// 64 bits Move with score, used by Search.
 pub const ExtMove = packed struct
 {
     move: Move,
     score: i32,
+
+    /// EXPERIMENTAL
+    info: ExtMoveInfo,
     // TODO: we can contemplate putting extra info here if we need (instead of refetching info (when sorting moves for example)).
     // * generated normal or quiet (1 bit)
     // * is_capture (1 bit)
@@ -883,6 +895,22 @@ pub const GamePhase = enum
     Midgame,
     Endgame,
 };
+
+pub const ParsingError = error
+{
+    /// Garbage piece inside fen string.
+    InvalidFenPiece,
+    /// Garbage or move not found.
+    IllegalMove,
+    /// Garbage promotion character.
+    InvalidPromotionChar,
+    /// SAN move garabage
+    SanError,
+};
+
+////////////////////////////////////////////////////////////////
+/// Constants
+////////////////////////////////////////////////////////////////
 
 pub const max_game_length: usize = 1024;
 pub const max_move_count: usize = 224;
@@ -946,14 +974,3 @@ pub const ChessChars = struct
     pub const rank_chars = "12345678";
 };
 
-pub const ParsingError = error
-{
-    /// Garbage piece inside fen string.
-    InvalidFenPiece,
-    /// Garbage or move not found.
-    IllegalMove,
-    /// Garbage promotion character.
-    InvalidPromotionChar,
-    /// SAN move garabage
-    SanError,
-};
