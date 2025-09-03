@@ -181,7 +181,7 @@ const DisambiguationFinder = struct {
 
     /// Required function.
     pub fn store(self: *DisambiguationFinder, move: Move) ?void {
-        if (self.is_candidate(move)) { // (self.move.from.e != move.from.e and self.move.to.e == move.to.e and self.moved_piece.e == self.pos.board[move.from.u].e) {
+        if (self.is_candidate(move)) {
             self.any = true;
             self.file_conflict = (self.move.from.file() == move.from.file());
             self.rank_conflict = (self.move.from.rank() == move.from.rank());
@@ -213,9 +213,17 @@ test "san"
     var move: types.Move = .empty;
     var san: lib.BoundedArray(u8, 10) = .empty;
 
+    // https://lichess.org/editor/R1n1k3/8/2R1K3/8/8/8/8/8_w_-_-_0_1
     try pos.set(&st, "R1n1k3/8/2R1K3/8/8/8/8/8 w - - 0 1");
     move = .create(.C6, .C8);
     san = get_san(move, &pos);
     try std.testing.expectEqualSlices(u8, "Rcxc8#", san.slice());
+
+    // https://lichess.org/editor/q7/R1n1k3/8/2R5/K7/8/8/8_w_-_-_0_1
+    try pos.set(&st, "q7/R1n1k3/8/2R5/K7/8/8/8 w - - 0 1");
+    try pos.draw();
+    move = .create(.C5, .C7);
+    san = get_san(move, &pos);
+    try std.testing.expectEqualSlices(u8, "Rxc7+", san.slice());
 }
 
