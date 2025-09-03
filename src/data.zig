@@ -24,49 +24,40 @@ pub fn initialize() void
     // We use a compressed index becuase borders are excluded.
     var sliding_attacks: [8][64]u8 = std.mem.zeroes([8][64]u8);
 
-    for (0..8) |b|
-    {
-        const _1: u8 = 1;
-
+    for (0..8) |b| {
+        const one: u8 = 1;
         const bitpos: u3 = @truncate(b);
-        for (0..256) |o|
-        {
+        for (0..256) |o| {
             const occ: u8 = @truncate(o);
             var attackmask: u8 = 0;
 
             // Scan bits forwards
-            if (bitpos < 7)
-            {
+            if (bitpos < 7) {
                 var i: u3 = bitpos;
-                while (true)
-                {
+                while (true) {
                     i += 1;
-                    const mask: u8 = _1 << i;
+                    const mask: u8 = one << i;
                     attackmask |= mask;
                     if (i == 7 or occ & mask != 0) break; // border or occupied
                 }
             }
             // Scan bits backwards.
-            if (bitpos > 0)
-            {
+            if (bitpos > 0) {
                 var i: u3 = bitpos;
-                while (true)
-                {
+                while (true) {
                     i -= 1;
-                    const mask: u8 = _1 << i;
+                    const mask: u8 = one << i;
                     attackmask |= mask;
                     if (i == 0 or occ & mask != 0) break; // border or occupied
                 }
             }
-
             // compress the index
             const index : u8 = (occ & occ_index_mask) >> 1;
             sliding_attacks[bitpos][index] = attackmask;
         }
     }
 
-    for (Square.all) |sq|
-    {
+    for (Square.all) |sq| {
         const idx: usize = sq.u;
         const file: u3 = sq.file();
         const rank: u3 = sq.rank();
@@ -122,22 +113,18 @@ pub fn initialize() void
         entry_anti.magic = PrecomputedMagics.diag_anti_magics[@as(u8, file) + (7 - rank)];
 
         // Rank attacks.
-        for (0..64) |occ|
-        {
+        for (0..64) |occ| {
             const attack: u8 = sliding_attacks[file][occ];
             rank_attacks[idx * 64 + occ] = @as(u64, attack) << (@as(u6, rank) * 8); // shift into the correct rank
         }
 
         // File attacks.
-        for (0..64) |occ|
-        {
+        for (0..64) |occ| {
             const attackmask: u8 = sliding_attacks[7 - rank][occ];
             var bitboard: u64 = 0;
-            for (0..8) |i|
-            {
+            for (0..8) |i| {
                 const bitpos: u3 = @truncate(i);
-                if (funcs.test_bit_u8(attackmask, bitpos))
-                {
+                if (funcs.test_bit_u8(attackmask, bitpos)) {
                     const square: Square = .from_rank_file(7 - bitpos, file);
                     bitboard |= square.to_bitboard();
                 }
@@ -146,28 +133,23 @@ pub fn initialize() void
         }
 
         // Diagonal main attacks.
-        for (0..64) |occ|
-        {
+        for (0..64) |occ| {
             const offset: u3 = @min(7 - rank, file);
             const attackmask: u8 = sliding_attacks[offset][occ];
             var bitboard: u64 = 0;
-
             // Scan northwest (backwards from offset).
             var q: Square = sq;
             var bitpos: u3 = offset;
-            while (true)
-            {
+            while (true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.north_west) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
             }
-
             // Scan southeast (forwards from offset).
             q = sq;
             bitpos = offset;
-            while(true)
-            {
+            while(true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_east) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos < 7);
@@ -182,23 +164,19 @@ pub fn initialize() void
             const offset: u3 = @min(rank, file);
             const attackmask: u8 = sliding_attacks[offset][occ];
             var bitboard: u64 = 0;
-
             // Scan southwest (backwards from offset).
             var q: Square = sq;
             var bitpos: u3 = offset;
-            while (true)
-            {
+            while (true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_west) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
             }
-
             // Scan northeast (forwards from offset).
             q = sq;
             bitpos = offset;
-            while (true)
-            {
+            while (true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.north_east) orelse break;
                 if (comptime lib.is_paranoid) assert(bitpos < 7);
@@ -213,10 +191,8 @@ pub fn initialize() void
 const occ_index_mask: u8 = 0b01111110;
 
 /// Precomputed magics.
-const PrecomputedMagics = struct
-{
-    const file_magics: [8]u64 =
-    .{
+const PrecomputedMagics = struct {
+    const file_magics: [8]u64 = .{
         0x8040201008040200,  // a-file
         0x4020100804020100,  // b-file
         0x2010080402010080,  // c-file
@@ -227,8 +203,7 @@ const PrecomputedMagics = struct
         0x0100804020100804   // h-file
     };
 
-    const diag_main_magics: [15]u64 =
-    .{
+    const diag_main_magics: [15]u64 = .{
         0x0,                 //  0: a1
         0x0,                 //  1: a2-b1
         0x0101010101010100,  //  2: a3-c1
@@ -246,8 +221,7 @@ const PrecomputedMagics = struct
         0x0                  // 14: h8
     };
 
-    const diag_anti_magics: [15]u64 =
-    .{
+    const diag_anti_magics: [15]u64 = .{
         0x0,                //  0: a8
         0x0,                //  1: a7-b8
         0x0101010101010100, //  2: a6-c8
@@ -266,17 +240,14 @@ const PrecomputedMagics = struct
     };
 };
 
-const MagicEntry = struct
-{
+const MagicEntry = struct {
     const empty: MagicEntry = .{};
 
     mask: u64 = 0,
     magic: u64 = 0,
-
     const shift: u6 = 57;
 
-    fn attack_index(self: MagicEntry, occ: u64) u64
-    {
+    fn attack_index(self: MagicEntry, occ: u64) u64 {
         return ((occ & self.mask) *% self.magic) >> shift;
     }
 };
@@ -330,8 +301,7 @@ pub const ptr_bb_northeast: [*]const u64 = &bb_northeast;
 pub const ptr_bb_southwest: [*]const u64 =  &bb_southwest;
 
 /// Using the `Orientation` enum order.
-pub const direction_bitboards: [8][*]u64 =
-.{
+pub const direction_bitboards: [8][*]u64 = .{
     ptr_bb_north,
     ptr_bb_east,
     ptr_bb_south,
@@ -342,10 +312,8 @@ pub const direction_bitboards: [8][*]u64 =
     ptr_bb_southwest,
 };
 
-fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64
-{
-    return switch(ori)
-    {
+fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
+    return switch(ori) {
         .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1,
         .vertical   => ptr_file_magics[sq.u].attack_index(occ),
         .diagmain   => ptr_main_magics[sq.u].attack_index(occ),
@@ -354,13 +322,11 @@ fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 }
 
 /// Returns attacks for one direction.
-pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64
-{
+pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     const offset: u64 = sq.idx() * 64;
     const raw: u64 = attack_index_of(ori, sq, occ);
 
-    return switch (ori)
-    {
+    return switch (ori) {
         .horizontal => ptr_rank_attacks[offset + raw],
         .vertical   => ptr_file_attacks[offset + raw],
         .diagmain   => ptr_diag_main_attacks[offset + raw],
@@ -369,33 +335,25 @@ pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64
 }
 
 /// A little speedup for combined attacks. We only need to calculate the offset once.
-fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, occ: u64) u64
-{
+fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, occ: u64) u64 {
     const offset: u64 = sq.idx() * 64;
     var result: u64 = 0;
 
-    inline for (orientations) |ori|
-    {
-        switch (ori)
-        {
-            .horizontal =>
-            {
+    inline for (orientations) |ori| {
+        switch (ori) {
+            .horizontal => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_rank_attacks[offset + raw];
             },
-            .vertical =>
-            {
+            .vertical => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_file_attacks[offset + raw];
             },
-            .diagmain =>
-            {
+            .diagmain => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_diag_main_attacks[offset + raw];
-
             },
-            .diaganti =>
-            {
+            .diaganti => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
                 result |= ptr_diag_anti_attacks[offset + raw];
             },
@@ -404,56 +362,45 @@ fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, o
     return result;
 }
 
-pub fn get_rank_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_rank_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.horizontal, sq, occ);
 }
 
-pub fn get_file_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_file_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.vertical, sq, occ);
 }
 
-pub fn get_diagmain_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_diagmain_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.diagmain, sq, occ);
 }
 
-pub fn get_diaganti_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_diaganti_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.diaganti, sq, occ);
 }
 
-pub fn get_pawn_attacks(sq: Square, comptime us: Color) u64
-{
-    return switch(us.e)
-    {
+pub fn get_pawn_attacks(sq: Square, comptime us: Color) u64 {
+    return switch(us.e) {
         .white => ptr_pawn_attacks_white[sq.u],
         .black => ptr_pawn_attacks_black[sq.u]
     };
 }
 
-pub fn get_knight_attacks(sq: Square) u64
-{
+pub fn get_knight_attacks(sq: Square) u64 {
     return ptr_knight_attacks[sq.u];
 }
 
-pub fn get_bishop_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_bishop_attacks(sq: Square, occ: u64) u64 {
     return combined_attacks_of(&.{ .diagmain, .diaganti }, sq, occ);
 }
 
-pub fn get_rook_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_rook_attacks(sq: Square, occ: u64) u64 {
     return combined_attacks_of(&.{ .horizontal, .vertical }, sq, occ);
 }
 
-pub fn get_queen_attacks(sq: Square, occ: u64) u64
-{
+pub fn get_queen_attacks(sq: Square, occ: u64) u64 {
     return combined_attacks_of(&.{ .horizontal, .vertical, .diagmain, .diaganti }, sq, occ);
 }
 
-pub fn get_king_attacks(sq: Square) u64
-{
+pub fn get_king_attacks(sq: Square) u64 {
     return ptr_king_attacks[sq.u];
 }
