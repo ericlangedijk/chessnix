@@ -40,7 +40,7 @@ pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 
 /// For now we set paranoid false, too speedup debugging.
-pub const is_paranoid: bool = false; // if (is_debug) true else false;
+pub const is_paranoid: bool = if (is_debug) true else false;
 
 /// The global memory.
 pub const ctx: *const MemoryContext = &memory_context;

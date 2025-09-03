@@ -2,6 +2,8 @@
 
 //! Collection of debug tests.
 
+// TODO: make the tests Zig-tests.
+
 const std = @import("std");
 const lib = @import("lib.zig");
 const data = @import("data.zig");
@@ -250,6 +252,8 @@ fn index_of(slice: []const u8, value:u8) ?usize
 {
     return std.mem.indexOfScalar(u8, slice, value);
 }
+
+pub const kiwi_fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
 
 pub const testpositions: [134][]const u8 =
 .{

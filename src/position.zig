@@ -1098,8 +1098,7 @@ pub const Position = struct
     }
 
     /// Returns true if square `to` is attacked by any piece of `attacker` for a certain occupation `occ`.
-    pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to: Square, comptime attacker: Color) bool
-    {
+    pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to: Square, comptime attacker: Color) bool {
         const inverted = comptime attacker.opp();
         return
             (data.get_knight_attacks(to) & self.knights(attacker)) |
@@ -1110,8 +1109,7 @@ pub const Position = struct
     }
 
     /// Gives a bitboard of attackers which attack `to` for both colors.
-    pub fn get_all_attacks_to_for_occupation(self: *const Position, occ: u64, to: Square) u64
-    {
+    pub fn get_all_attacks_to_for_occupation(self: *const Position, occ: u64, to: Square) u64 {
         //const inverted = comptime attacker.opp();
         return
             (data.get_knight_attacks(to) & self.all_knights()) |
@@ -1122,37 +1120,32 @@ pub const Position = struct
             (data.get_bishop_attacks(to, occ) & self.all_queens_bishops());
     }
 
-    pub fn attacks_by_for_occupation(self: *const Position, comptime attacker: Color, occ: u64) u64
-    {
+    pub fn attacks_by_for_occupation(self: *const Position, comptime attacker: Color, occ: u64) u64 {
         var att: u64 = 0;
 
         // Pawns.
         const their_pawns = self.pawns(attacker);
-        if (their_pawns > 0)
-        {
+        if (their_pawns > 0) {
             att |= (pawns_shift(their_pawns, attacker, .northeast) | pawns_shift(their_pawns, attacker, .northwest));
         }
 
         // Knights.
         var their_knights = self.knights(attacker);
-        while (their_knights != 0)
-        {
+        while (their_knights != 0) {
             const from: Square = pop_square(&their_knights);
             att |= data.get_knight_attacks(from);
         }
 
         // Diagonal sliders.
         var their_diag_sliders = self.queens_bishops(attacker);
-        while (their_diag_sliders != 0)
-        {
+        while (their_diag_sliders != 0) {
             const from: Square = pop_square(&their_diag_sliders);
             att |= data.get_bishop_attacks(from, occ);
         }
 
         // Orthogonal sliders.
         var their_orth_sliders = self.queens_rooks(attacker);
-        while (their_orth_sliders != 0)
-        {
+        while (their_orth_sliders != 0) {
             const from: Square = pop_square(&their_orth_sliders);
             att |= data.get_rook_attacks(from, occ);
         }
@@ -1641,7 +1634,7 @@ pub const Position = struct
         if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.to_move.e != .white)
         {
             lib.io.debugprint("CHECK\n", .{});
-            self.print() catch wtf();
+            self.draw() catch wtf();
             return false;
         }
 
@@ -1649,7 +1642,7 @@ pub const Position = struct
         if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.to_move.e != .black)
         {
             lib.io.debugprint("CHECK\n", .{});
-            self.print() catch wtf();
+            self.draw() catch wtf();
 
             return false;
         }

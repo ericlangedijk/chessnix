@@ -115,6 +115,10 @@ fn uci_loop() !void
                 perft.qrun(&engine.pos, depth);
             }
             // DEBUG TEMP
+            else if (eql(cmd, "kiwi"))
+            {
+                try engine.set_position(tests.kiwi_fen, null);
+            }
             else if (eql(cmd, "deb"))
             {
                 try temp();

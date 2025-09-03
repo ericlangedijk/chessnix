@@ -22,6 +22,7 @@ const Value = types.Value;
 const Color = types.Color;
 const PieceType = types.PieceType;
 const Piece = types.Piece;
+const Square = types.Square;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
 const StateInfo = position.StateInfo;
@@ -153,7 +154,7 @@ pub const Search = struct
             .transpositiontable = undefined,
             .termination = .infinite,
             .pos = .empty,
-            .rootmoves = .init(),
+            .rootmoves = .init(true),
             .nodes = .empty,
             .quiet_heuristic_history = std.mem.zeroes([16][64]Value),
             .best_move = .empty,
@@ -204,16 +205,30 @@ pub const Search = struct
         //lib.io.debugprint("before tt: {f} score {} depth {}\n", .{e1.move, e1.score, e1.depth});
 
         switch (self.pos.to_move.e)
-         {
+        {
             .white => self.iterative_deepening(Color.WHITE),
             .black => self.iterative_deepening(Color.BLACK),
-         }
+        }
 
-        //print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
+        print_san_pv(input_pos, &self.pv_node) catch wtf();
 
         // TODO: when threading put this out!
         // UCI write bestmove after search.
         lib.io.print("bestmove {f}\n", .{ self.best_move }) catch wtf();
+
+
+
+        // for (Piece.all) |p|
+        // {
+        //     for (Square.all) |q|
+        //     {
+        //         const s = self.quiet_heuristic_history[p.u][q.u];
+        //         if (s > 0)
+        //         {
+        //             lib.io.debugprint("{t} {t} -> {}\n", .{p.e, q.e, s });
+        //         }
+        //     }
+        // }
 
         //lib.io.debugprint("probes {} hits {}\n", .{ self.transpositiontable.probes, self.transpositiontable.hits });
 
@@ -236,28 +251,30 @@ pub const Search = struct
         const pos: *Position = &self.pos;
 
         self.rootmoves.generate_moves(pos, us);
+        self.rootmoves.process_and_score_moves(self, Move.empty);
+        self.rootmoves.sort();
 
         // Have something a.s.a.p.
-        if (self.rootmoves.count > 0)
-        {
-            self.best_move = self.rootmoves.extmoves[0].move;
-        }
+        if (self.rootmoves.count > 0) self.best_move = self.rootmoves.extmoves[0].move;
 
-        self.rootmoves.score_moves(pos);
+        // io.debugprint("start: ", .{});
+        // for (self.rootmoves.slice(), 0..) |e, i|
+        // {
+        //     //const e = self.rootmoves.extract_next(idx, .empty);
+        //     io.debugprint("{f} {}, ", .{e.move, e.score});
+        //     if (i > 10) break;
+        // }
+        // io.debugprint("\n", .{});
 
-        for (0..self.rootmoves.count) |idx|
-        {
-            const e = self.rootmoves.extract_next(idx, .empty);
-            io.debugprint("{f} {} {}\n", .{e.move, e.score, e.info});
-        }
-
-        if (true) return;
+        //if (true) return;
 
         self.iteration = 1;
         var depth: u8 = 1;
         var best_score: Value = -types.infinity;
         while (true)
         {
+            self.iteration = depth;
+
             const score: Value = self.alpha_beta(true, us, depth, -types.infinity, types.infinity);
 
             // Discard result if timeout.
@@ -269,15 +286,27 @@ pub const Search = struct
                     best_score = score;
                 }
                 // Copy the last finished pv.
-                self.pv_node.clone_from(self.get_node(2));
+                self.pv_node.copy_from(self.get_node(2));
                 self.best_move = self.pv_node.first_move();
             }
+
+            self.rootmoves.sort();
+
+            // io.debugprint("# {}: ", .{self.iteration});
+            // for (self.rootmoves.slice(), 0..) |e, i|
+            // {
+            //     //const e = self.rootmoves.extract_next(idx, .empty);
+            //     io.debugprint("{f} {}, ", .{e.move, e.score});
+            //     if (i > 10) break;
+            // }
+            // io.debugprint("\n", .{});
 
             // And print.
             print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
 
             if (self.check_stop(.iterative_deepening)) break;
-            self.iteration += 1;
+            if (depth >= max_search_depth) break;
+
             depth += 1;
         }
     }
@@ -295,8 +324,8 @@ pub const Search = struct
         // Timeout?
         if (self.check_stop(.alpha_beta)) return 0;
 
-        var hashmove: Move = .empty;
         // TT probe.
+        var hashmove: Move = .empty;
         if (!is_root)
         {
             if (self.tt_probe(key, depth, ply, alpha, beta, &hashmove)) |entry|
@@ -305,7 +334,7 @@ pub const Search = struct
             }
         }
 
-        // Requested depth reached: go quiet.
+        // Requested depth reached: plunge into quiescence.
         if (depth == 0) return self.quiet(is_root, us, alpha, beta);
 
         // Too deep.
@@ -313,8 +342,8 @@ pub const Search = struct
 
         const node: *Node = self.get_node(ply + 2);
         const childnode: *const Node = get_child_node(node);
-        const parentnode: *const Node = get_parent_node(node);
-        _ = parentnode;
+        // const parentnode: *const Node = get_parent_node(node);
+        // _ = parentnode;
 
         // Clear current node.
         node.clear();
@@ -323,16 +352,17 @@ pub const Search = struct
 
         const is_check: bool = pos.is_check();
 
-        // Generate moves or copy the rootmoves.
-        var movepicker = MovePicker.init();
-        if (is_root)
-        {
-            movepicker.copy_from(&self.rootmoves);
-        }
-        else
-        {
-            movepicker.generate_moves(pos, us);
-        }
+        // Use rootmoves or generate on stack.
+        const movepicker: *MovePicker =
+            if (is_root) &self.rootmoves
+            else local:
+            {
+                //mp.reset();
+                var mp = MovePicker.init(false);
+                mp.generate_moves(pos, us);
+                mp.process_and_score_moves(self, hashmove);
+                break :local &mp;
+            };
 
         // Is this checkmate or stalemate?
         if (movepicker.count == 0)
@@ -343,18 +373,26 @@ pub const Search = struct
         }
 
         var best_score: Value = alpha;
-        var best: ?Move = null;
+        var best: Move = .empty;
         var st: StateInfo = undefined;
 
         // Go trough the moves.
         for (0..movepicker.count) |move_idx|
         {
-            const e: ExtMove = movepicker.extract_next(move_idx, hashmove);
-            const move: Move = e.move;
+            const extmove_ptr: *ExtMove = movepicker.extract_next(move_idx);
+            const e: ExtMove = extmove_ptr.*;
+            //const move: Move = e.move;
 
-            pos.make_move(us, &st, move);
+            //if (is_root) lib.io.debugprint("{}", .{e});
+            pos.make_move(us, &st, e.move);
             const score: Value = -self.alpha_beta(false, them, depth - 1, -beta, -best_score);
             pos.unmake_move(us);
+
+            if (is_root)
+            {
+                extmove_ptr.score = score;
+                //lib.io.debugprint("#{}: {f} {}\n", .{self.iteration, move, score});
+            }
 
             // Discard result.
             if (self.stopped) break;
@@ -365,23 +403,22 @@ pub const Search = struct
                 // Beta cutoff / fail high.
                 if (score >= beta)
                 {
-                    //self.record_quiet_cutoff(e);
+                    if (e.info.is_quiet) self.record_quietmove_beta_cutoff(depth, e);
                     // TT store
-                    self.tt_store(.Lower, key, depth, ply, move, score);
+                    self.tt_store(.Lower, key, depth, ply, e.move, score);
                     return score;
                 }
-                best = move;
+                best = e.move;
                 best_score = score;
-                node.score = score;
-                update_local_pv(move, score, node, childnode);
+                node.update_pv(e.move, score, childnode);
             }
         }
 
         // TT store
-        if (best) |bm|
+        if (!best.is_empty())
         {
             const bound: Bound = if (best_score <= alpha) .Upper else .Exact;
-            self.tt_store(bound, key, depth, ply, bm, best_score);
+            self.tt_store(bound, key, depth, ply, best, best_score);
         }
 
         return best_score;
@@ -389,8 +426,9 @@ pub const Search = struct
 
     fn quiet(self: *Search, comptime is_root: bool, comptime us: Color, input_alpha: Value, beta: Value) Value
     {
+        assert(is_root == false); // TODO: so remove this nonsense!!
         // TT probing and storing is done here with depth zero.
-         _ = is_root;
+         //_ = is_root;
 
         const them = comptime us.opp();
         const pos: *Position = &self.pos;
@@ -415,32 +453,39 @@ pub const Search = struct
         // Too deep.
         if (ply >= max_search_depth) return static_score;
 
-        // TT probe quiet
-        // if (self.transpositiontable.probe(key, 0, ply, alpha, beta)) |result|
+        //const hashmove: Move = .empty;
+        // // TT probe quiet
+        // if (self.tt_probe(key, 0, ply, alpha, beta, &hashmove)) |result|
         // {
-        //     return result.eval;
+        //     return result.score;
         // }
 
-        var movepicker: MovePicker = .init();
+        var movepicker: MovePicker = .init(false);
         movepicker.generate_captures(pos, us);
+        movepicker.process_and_score_moves(self, Move.empty);
 
         // Mate or stalemate?
         if (movepicker.count == 0)
         {
             if (in_check)
             {
-                 return -types.mate + ply;
+                // pos.draw() catch {};
+                // pos.print_history() catch {};
+                // @panic("MATE");
+                return -types.mate + ply;
             }
             return alpha;
         }
 
         var best: Move = .empty;
-        for (movepicker.slice()) |extmove|
+        //for (movepicker.slice()) |extmove|
+        for (0.. movepicker.count) |move_idx|
         {
             // TODO: skip bad captures (if not in check?).
-            const move: Move = extmove.move;
+            const extmove_ptr: *ExtMove = movepicker.extract_next(move_idx);
+            const e: ExtMove = extmove_ptr.*;
             var st: StateInfo = undefined;
-            pos.make_move(us, &st, move);
+            pos.make_move(us, &st, e.move);
             const score: Value = -self.quiet(false, them, -beta, -alpha);
             pos.unmake_move(us);
 
@@ -457,7 +502,7 @@ pub const Search = struct
                     // self.transpositiontable.store(.Beta, key, 0, ply, move, score);
                     return score;
                 }
-                best = move;
+                best = e.move;
                 alpha = score;
             }
         }
@@ -472,18 +517,9 @@ pub const Search = struct
         return alpha;
     }
 
-    fn record_quiet_cutoff(self: *Search, e: ExtMove) void
+    fn record_quietmove_beta_cutoff(self: *Search, depth: Value, e: ExtMove) void
     {
-        self.quiet_heuristic_history[e.info.moved_piece.u][e.move.to] = 42;
-    }
-
-    /// Append the line from 'childnode' to 'current node'
-    fn update_local_pv(bestmove: Move, score: Value, node: *Node, childnode: *const Node) void
-    {
-        node.pv.len = 1;
-        node.pv.buffer[0] = bestmove;
-        node.pv.append_slice_assume_capacity(childnode.pv.slice());
-        node.score = score;
+        self.quiet_heuristic_history[e.info.moved_piece.u][e.move.to.u] += depth * depth;
     }
 
     fn tt_store(self: *Search, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void
@@ -643,11 +679,6 @@ pub const Node = struct
     /// Current eval.
     score: Value = 0,
 
-    /// Can be set by childnode, when searching.
-    will_give_check: bool = false,
-    will_give_mate: bool = false,
-    will_give_stalemate: bool = false,
-
     fn init() Node
     {
         return .{};
@@ -657,9 +688,6 @@ pub const Node = struct
     {
         self.pv.len = 0;
         self.score = 0;
-        self.will_give_check = false;
-        self.will_give_mate = false;
-        self.will_give_stalemate = false;
     }
 
     fn first_move(self: *const Node) Move
@@ -667,7 +695,17 @@ pub const Node = struct
         return self.pv.buffer[0];
     }
 
-    fn clone_from(self: *Node, other: *const Node) void
+    /// Sets `pv` to `bestmove + childnode.pv` and sets `self.score` to `score`.
+    fn update_pv(self: *Node, bestmove: Move, score: Value, childnode: *const Node) void
+    {
+        self.pv.len = 1;
+        self.pv.buffer[0] = bestmove;
+        self.pv.append_slice_assume_capacity(childnode.pv.slice());
+        self.score = score;
+    }
+
+    /// Makes a raw copy.
+    fn copy_from(self: *Node, other: *const Node) void
     {
         self.pv.len = 0;
         self.pv.append_slice_assume_capacity(other.pv.slice());
@@ -690,19 +728,23 @@ pub const Node = struct
     }
 };
 
-pub const MovePicker = struct
+const MovePicker = struct
 {
     extmoves: [types.max_move_count]ExtMove,
     count: u8,
     current: u8,
+    is_root: bool,
+    is_sorted: bool,
 
-    fn init() MovePicker
+    fn init(is_root: bool) MovePicker
     {
         return
         .{
             .extmoves = undefined,
             .count = 0,
             .current = 0,
+            .is_root = is_root,
+            .is_sorted = false,
         };
     }
 
@@ -711,6 +753,7 @@ pub const MovePicker = struct
     {
         self.count = 0;
         self.current = 0;
+        self.is_sorted = false;
     }
 
     /// Required function.
@@ -745,10 +788,10 @@ pub const MovePicker = struct
         pos.generate_captures(us, self);
     }
 
-    /// Give each generated move an initial heuristic score in the attempt to get the best or most interesting moves at the beginning.\
-    /// Must obviously be called *before* the move is made.
-    fn score_moves(self: *MovePicker, pos: *const Position) void
+    /// Give each generated move an initial heuristic score. Crucial for the search algorithm.
+    fn process_and_score_moves(self: *MovePicker, search: *const Search, hashmove: Move) void
     {
+        const pos: *const Position = &search.pos;
 
         // 1. TT move
         // 2. Winning captures (MVV-LVA or SEE)
@@ -767,79 +810,93 @@ pub const MovePicker = struct
         const bad_capture  : Value = -1_000_000;
         const castle       : Value =    100_000;
 
-        const npm = pos.non_pawn_material();
-
         for (self.slice()) |*e|
         {
-            //const capt: PieceType = if (e.move.movetype == .enpassant) P else if (e.move)
+            e.info.is_processed = true;
             const m: Move = e.move;
-            const moved_piece: Piece = pos.board[m.from.u];
+            e.info.moved_piece = pos.board[m.from.u];
 
             switch (m.type)
             {
                 .normal =>
                 {
-                    const captured_piece: Piece = pos.board[m.to.u];
-                    if (captured_piece.is_piece())
+                    e.info.captured_piece = pos.board[m.to.u];
+                    if (e.info.captured_piece.is_piece())
                     {
-                        const s = eval.see_score(pos, m);
-                        if (s >= 0) e.score = good_capture + (s * 10) else e.score = bad_capture - (s * 10);
+                        const see = eval.see_score(pos, m);
+                        if (see >= 0) e.score = good_capture + (see * 10) else e.score = bad_capture + (see * 10);
                     }
                     else
                     {
                         e.info.is_quiet = true;
-                        // TODO: this may be a bit slow.
-                        e.score = eval.Tables.get_move_ordering_score(npm, pos.to_move, m, moved_piece.piecetype);
+                        e.score = search.quiet_heuristic_history[e.info.moved_piece.u][m.to.u];
                     }
                 },
                 .promotion =>
                 {
-                    //const captured_piece: Piece = self.board[m.to.u];
+                    e.info.captured_piece = pos.board[m.to.u];
                     e.score = promotion + (m.promoted().value() * 10);
-                    const captured_piece: Piece = pos.board[m.to.u];
-                    if (captured_piece.is_piece())
+                    if (e.info.captured_piece.is_piece())
                     {
-                        e.score += captured_piece.value(); // WIP. all these numbers.......
+                        e.score += e.info.captured_piece.value(); // WIP. all these numbers.......
                     }
                 },
                 .enpassant =>
                 {
-                    //const captured_piece: Piece = Piece.make(PieceType.PAWN, pos.to_move.opp());
+                    e.info.captured_piece = Piece.create_pawn(pos.to_move.opp());
                     e.score = capture;
                 },
                 .castle =>
                 {
                     e.info.is_quiet = true;
                     e.score = castle;
+                    // TODO: e.score = search.quiet_heuristic_history[m.info.movedpiece.u][m.to];
                 },
             }
+
+            if (e.move == hashmove) e.score += 1000000;
         }
     }
 
-    fn extract_next(self: *MovePicker, current_idx: usize, hashmove: Move) ExtMove
+    fn extract_next(self: *MovePicker, current_idx: usize) *ExtMove
     {
         const ptr: [*]ExtMove = &self.extmoves;
 
-        var best_idx: usize = current_idx;
-        var max_score: Value = ptr[current_idx].score;
-
-        for (current_idx + 1..self.count) |idx|
+        if (!self.is_sorted)
         {
-            const e = ptr[idx];
 
-            if (e.score > max_score or e.move == hashmove) // TODO: bump score if hashmove??
+            var best_idx: usize = current_idx;
+            var max_score: Value = ptr[current_idx].score;
+
+            for (current_idx + 1..self.count) |idx|
             {
-                max_score = e.score;
-                best_idx = idx;
+                const e = ptr[idx];
+
+                if (e.score > max_score) // TODO: bump score if hashmove??
+                {
+                    max_score = e.score;
+                    best_idx = idx;
+                }
+            }
+
+            if (best_idx != current_idx)
+            {
+                std.mem.swap(ExtMove, &ptr[best_idx], &ptr[current_idx]);
             }
         }
 
-        if (best_idx != current_idx)
-        {
-            std.mem.swap(ExtMove, &ptr[best_idx], &ptr[current_idx]);
-        }
+        return &ptr[current_idx];
+    }
 
-        return ptr[current_idx];
+    fn sort(self: *MovePicker) void
+    {
+        std.mem.sort(ExtMove, self.slice(), {}, less_then);
+        self.is_sorted = true;
+    }
+
+    fn less_then(_: void, a: ExtMove, b: ExtMove) bool
+    {
+        return a.score > b.score;
     }
 };
 
@@ -858,11 +915,9 @@ pub const SearchParams = struct
     max_nodes: u64,
     max_movetime_ms: u64,
 
-    /// Convert the UCI go params to something usable for the search.
+    /// Convert the UCI go params to something usable for our search.
     pub fn init(go: *const uci.Go) SearchParams
     {
-        //lib.io.print("{any}\n", .{go}) catch wtf();
-
         // (1) infinite.
         if (go.infinite != null)
         {
@@ -941,9 +996,17 @@ fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed
     catch wtf();
 }
 
+fn print_san_pv(input_pos: *const Position, pv_node: *const Node) !void
+{
+    if (pv_node.pv.len == 0 ) return;
+    const san = @import("tools/san.zig");
+    const ev = if (input_pos.to_move.e == .white) pv_node.score else -pv_node.score;
+    try lib.io.print("eval {} ", .{ ev });
+    try san.write_san_line(input_pos, pv_node.pv.slice(), lib.io.out);
+    lib.io.print("\n", .{}) catch wtf();
+}
+
 // info depth 3 seldepth 4 multipv 1 score cp 42 nodes 72 nps 72000 hashfull 0 tbhits 0 time 1 pv e2e4
-
-
 
 // Case 1 – Fail Low
 

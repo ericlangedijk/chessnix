@@ -479,6 +479,13 @@ pub const PieceType = packed union
 
 pub const Piece = packed union
 {
+    /// All valid pieces.
+    pub const all: [12]Piece =
+    .{
+        W_PAWN, W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING,
+        B_PAWN, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING,
+    };
+
     // Piece values are so that bit 3 indicates black.
     pub const NO_PIECE : Piece = .{ .e = .no_piece };
     pub const W_PAWN   : Piece = .{ .e = .w_pawn };
@@ -867,26 +874,31 @@ pub const Move = packed struct(u16)
     }
 };
 
+/// Extra cached info during search.
 pub const ExtMoveInfo = packed struct
 {
-    pub const empty: ExtMoveInfo = .{ .is_quiet = false, .moved_piece = Piece.NO_PIECE, .captured_piece = Piece.NO_PIECE };
+    pub const empty: ExtMoveInfo = .{ .is_processed = false, .is_quiet = false, .moved_piece = Piece.NO_PIECE, .captured_piece = Piece.NO_PIECE };
 
+    /// Assertion flag.
+    is_processed: bool,
     is_quiet: bool,
     moved_piece: Piece,
     captured_piece: Piece,
 };
 
-/// 64 bits Move with score, used by Search.
+/// 64 bits Move with score and info, used during search.
 pub const ExtMove = packed struct
 {
+    pub const empty: ExtMove = .{ .move = .empty, .score = 0, .info = .empty };
+
+    /// The generated move.
     move: Move,
+
+    /// The score for move ordering only.
     score: i32,
 
-    /// EXPERIMENTAL
+    /// Extra cached info during search.
     info: ExtMoveInfo,
-    // TODO: we can contemplate putting extra info here if we need (instead of refetching info (when sorting moves for example)).
-    // * generated normal or quiet (1 bit)
-    // * is_capture (1 bit)
 };
 
 pub const GamePhase = enum

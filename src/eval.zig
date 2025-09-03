@@ -846,7 +846,7 @@ pub const Tables = struct
     };
 
     // Pawn.
-    const passed_pawn_by_rank_scores: [8]Value = .{ 0, 2, 4, 6, 8, 20, 40, 0 };
+    const passed_pawn_by_rank_scores: [8]Value = .{ 0, 15, 15, 30, 50, 80, 120, 0 }; // .{ 0, 2, 4, 6, 8, 20, 40, 0 };
     const doubled_pawn: Value = -5;
     const isolated_pawn: Value = -10;
 
@@ -864,16 +864,6 @@ pub const Tables = struct
     const in_check: Value = -20;
     const rooks_or_queens_staring_at_king: Value = -5;
     const bishops_or_queens_staring_at_king: Value = -5;
-    // attacks_close_to_king,
-    // king_protection_by_pawns,
-    // king_protection_by_pieces,
-
-    // // Generic.
-    // pesto_mg,
-    // pesto_eg,
-    // supported_by_pawn,
-    // mobility,
-    // in_check,
 
     pub fn mobility(comptime pt: PieceType, comptime phase: GamePhase, mobility_bitboard: u64) Value
     {

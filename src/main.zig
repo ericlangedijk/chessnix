@@ -17,5 +17,7 @@ pub fn main() !void
         tests.print_struct_sizes();
     }
 
+    //try @import("tools/lichess.zig").reorder_lichess_puzzles();
+
     uci.run();
 }
