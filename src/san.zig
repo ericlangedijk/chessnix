@@ -23,20 +23,18 @@ const StateInfo = position.StateInfo;
 const eql = funcs.eql;
 const in = funcs.in;
 
-const Disambiguation = enum
-{
+const Disambiguation = enum {
     None,
-    /// Use the file 'a'..'h'.
+    /// Use the file (a..h)
     File,
-    /// Use the rank '1'..'8'.
+    /// Use the rank (1..8)
     Rank,
     // Use the full square name.
     Both
 };
 
 /// TODO: asserts
-pub fn write_san_line(input_pos: *const Position, moves: []const Move, writer: *std.io.Writer) !void
-{
+pub fn write_san_line(input_pos: *const Position, moves: []const Move, writer: *std.io.Writer) !void {
     if (moves.len == 0 ) return;
 
     var states: [128]StateInfo = undefined;
@@ -50,14 +48,12 @@ pub fn write_san_line(input_pos: *const Position, moves: []const Move, writer: *
 
     const last: usize = moves.len - 1;
     var idx: u8 = 1;
-    for (moves, 0..) |move, i|
-    {
+    for (moves, 0..) |move, i| {
         const str = get_san(move, &pos);
         try writer.print("{s} ", .{ str.slice() });
         pos.lazy_make_move(&states[idx], move);
         idx += 1;
-        if (i < last and pos.to_move.e == .white)
-        {
+        if (i < last and pos.to_move.e == .white) {
              movenr += 1;
              try writer.print("{}. ", .{ movenr });
         }
@@ -66,48 +62,40 @@ pub fn write_san_line(input_pos: *const Position, moves: []const Move, writer: *
 
 /// Get the correct SAN notation.
 /// * The move must not yet be on the board.
-pub fn get_san(m: Move, pos: *Position) lib.BoundedArray(u8, 10)
-{
+pub fn get_san(m: Move, pos: *Position) lib.BoundedArray(u8, 10) {
     var string: lib.BoundedArray(u8, 10) = .empty;
 
-    if (m.type == .castle)
-    {
-        if (m.info.castletype.e == .short)
-            string.print_assume_capacity("O-O", .{})
-        else
-            string.print_assume_capacity("O-O-O", .{});
-    }
-    else
-    {
+    if (m.type == .castle) {
+        string.print_assume_capacity("{s}", .{ types.castle_strings[m.info.castletype.u]});
+    } else {
         const moved_piece = pos.board[m.from.u];
         const is_capture: bool = (m.type == .enpassant or pos.board[m.to.u].is_piece());
 
         // Piece character.
-        if (!moved_piece.is_pawn())
-        {
+        if (!moved_piece.is_pawn()) {
             string.print_assume_capacity("{u}", .{ moved_piece.piecetype.to_char() });
         }
 
         const dis: Disambiguation = determine_disambiguation(m, pos);
 
         // Disambiguation.
-        switch (dis)
-        {
+        switch (dis) {
             .None => {},
             .File => string.print_assume_capacity("{u}", .{ m.from.char_of_file() }),
             .Rank => string.print_assume_capacity("{u}", .{ m.from.char_of_rank() }),
             .Both => string.print_assume_capacity("{t}", .{ m.from.e } ),
         }
 
-        if (is_capture)
-        {
+        // Capture?
+        if (is_capture) {
             string.print_assume_capacity("x", .{});
         }
 
+        // To square.
         string.print_assume_capacity("{t}", .{ m.to.e });
 
-        if (m.type == .promotion)
-        {
+        // Promotion.
+        if (m.type == .promotion) {
             const ch = m.info.prom.to_san_char();
             string.print_assume_capacity("={u}", .{ch} );
         }
@@ -118,24 +106,20 @@ pub fn get_san(m: Move, pos: *Position) lib.BoundedArray(u8, 10)
     pos.lazy_make_move(&st, m);
     defer pos.lazy_unmake_move();
 
-    if (st.checkers != 0)
-    {
+    if (st.checkers != 0) {
         var any: position.Any = .init();
         pos.lazy_generate_moves(&any);
         const ch: u8 = if (!any.has_moves) '#' else '+';
         string.print_assume_capacity("{u}", .{ ch });
     }
-
     return string;
 }
 
-fn determine_disambiguation(m: Move, pos: *const Position) Disambiguation
-{
+fn determine_disambiguation(m: Move, pos: *const Position) Disambiguation {
     const pc: Piece = pos.get(m.from);
 
     // Pawn.
-    if (pc.is_pawn())
-    {
+    if (pc.is_pawn()) {
         // Pawn push.
         if (m.from.file() == m.to.file()) return .None;
         // This is a pawn capture. We return a fake disambiguation: the file char must be printed.
@@ -160,20 +144,17 @@ fn determine_disambiguation(m: Move, pos: *const Position) Disambiguation
     return finder.select_disambiguation();
 }
 
-pub fn get_pseudo_moves_to(pt: PieceType, to: Square, our_pieces: u64) u64
-{
-    return switch(pt.e)
-    {
+fn get_pseudo_moves_to(pt: PieceType, to: Square, our_pieces: u64) u64 {
+    return switch(pt.e) {
         .knight => data.get_knight_attacks(to) & our_pieces,
         .bishop => data.get_bishop_attacks(to, 0) & our_pieces,
-        .rook => data.get_rook_attacks(to, 0) & our_pieces,
-        .queen => data.get_queen_attacks(to, 0) & our_pieces,
+        .rook   => data.get_rook_attacks(to, 0) & our_pieces,
+        .queen  => data.get_queen_attacks(to, 0) & our_pieces,
         else => bitboards.bb_full,
     };
 }
 
-const DisambiguationFinder = struct
-{
+const DisambiguationFinder = struct {
     pos: *const Position,
     move: Move,
     moved_piece: Piece,
@@ -181,10 +162,8 @@ const DisambiguationFinder = struct
     rank_conflict: bool,
     file_conflict: bool,
 
-    pub fn init(pos: *const Position, move: Move) DisambiguationFinder
-    {
-        return
-        .{
+    fn init(pos: *const Position, move: Move) DisambiguationFinder {
+        return .{
             .pos = pos,
             .move = move,
             .moved_piece = pos.board[move.from.u],
@@ -195,17 +174,14 @@ const DisambiguationFinder = struct
     }
 
     /// Required function.
-    pub fn reset(self: *DisambiguationFinder) void
-    {
+    pub fn reset(self: *DisambiguationFinder) void {
         self.rank_conflict = false;
         self.file_conflict = false;
     }
 
     /// Required function.
-    pub fn store(self: *DisambiguationFinder, move: Move) ?void
-    {
-        if (self.move.from.e != move.from.e and self.move.to.e == move.to.e and self.moved_piece.e == self.pos.board[move.from.u].e)
-        {
+    pub fn store(self: *DisambiguationFinder, move: Move) ?void {
+        if (self.is_candidate(move)) { // (self.move.from.e != move.from.e and self.move.to.e == move.to.e and self.moved_piece.e == self.pos.board[move.from.u].e) {
             self.any = true;
             self.file_conflict = (self.move.from.file() == move.from.file());
             self.rank_conflict = (self.move.from.rank() == move.from.rank());
@@ -214,8 +190,14 @@ const DisambiguationFinder = struct
         }
     }
 
-    fn select_disambiguation(self: *const DisambiguationFinder) Disambiguation
-    {
+    fn is_candidate(self: *DisambiguationFinder, move: Move) bool {
+        return
+            self.move.from.e != move.from.e and
+            self.move.to.e == move.to.e and
+            self.moved_piece.e == self.pos.board[move.from.u].e;
+    }
+
+    fn select_disambiguation(self: *const DisambiguationFinder) Disambiguation {
         if (!self.any) return .None;
         if (self.file_conflict and self.rank_conflict) return .Both;
         if (self.file_conflict) return .Rank;
