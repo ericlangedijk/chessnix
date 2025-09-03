@@ -817,6 +817,12 @@ const piece_material_values: [15]Value = .{
     material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
 };
 
+////////////////////////////////////////////////////////////////
+/// Strings
+////////////////////////////////////////////////////////////////
+
+pub const castle_strings: [2][]u8 = .{ "O-O", "O-O-O" };
+
 // TODO: centralize stuff
 pub const ChessChars = struct
 {
