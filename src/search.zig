@@ -778,7 +778,7 @@ fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed
 
 fn print_san_pv(input_pos: *const Position, pv_node: *const Node) !void {
     if (pv_node.pv.len == 0 ) return;
-    const san = @import("tools/san.zig");
+    const san = @import("san.zig");
     const ev = if (input_pos.to_move.e == .white) pv_node.score else -pv_node.score;
     try lib.io.print("eval {} ", .{ ev });
     try san.write_san_line(input_pos, pv_node.pv.slice(), lib.io.out);

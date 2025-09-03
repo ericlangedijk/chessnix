@@ -4,12 +4,12 @@
 
 const std = @import("std");
 
-const lib = @import("../lib.zig");
-const bitboards = @import("../bitboards.zig");
-const data = @import("../data.zig");
-const funcs = @import("../funcs.zig");
-const types = @import("../types.zig");
-const position = @import("../position.zig");
+const lib = @import("lib.zig");
+const bitboards = @import("bitboards.zig");
+const data = @import("data.zig");
+const funcs = @import("funcs.zig");
+const types = @import("types.zig");
+const position = @import("position.zig");
 
 const Color = types.Color;
 const Piece = types.Piece;
