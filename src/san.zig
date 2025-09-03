@@ -205,3 +205,17 @@ const DisambiguationFinder = struct {
     }
 };
 
+test "san"
+{
+    try lib.initialize();
+    var st: position.StateInfo = undefined;
+    var pos: Position = .empty;
+    var move: types.Move = .empty;
+    var san: lib.BoundedArray(u8, 10) = .empty;
+
+    try pos.set(&st, "R1n1k3/8/2R1K3/8/8/8/8/8 w - - 0 1");
+    move = .create(.C6, .C8);
+    san = get_san(move, &pos);
+    try std.testing.expectEqualSlices(u8, "Rcxc8#", san.slice());
+}
+
