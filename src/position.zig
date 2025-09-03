@@ -59,62 +59,47 @@ pub const rook_castle_destination_squares: [2][2]Square = .{ .{ Square.F1, Squar
 /// Indexing [color][castletype].
 pub const castle_flags: [2][2]u4 = .{ .{ cf_white_short, cf_white_long }, .{ cf_black_short, cf_black_long } };
 
-pub const StateInfo = struct
-{
+pub const StateInfo = struct {
+
     pub const empty: StateInfo = .{};
 
     /// (copied) Draw counter. After 50 reversible moves (100 ply) it is a draw.
     rule50: u16 = 0,
-
     /// (copied) The enpassant square of this state.
     ep_square: Square = Square.zero,
-
     /// (copied) Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4 = 0,
-
     /// The move that was played to reach the current position.
     last_move: Move = .empty,
-
     /// The piece that did the last_move.
     moved_piece: Piece = Piece.NO_PIECE,
-
     /// The piece that was captured with last_move.
     captured_piece: Piece = Piece.NO_PIECE,
-
     /// The board hashkey.
     key: u64 = 0,
-
     /// Bitboard of the pieces that currently give check.
     checkers: u64 = 0,
-
     /// The paths from the enemy slider checkers to the king (excluding the king, including the checker).
     /// * Pawns and knights included.
     checkmask: u64 = 0,
-
     /// Bitboard with the diagonal pin rays (excluding the king, including the attacker).
     pins_diagonal: u64 = 0,
-
     /// Bitboard with the orthogonal pin rays (excluding the king, including the attacker).
     pins_orthogonal: u64 = 0,
-
     // All pins.
     pins: u64 = 0,
-
     /// Pointer to the previous state. For the engine a fixed history array is used. For search the chain only exists in the recursive callstack.
     prev: ?*StateInfo = null,
 
-    pub fn is_castling_allowed(self: *const StateInfo, comptime us: Color, comptime castletype: CastleType) bool
-    {
+    pub fn is_castling_allowed(self: *const StateInfo, comptime us: Color, comptime castletype: CastleType) bool {
         const flag = comptime castle_flags[us.u][castletype.u];
         return self.castling_rights & flag != 0;
     }
 
     /// ### Debug only.
     /// Compares everything except`prev`
-    pub fn equals(self: *const StateInfo, other: *const StateInfo) bool
-    {
+    pub fn equals(self: *const StateInfo, other: *const StateInfo) bool {
         lib.not_in_release();
-
         return
             self.rule50 == other.rule50 and
             self.ep_square.u == other.ep_square.u and
@@ -133,70 +118,52 @@ pub const StateInfo = struct
 
 /// The initial layout for `Position`, supporting Chess960.
 /// * Never modified during play.
-pub const Layout = struct
-{
+pub const Layout = struct {
     /// The startfiles of [0] left rook, [1] right rook, [2] king file.
     /// * This field *must* be filled before we can initialize the next fields.
     start_files: [3]u3,
-
     /// Deduced from start_files [0] white king, [1] black king. Initialized in constructors.
     king_start_squares: [2]Square,
-
     /// Deduced from start_files. Indexing: [color][castletype].
     rook_start_squares: [2][2]Square,
-
     /// Deduced from `start_files`. Indexing: [color][castletype].
     castling_between_bitboards: [2][2]u64,
-
     /// The king 'walk' when castling, deduced from `start_files`. Indexing: [color][castletype]
     /// * The king start-square is *not* included.
     castling_king_paths: [2][2]u64,
-
     /// Deduced from `start_files`. Indexing: [square]
     /// * Used for quick updates of castling rights during make move.
     castling_masks: [64]u4,
 };
 
-pub const Position = struct
-{
+pub const Position = struct {
     pub const empty: Position = .init_empty();
     pub const empty_classic: Position = .init_empty_classic();
 
     /// The initial layout, supporting Chess960.
     layout: Layout,
-
     /// The pieces on the 64 squares.
     board: [64]Piece,
-
     /// Bitboards occupation indexed by PieceType. [0] full occupation, [1...6] piecetypes.
     bb_by_type: [7]u64,
-
     /// Bitboards occupation indexed by color: [0] white pieces, [1] black pieces.
     bb_by_color: [2]u64,
-
     /// Piece values sum. [0] white, [1] black
     values: [2]Value,
-
     /// Material values sum. [0] white, [1] black
     materials: [2]Value,
-
     /// The current side to move.
     to_move: Color,
-
     /// Depth during search. Must match state chain.
     ply: u16,
-
     /// The real game ply.
     game_ply: u16,
-
     /// Is this chess960?
     is_960: bool,
-
     /// The current state.
     state: *StateInfo,
 
-    fn init_empty() Position
-    {
+    fn init_empty() Position {
         return
         .{
             .layout =
@@ -221,17 +188,13 @@ pub const Position = struct
         };
     }
 
-    fn init_empty_classic() Position
-    {
+    fn init_empty_classic() Position {
         const b = bitboards;
-
         const v_sum: Value = P.value() * 8 + N.value() * 2 + B.value() * 2 + Q.value() + K.value();
         const m_sum: Value = P.material() * 8 + N.material() * 2 + B.material() * 2 + Q.material() + K.material();
 
-        return
-        .{
-            .layout =
-            .{
+        return .{
+            .layout = .{
                 .start_files = .{ b.file_a, b.file_h, b.file_e },
                 .king_start_squares = .{ Square.E1, Square.E8 },
                 .rook_start_squares = .{ .{ Square.H1, Square.A1 }, .{ Square.H8, Square.A8 } },
@@ -240,8 +203,7 @@ pub const Position = struct
                 .castling_masks = .{ 2, 0, 0, 0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 12, 0, 0, 4 },
             },
             .board = create_board_from_backrow(.{ R, N, B, Q, K, B, N, R}),
-            .bb_by_type =
-            .{
+            .bb_by_type = .{
                 b.bb_rank_1 | b.bb_rank_2 | b.bb_rank_7 | b.bb_rank_8, // all pieces
                 b.bb_rank_2 | b.bb_rank_7,  // pawns
                 b.bb_b1 | b.bb_g1 | b.bb_b8 | b.bb_g8, // knights
@@ -261,11 +223,9 @@ pub const Position = struct
         };
     }
 
-    fn create_board_from_backrow(backrow: [8]PieceType) [64]Piece
-    {
+    fn create_board_from_backrow(backrow: [8]PieceType) [64]Piece {
         var result: [64]Piece = @splat(Piece.NO_PIECE);
-        for (backrow, 0..) |pt, i|
-        {
+        for (backrow, 0..) |pt, i| {
             const sq: Square = Square.from_usize(i);
             result[sq.u] = Piece.make(pt, Color.WHITE);
             result[sq.u + 8] = Piece.W_PAWN;
@@ -276,16 +236,14 @@ pub const Position = struct
     }
 
     /// Clears the whole board, clears `st` and set the `self.state` pointer to `st`.
-    fn clear(self: *Position, st: *StateInfo) void
-    {
+    fn clear(self: *Position, st: *StateInfo) void {
         st.* = .empty;
         self.* = .empty;
         self.state = st;
     }
 
     /// Initializes the position from a fen string.
-    pub fn set(self: *Position, st: *StateInfo, fen_str: []const u8) !void
-    {
+    pub fn set(self: *Position, st: *StateInfo, fen_str: []const u8) !void {
         const state_board: u8 = 0;
         const state_color: u8 = 1;
         const state_castle: u8 = 2;
@@ -302,28 +260,21 @@ pub const Position = struct
 
         var tokenizer = std.mem.tokenizeScalar(u8, fen_str, ' ');
 
-        outer: while (tokenizer.next()) |token|
+        outer: while (tokenizer.next()) |token| : (parse_state += 1)
         {
-            switch (parse_state)
-            {
-                state_board =>
-                {
-                    for (token) |c|
-                    {
-                        switch (c)
-                        {
-                            '1'...'8' =>
-                            {
+            switch (parse_state) {
+                state_board => {
+                    for (token) |c| {
+                        switch (c) {
+                            '1'...'8' => {
                                 const empty_squares: u3 = @truncate(c - '0');
                                 file = file +| empty_squares;
                             },
-                            '/' =>
-                            {
+                            '/' => {
                                 rank -|= 1;
                                 file = bitboards.file_a;
                             },
-                            else =>
-                            {
+                            else => {
                                 const pc: Piece = try Piece.from_fen_char(c);
                                 const sq: Square = Square.from_rank_file(rank, file);
                                 self.lazy_add_piece(sq, pc);
@@ -332,48 +283,38 @@ pub const Position = struct
                         }
                     }
                 },
-                state_color =>
-                {
+                state_color => {
                     if (token[0] == 'b') self.to_move = Color.BLACK;
                 },
-                state_castle =>
-                {
-                    for (token) |c|
-                    {
-                        switch (c)
-                        {
+                state_castle => {
+                    for (token) |c| {
+                        switch (c) {
                             'K' => st.castling_rights |= cf_white_short,
                             'Q' => st.castling_rights |= cf_white_long,
                             'k' => st.castling_rights |= cf_black_short,
                             'q' => st.castling_rights |= cf_black_long,
-                            else => {}
+                            else => {},
                         }
                     }
                 },
-                state_ep =>
-                {
-                    if (token.len == 2)
-                    {
+                state_ep => {
+                    if (token.len == 2) {
                         const ep: Square = Square.from_string(token);
                         if (self.is_usable_ep_square(ep)) st.ep_square = ep;
                     }
                 },
-                state_draw_count =>
-                {
+                state_draw_count => {
                     const v: u16 = std.fmt.parseInt(u16, token, 10) catch break :outer;
                     st.rule50 = v;
                 },
-                state_movenumber =>
-                {
+                state_movenumber => {
                     const v: u16 = std.fmt.parseInt(u16, token, 10) catch break :outer;
                     self.game_ply = funcs.movenumber_to_ply(v, self.to_move);
                 },
-                else =>
-                {
+                else => {
                     break :outer;
                 }
             }
-            parse_state += 1;
         }
 
         self.init_layout();
@@ -382,8 +323,7 @@ pub const Position = struct
     }
 
     /// Parses a uci-move.
-    pub fn parse_move(self: *const Position, str: []const u8) types.ParsingError!Move
-    {
+    pub fn parse_move(self: *const Position, str: []const u8) types.ParsingError!Move {
         if (str.len < 4 or str.len > 5) return types.ParsingError.IllegalMove;
 
         // Exact move is producedc here for the move finder.
@@ -393,24 +333,20 @@ pub const Position = struct
         m.to = Square.from_string(str[2..4]);
 
         // No promotion.
-        if (str.len == 4)
-        {
+        if (str.len == 4) {
             // Enpassant.
-            if (self.board[m.from.u].piecetype.e == .pawn and m.from.file() != m.to.file() and self.board[m.to.u].e == .no_piece)
-            {
+            if (self.board[m.from.u].piecetype.e == .pawn and m.from.file() != m.to.file() and self.board[m.to.u].e == .no_piece) {
                 m.type = .enpassant;
             }
             // Castling.
-            else if (m.from.u == self.layout.king_start_squares[self.to_move.u].u and self.board[m.from.u].e == Piece.make(K, us).e and (m.to.e == Square.G1.e or m.to.e == Square.G8.e or m.to.e == Square.C1.e or m.to.e == Square.C8.e))
-            {
+            else if (m.from.u == self.layout.king_start_squares[self.to_move.u].u and self.board[m.from.u].e == Piece.make(K, us).e and (m.to.e == Square.G1.e or m.to.e == Square.G8.e or m.to.e == Square.C1.e or m.to.e == Square.C8.e)) {
                 m.type = .castle;
                 m.info.castletype = if (m.to.u > m.from.u) CastleType.SHORT else CastleType.LONG;
                 m.to = self.layout.rook_start_squares[us.u][m.info.castletype.u]; // "King takes rook"
             }
         }
         // Promotion.
-        else
-        {
+        else {
             m.type = .promotion;
             m.info.prom = try MoveInfo.Prom.from_char(str[4]);
         }
@@ -422,8 +358,7 @@ pub const Position = struct
     }
 
     /// A convenient (faster) way to set the startposition without the need for a fen string.
-    pub fn set_startpos(self: *Position, new_state: *StateInfo) void
-    {
+    pub fn set_startpos(self: *Position, new_state: *StateInfo) void {
         new_state.* = .empty;
         new_state.castling_rights = cf_all;
         self.* = empty_classic;
@@ -433,8 +368,7 @@ pub const Position = struct
     }
 
     /// Clones a position.
-    pub fn clone(src: *const Position, new_state: *StateInfo) Position
-    {
+    pub fn clone(src: *const Position, new_state: *StateInfo) Position {
         var pos: Position = src.*;
         new_state.* = src.state.*;
         new_state.prev = null;
@@ -444,8 +378,7 @@ pub const Position = struct
     }
 
     /// Clones a position.
-    pub fn copy_from(self: *Position, other: *const Position, new_state: *StateInfo) void
-    {
+    pub fn copy_from(self: *Position, other: *const Position, new_state: *StateInfo) void {
         assert(self != other);
         self.* = other.*;
         new_state.* = other.state.*;
@@ -455,8 +388,7 @@ pub const Position = struct
     }
 
     /// Flips the board. Color, pieces etc.
-    pub fn flip(self: *Position, new_state: *StateInfo) void
-    {
+    pub fn flip(self: *Position, new_state: *StateInfo) void {
         var bb: u64 = self.all();
         const bk_board: [64]Piece = self.board;
         const bk_layout = self.layout;
@@ -472,16 +404,14 @@ pub const Position = struct
         self.game_ply = bk_game_ply;
         self.is_960 = bk_is_960;
 
-        while (bb != 0)
-        {
+        while (bb != 0) {
             const org_sq: Square = pop_square(&bb);
             const org_piece = bk_board[org_sq.u];
             self.lazy_add_piece(org_sq.flipped(), org_piece.opp());
         }
 
         new_state.rule50 = bk_state.rule50;
-        if (bk_state.ep_square.u > 0)
-        {
+        if (bk_state.ep_square.u > 0) {
             new_state.ep_square = bk_state.ep_square.flipped();
         }
 
@@ -495,9 +425,9 @@ pub const Position = struct
     }
 
     /// Initialize layout.
-    fn init_layout(self: *Position) void
-    {
-        // TODO: if possible give the start_files as parameter here!
+    /// * TODO: if possible give the start_files as parameter here!
+    fn init_layout(self: *Position) void {
+
         const WHITE: u1 = comptime Color.WHITE.u;
         const BLACK: u1 = comptime Color.BLACK.u;
         const O_O: u1 = comptime CastleType.SHORT.u;
@@ -547,22 +477,19 @@ pub const Position = struct
         }
     }
 
-    fn determine_king_path(king_from: Square, king_to: Square) u64
-    {
+    fn determine_king_path(king_from: Square, king_to: Square) u64 {
         var path: u64 = 0;
         var k: Square = king_from;
-        if (k.u < king_to.u)
-        {
-            while (k.u != king_to.u)
-            {
+        // Short castle.
+        if (k.u < king_to.u) {
+            while (k.u != king_to.u) {
                 k.u += 1;
                 path |= k.to_bitboard();
             }
         }
-        else if (k.u > king_to.u)
-        {
-            while (k.u != king_to.u)
-            {
+        // Long castle.
+        else if (k.u > king_to.u) {
+            while (k.u != king_to.u) {
                 k.u -= 1;
                 path |= k.to_bitboard();
             }
@@ -570,19 +497,16 @@ pub const Position = struct
         return path;
     }
 
-    fn init_hash(self: *Position) void
-    {
+    fn init_hash(self: *Position) void {
         self.state.key = self.compute_hashkey();
     }
 
-    fn compute_hashkey(self: *const Position) u64
-    {
+    fn compute_hashkey(self: *const Position) u64 {
         const st = self.state;
         var k: u64 = 0;
         // Loop through occupied squares.
         var occ: u64 = self.all();
-        while (occ != 0)
-        {
+        while (occ != 0) {
             const sq = pop_square(&occ);
             const pc = self.get(sq);
             k ^= zobrist.piece_square(pc, sq);
@@ -593,153 +517,124 @@ pub const Position = struct
         return k;
     }
 
-    pub fn get(self: *const Position, sq: Square) Piece
-    {
+    pub fn get(self: *const Position, sq: Square) Piece {
         return self.board[sq.u];
     }
 
-    pub fn is_check(self: *const Position) bool
-    {
+    pub fn is_check(self: *const Position) bool {
         return self.state.checkers > 0;
     }
 
-    pub fn phase_of(material_without_pawns: Value) GamePhase
-    {
+    pub fn phase_of(material_without_pawns: Value) GamePhase {
         return
             if (material_without_pawns <= types.endgame_threshold) .Endgame
             else if (material_without_pawns <= types.midgame_threshold) .Midgame
             else .Opening;
     }
 
-    pub fn phase(self: *const Position) GamePhase
-    {
+    pub fn phase(self: *const Position) GamePhase {
         return phase_of(self.non_pawn_material());
     }
 
     /// Non-comptime getter for the outside world.
-    pub fn pieces(self: *const Position, pt: PieceType, us: Color) u64
-    {
+    pub fn pieces(self: *const Position, pt: PieceType, us: Color) u64 {
         return self.bb_by_type[pt.u] & self.bb_by_color[us.u];
     }
 
-    pub fn by_type(self: *const Position, pt: PieceType) u64
-    {
+    pub fn by_type(self: *const Position, pt: PieceType) u64 {
         return self.bb_by_type[pt.u];
     }
 
-    pub fn by_color(self: *const Position, us: Color) u64
-    {
+    pub fn by_color(self: *const Position, us: Color) u64 {
         return self.bb_by_color[us.u];
     }
 
-    pub fn all(self: *const Position) u64
-    {
+    pub fn all(self: *const Position) u64 {
         return self.bb_by_type[0];
     }
 
-    pub fn all_pawns(self: *const Position) u64
-    {
+    pub fn all_pawns(self: *const Position) u64 {
         return self.by_type(P);
     }
 
-    pub fn all_knights(self: *const Position) u64
-    {
+    pub fn all_knights(self: *const Position) u64 {
         return self.by_type(N);
     }
 
-    pub fn all_queens_bishops(self: *const Position) u64
-    {
+    pub fn all_queens_bishops(self: *const Position) u64 {
         return (self.by_type(B) | self.by_type(Q));
     }
 
-    pub fn all_queens_rooks(self: *const Position) u64
-    {
+    pub fn all_queens_rooks(self: *const Position) u64 {
         return (self.by_type(R) | self.by_type(Q));
     }
 
-    pub fn all_kings(self: *const Position) u64
-    {
+    pub fn all_kings(self: *const Position) u64 {
         return self.by_type(K);
     }
 
-    pub fn pawns(self: *const Position, us: Color) u64
-    {
+    pub fn pawns(self: *const Position, us: Color) u64 {
         return self.by_type(P) & self.by_color(us);
     }
 
     /// All our pieces except pawns.
-    pub fn non_pawns(self: *const Position, us: Color) u64
-    {
+    pub fn non_pawns(self: *const Position, us: Color) u64 {
         return ~self.by_type(P) & self.by_color(us);
     }
 
-    pub fn knights(self: *const Position, us: Color) u64
-    {
+    pub fn knights(self: *const Position, us: Color) u64 {
         return self.by_type(N) & self.by_color(us);
     }
 
-    pub fn bishops(self: *const Position, us: Color) u64
-    {
+    pub fn bishops(self: *const Position, us: Color) u64 {
         return self.by_type(B) & self.by_color(us);
     }
 
-    pub fn rooks(self: *const Position, us: Color) u64
-    {
+    pub fn rooks(self: *const Position, us: Color) u64 {
         return self.by_type(R) & self.by_color(us);
     }
 
-    pub fn queens(self: *const Position, us: Color) u64
-    {
+    pub fn queens(self: *const Position, us: Color) u64 {
         return self.by_type(Q) & self.by_color(us);
     }
 
-    pub fn kings(self: *const Position, us: Color) u64
-    {
+    pub fn kings(self: *const Position, us: Color) u64 {
         return self.by_type(K) & self.by_color(us);
     }
 
-    pub fn queens_bishops(self: *const Position, us: Color) u64
-    {
+    pub fn queens_bishops(self: *const Position, us: Color) u64 {
         return (self.by_type(B) | self.by_type(Q)) & self.by_color(us);
     }
 
-    pub fn queens_rooks(self: *const Position, us: Color) u64
-    {
+    pub fn queens_rooks(self: *const Position, us: Color) u64 {
         return (self.by_type(R) | self.by_type(Q)) & self.by_color(us);
     }
 
-    pub fn king_square(self: *const Position, us: Color) Square
-    {
+    pub fn king_square(self: *const Position, us: Color) Square {
         return funcs.first_square(self.kings(us));
     }
 
-    pub fn sliders(self: *const Position, us: Color) u64
-    {
+    pub fn sliders(self: *const Position, us: Color) u64 {
         return (self.by_type(B) | self.by_type(R) | self.by_type(Q)) & self.by_color(us);
     }
 
     /// Returns the sum of the white + black materials.
-    pub fn material(self: *const Position) Value
-    {
+    pub fn material(self: *const Position) Value {
         return self.materials[0] + self.materials[1];
     }
 
-    pub fn non_pawn_material(self: *const Position) Value
-    {
+    pub fn non_pawn_material(self: *const Position) Value {
         return (self.materials[0] + self.materials[1]) - (P.material() * popcnt(self.all_pawns()));
     }
 
-    fn is_usable_ep_square(self: *const Position, ep: Square) bool
-    {
+    fn is_usable_ep_square(self: *const Position, ep: Square) bool {
         const rank: u3 = ep.rank();
-        if (rank == bitboards.rank_3)
-        {
+        if (rank == bitboards.rank_3) {
             const w_pawn_sq = ep.add(8);
             const requirements: bool = self.board[w_pawn_sq.u].e == .w_pawn and self.board[ep.u].e == .no_piece and self.board[ep.u - 8].e == .no_piece;
             return requirements and (masks.get_ep_mask(w_pawn_sq) & self.pawns(Color.BLACK) != 0);
         }
-        else if (rank == bitboards.rank_6)
-        {
+        else if (rank == bitboards.rank_6) {
             const b_pawn_sq = ep.sub(8);
             const requirements:  bool = self.board[b_pawn_sq.u].e == .b_pawn and self.board[ep.u].e == .no_piece and self.board[ep.u + 8].e == .no_piece;
             return requirements and (masks.get_ep_mask(b_pawn_sq) & self.pawns(Color.WHITE) != 0);
@@ -747,19 +642,15 @@ pub const Position = struct
         return false;
     }
 
-    pub fn lazy_add_piece(self: *Position, sq: Square, pc: Piece) void
-    {
-        switch (pc.color().e)
-        {
+    pub fn lazy_add_piece(self: *Position, sq: Square, pc: Piece) void {
+        switch (pc.color().e) {
             .white => self.add_piece(Color.WHITE, pc, sq),
             .black => self.add_piece(Color.BLACK, pc, sq),
         }
     }
 
-    fn add_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
-    {
-        if (comptime lib.is_paranoid)
-        {
+    fn add_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
+        if (comptime lib.is_paranoid) {
             assert(self.get(sq).is_empty());
             assert(pc.is_piece());
             assert(pc.color().e == us.e);
@@ -773,10 +664,8 @@ pub const Position = struct
         self.materials[us.u] += pc.material();
     }
 
-    fn remove_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void
-    {
-        if (comptime lib.is_paranoid)
-        {
+    fn remove_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
+        if (comptime lib.is_paranoid) {
             assert(self.get(sq).e == pc.e);
             assert(pc.color().e == us.e);
         }
@@ -789,10 +678,8 @@ pub const Position = struct
         self.materials[us.u] -= pc.material();
     }
 
-    fn move_piece(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void
-    {
-        if (comptime lib.is_paranoid)
-        {
+    fn move_piece(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void {
+        if (comptime lib.is_paranoid) {
             assert(self.get(from).e == pc.e);
             assert(self.get(to).is_empty());
             assert(pc.color().e == us.e);
@@ -805,8 +692,7 @@ pub const Position = struct
         self.bb_by_color[us.u] ^= xor_mask;
     }
 
-    pub fn is_threefold_repetition(self: *const Position) bool
-    {
+    pub fn is_threefold_repetition(self: *const Position) bool {
         const st: *const StateInfo = self.state;
         if (st.rule50 < 4) return false;
 
@@ -816,11 +702,9 @@ pub const Position = struct
         var count: u8 = 0;
         var i: u16 = 4;
         var run: *const StateInfo = st;
-        while (i <= end) : (i += 2)
-        {
+        while (i <= end) : (i += 2) {
             run = run.prev.?.prev.?;
-            if (run.key == st.key)
-            {
+            if (run.key == st.key) {
                 count += 1;
                 if (count >= 2) return true;
             }
@@ -828,19 +712,15 @@ pub const Position = struct
         return false;
     }
 
-    pub fn lazy_make_move(self: *Position, st: *StateInfo, move: Move) void
-    {
-        switch (self.to_move.e)
-        {
+    pub fn lazy_make_move(self: *Position, st: *StateInfo, move: Move) void {
+        switch (self.to_move.e) {
             .white => self.make_move(Color.WHITE, st, move),
             .black => self.make_move(Color.BLACK, st, move),
         }
     }
 
-    pub fn lazy_unmake_move(self: *Position) void
-    {
-        switch (self.to_move.e)
-        {
+    pub fn lazy_unmake_move(self: *Position) void {
+        switch (self.to_move.e) {
             .white => self.unmake_move(Color.BLACK),
             .black => self.unmake_move(Color.WHITE),
         }
@@ -849,8 +729,7 @@ pub const Position = struct
     /// Makes the move on the board.
     /// * `us` is comptime for performance reasons and must be the stm.
     /// * `st` will become the new state and will be fully updated.
-    pub fn make_move(self: *Position, comptime us: Color, st: *StateInfo, m: Move) void
-    {
+    pub fn make_move(self: *Position, comptime us: Color, st: *StateInfo, m: Move) void {
         assert(us.e == self.to_move.e);
         if (comptime lib.is_paranoid) assert(self.pos_ok());
 
@@ -859,8 +738,8 @@ pub const Position = struct
         const to: Square = m.to;
         const movetype: MoveType = m.type;
         const pc: Piece = self.board[from.u];
-        const capt: Piece = switch (movetype)
-            {
+        const capt: Piece =
+            switch (movetype) {
                 .normal, .promotion => self.board[to.u],
                 .enpassant => Piece.create_pawn(them),
                 .castle => Piece.NO_PIECE,
@@ -888,22 +767,18 @@ pub const Position = struct
         self.game_ply += 1;
 
         // Reset drawcounter by default.
-        if (is_pawnmove or is_capture)
-            st.rule50 = 0;
+        if (is_pawnmove or is_capture) st.rule50 = 0;
 
         // Clear ep by default if it is set.
-        if (st.ep_square.u > 0)
-        {
+        if (st.ep_square.u > 0) {
             key ^= zobrist.enpassant(st.ep_square.file());
             st.ep_square = Square.zero;
         }
 
         // Update the castling rights.
-        if (st.castling_rights != 0)
-        {
+        if (st.castling_rights != 0) {
             const mask: u4 = self.layout.castling_masks[from.u] | self.layout.castling_masks[to.u];
-            if (mask != 0)
-            {
+            if (mask != 0) {
                 key ^= zobrist.castling(st.castling_rights);
                 st.castling_rights &= ~mask;
                 key ^= zobrist.castling(st.castling_rights);
@@ -912,32 +787,26 @@ pub const Position = struct
 
         switch (movetype)
         {
-            .normal =>
-            {
-                if (is_capture)
-                {
+            .normal => {
+                if (is_capture) {
                     self.remove_piece(them, capt, to);
                     key ^= zobrist.piece_square(capt, to);
                 }
                 self.move_piece(us, pc, from, to);
                 key ^= hash_delta;
-                if (is_pawnmove)
-                {
+                if (is_pawnmove) {
                     // Double pawn push: only set the ep-square if it is actually possible to do an ep-capture.
-                    if (from.u ^ to.u == 16 and masks.get_ep_mask(to) & self.pawns(them) != 0)
-                    {
+                    if (from.u ^ to.u == 16 and masks.get_ep_mask(to) & self.pawns(them) != 0) {
                         const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
                         st.ep_square = ep;
                         key ^= zobrist.enpassant(ep.file());
                     }
                 }
             },
-            .promotion =>
-            {
+            .promotion => {
                 const prom: Piece = m.info.prom.to_piece(us);
                 const pawn: Piece = comptime Piece.create_pawn(us);
-                if (is_capture)
-                {
+                if (is_capture) {
                     self.remove_piece(them, capt, to);
                     key ^= zobrist.piece_square(capt, to);
                 }
@@ -945,8 +814,7 @@ pub const Position = struct
                 self.add_piece(us, prom, to);
                 key ^= zobrist.piece_square(pawn, from) ^ zobrist.piece_square(prom, to);
             },
-            .enpassant =>
-            {
+            .enpassant => {
                 const pawn_us: Piece = comptime Piece.create_pawn(us);
                 const pawn_them: Piece = comptime Piece.create_pawn(them);
                 const capt_sq: Square = if (us.e == .white) to.sub(8) else to.add(8);
@@ -954,8 +822,7 @@ pub const Position = struct
                 self.move_piece(us, pawn_us, from, to);
                 key ^= hash_delta ^ zobrist.piece_square(pawn_them, capt_sq);
             },
-            .castle =>
-            {
+            .castle => {
                 // Castling is encoded as "king takes rook".
                 const king: Piece = comptime Piece.create_king(us);
                 const rook: Piece = comptime Piece.create_rook(us);
@@ -975,8 +842,7 @@ pub const Position = struct
     }
 
     /// This must be called with `us` being the color that moved on the previous ply!
-    pub fn unmake_move(self: *Position, comptime us: Color) void
-    {
+    pub fn unmake_move(self: *Position, comptime us: Color) void {
         assert(self.to_move.e != us.e);
         if (comptime lib.is_paranoid) assert(self.pos_ok());
 
@@ -993,32 +859,27 @@ pub const Position = struct
         const from: Square = m.from;
         const to: Square = m.to;
 
-        switch (m.type)
-        {
-            .normal =>
-            {
+        switch (m.type) {
+            .normal => {
                 self.move_piece(us, st.moved_piece, to, from);
                 if (is_capture) self.add_piece(them, capt, to);
             },
-            .promotion =>
-            {
+            .promotion => {
                 const pawn: Piece = comptime Piece.create_pawn(us);
                 const prom: Piece = m.info.prom.to_piece(us);
                 self.remove_piece(us, prom, to);
                 self.add_piece(us, pawn, from);
                 if (is_capture) self.add_piece(them, capt, to);
             },
-            .enpassant =>
-            {
+            .enpassant => {
                 const pawn_us: Piece = comptime Piece.create_pawn(us);
                 const pawn_them: Piece = comptime Piece.create_pawn(them);
                 self.move_piece(us, pawn_us, to, from);
                 const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
                 self.add_piece(them, pawn_them, ep);
             },
-            .castle =>
-            {
-                // Castling is encoded as "king takes rook".
+            .castle => {
+                // Castling is "king takes rook".
                 const king: Piece = comptime Piece.create_king(us);
                 const rook: Piece = comptime Piece.create_rook(us);
                 const castletype: CastleType = m.info.castletype;
@@ -1034,10 +895,8 @@ pub const Position = struct
         if (comptime lib.is_paranoid) assert(self.pos_ok());
     }
 
-    fn lazy_update_state(self: *Position) void
-    {
-        switch (self.to_move.e)
-        {
+    fn lazy_update_state(self: *Position) void {
+        switch (self.to_move.e) {
             .white => self.update_state(Color.WHITE),
             .black => self.update_state(Color.BLACK),
         }
@@ -1086,8 +945,7 @@ pub const Position = struct
     }
 
     /// Returns true if square `to` is attacked by any piece of `attacker`.
-    pub fn is_square_attacked_by(self: *const Position, to: Square, comptime attacker: Color) bool
-    {
+    pub fn is_square_attacked_by(self: *const Position, to: Square, comptime attacker: Color) bool {
         const inverted = comptime attacker.opp();
         return
             (data.get_knight_attacks(to) & self.knights(attacker)) |
@@ -1110,7 +968,6 @@ pub const Position = struct
 
     /// Gives a bitboard of attackers which attack `to` for both colors.
     pub fn get_all_attacks_to_for_occupation(self: *const Position, occ: u64, to: Square) u64 {
-        //const inverted = comptime attacker.opp();
         return
             (data.get_knight_attacks(to) & self.all_knights()) |
             (data.get_king_attacks(to) & self.all_kings()) |
@@ -1156,53 +1013,40 @@ pub const Position = struct
         return att;
     }
 
-    pub fn get_unsafe_squares_for_king(self: *const Position, comptime us: Color) u64
-    {
+    pub fn get_unsafe_squares_for_king(self: *const Position, comptime us: Color) u64 {
         return self.attacks_by_for_occupation(us.opp(), self.all() & ~self.kings(us));
     }
 
-    fn is_castlingpath_empty(self: *const Position, comptime us: Color, comptime castletype: CastleType, ) bool
-    {
+    fn is_castlingpath_empty(self: *const Position, comptime us: Color, comptime castletype: CastleType, ) bool {
         const path: u64 = self.layout.castling_between_bitboards[us.u][castletype.u];
         return path & self.all() == 0;
     }
 
-    pub fn lazy_generate_moves(self: *const Position, noalias storage: anytype) void
-    {
-        switch (self.to_move.e)
-        {
+    pub fn lazy_generate_moves(self: *const Position, noalias storage: anytype) void {
+        switch (self.to_move.e) {
             .white => self.generate_moves(Color.WHITE, storage),
             .black => self.generate_moves(Color.BLACK, storage),
         }
     }
 
-    pub fn lazy_generate_captures(self: *const Position, noalias storage: anytype) void
-    {
-        switch (self.to_move.e)
-        {
+    pub fn lazy_generate_captures(self: *const Position, noalias storage: anytype) void {
+        switch (self.to_move.e) {
             .white => self.generate_captures(Color.WHITE, storage),
             .black => self.generate_captures(Color.BLACK, storage),
         }
     }
 
-    pub  fn generate_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void
-    {
+    pub  fn generate_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void {
         if (comptime lib.is_paranoid) assert(self.to_move.e == us.e);
-
         storage.reset();
-
         const check: bool = self.state.checkers != 0;
         const pins: bool = self.state.pins != 0;
-
-        switch (check)
-        {
-            false => switch (pins)
-            {
+        switch (check) {
+            false => switch (pins) {
                 false => self.gen(Params.create(false, us, false, false), storage),
                 true  => self.gen(Params.create(false, us, false, true), storage),
             },
-            true => switch (pins)
-            {
+            true => switch (pins) {
                 false => self.gen(Params.create(false, us, true, false), storage),
                 true  => self.gen(Params.create(false, us, true, true), storage),
             },
@@ -1210,24 +1054,17 @@ pub const Position = struct
     }
 
     /// Generate captures only, but if in check generate all.
-    pub  fn generate_captures(noalias self: *const Position, comptime us: Color, noalias storage: anytype) void
-    {
+    pub  fn generate_captures(noalias self: *const Position, comptime us: Color, noalias storage: anytype) void {
         if (comptime lib.is_paranoid) assert(self.to_move.e == us.e);
-
         storage.reset();
-
         const check: bool = self.state.checkers != 0;
         const pins: bool = self.state.pins != 0;
-
-        switch (check)
-        {
-            false => switch (pins)
-            {
+        switch (check) {
+            false => switch (pins) {
                 false => self.gen(Params.create(true, us, false, false), storage),
                 true  => self.gen(Params.create(true, us, false, true), storage),
             },
-            true => switch (pins)
-            {
+            true => switch (pins) {
                 false => self.gen(Params.create(true, us, true, false), storage),
                 true  => self.gen(Params.create(true, us, true, true), storage),
             },
@@ -1235,8 +1072,7 @@ pub const Position = struct
     }
 
     /// See `MoveStorage` for the interface of `storage`: required are the functions `reset()` and `store()`.
-    fn gen(self: *const Position, comptime ctp: Params, noalias storage: anytype) void
-    {
+    fn gen(self: *const Position, comptime ctp: Params, noalias storage: anytype) void {
         // Comptimes.
         const us = comptime ctp.us;
         const them = comptime us.opp();
@@ -1253,8 +1089,7 @@ pub const Position = struct
         const king_sq: Square = self.king_square(us);
 
         // In case of a doublecheck we can only move the king.
-        if (!doublecheck)
-        {
+        if (!doublecheck) {
             const our_pawns = self.pawns(us);
             const our_knights = self.knights(us);
             const our_queens_bishops = self.queens_bishops(us);
@@ -1263,16 +1098,14 @@ pub const Position = struct
             const target = if (ctp.check) st.checkmask else if (!ctp.captures) bb_not_us else bb_them;
 
             // Pawns.
-            if (our_pawns != 0)
-            {
+            if (our_pawns != 0) {
                 const third_rank: u64 = comptime funcs.relative_rank_3_bitboard(us);
                 const last_rank: u64 = comptime funcs.relative_rank_8_bitboard(us);
                 const empty_squares: u64 = ~bb_all;
                 const enemies: u64 = if (ctp.check) st.checkers else bb_them;
 
                 // Generate all 4 types of pawnmoves: push, push double, capture left, capture right.
-                var bb_single = switch(ctp.pins)
-                {
+                var bb_single = switch(ctp.pins) {
                     false => (pawns_shift(our_pawns, us, .up) & empty_squares),
                     true  => (pawns_shift(our_pawns & ~st.pins, us, .up) & empty_squares) |
                              (pawns_shift(our_pawns & st.pins_diagonal, us, .up) & empty_squares & st.pins_diagonal) |
@@ -1285,36 +1118,30 @@ pub const Position = struct
                 bb_single &= target;
                 bb_double &= target;
 
-                const bb_northwest: u64 = switch (ctp.pins)
-                {
+                const bb_northwest: u64 = switch (ctp.pins) {
                     false => (pawns_shift(our_pawns, us, .northwest) & enemies),
                     true  => (pawns_shift(our_pawns & ~st.pins, us, .northwest) & enemies) |
                              (pawns_shift(our_pawns & st.pins_diagonal, us, .northwest) & enemies & st.pins_diagonal),
                 };
 
-                const bb_northeast: u64 = switch (ctp.pins)
-                {
+                const bb_northeast: u64 = switch (ctp.pins) {
                     false => (pawns_shift(our_pawns, us, .northeast) & enemies),
                     true  => (pawns_shift(our_pawns & ~st.pins, us, .northeast) & enemies) |
                              (pawns_shift(our_pawns & st.pins_diagonal, us, .northeast) & enemies & st.pins_diagonal),
                 };
 
                 // Pawn pushes.
-                if (ctp.check or !ctp.captures)
-                {
+                if (ctp.check or !ctp.captures) {
                     // Single push normal
                     var bb_single_push: u64 = bb_single & ~last_rank;
-                    while (bb_single_push != 0)
-                    {
+                    while (bb_single_push != 0) {
                         const to: Square = pop_square(&bb_single_push);
                         const from: Square = pawn_from(to, us, .up);
                         store(from, to, storage) orelse return;
                     }
-
                     // Double.push
                     var bb_double_push: u64 = bb_double;
-                    while (bb_double_push != 0)
-                    {
+                    while (bb_double_push != 0) {
                         const to: Square = pop_square(&bb_double_push);
                         const from: Square = if (us.e == .white) to.sub(16) else to.add(16);
                         store(from, to, storage) orelse return;
@@ -1323,8 +1150,7 @@ pub const Position = struct
 
                 // left capture promotions
                 var bb_northwest_promotions = bb_northwest & last_rank;
-                while (bb_northwest_promotions != 0)
-                {
+                while (bb_northwest_promotions != 0) {
                     const to: Square = pop_square(&bb_northwest_promotions);
                     const from: Square = pawn_from(to, us, .northwest);
                     store_promotions(do_all_promotions, from, to, storage) orelse return;
@@ -1332,8 +1158,7 @@ pub const Position = struct
 
                 // right capture promotions
                 var bb_northeast_promotions = bb_northeast & last_rank;
-                while (bb_northeast_promotions != 0)
-                {
+                while (bb_northeast_promotions != 0) {
                     const to: Square = pop_square(&bb_northeast_promotions);
                     const from: Square = pawn_from(to, us, .northeast);
                     store_promotions(do_all_promotions, from, to, storage) orelse return;
@@ -1341,8 +1166,7 @@ pub const Position = struct
 
                 // push promotions
                 var bb_push_promotions: u64 = bb_single & last_rank;
-                while (bb_push_promotions != 0)
-                {
+                while (bb_push_promotions != 0) {
                     const to: Square = pop_square(&bb_push_promotions);
                     const from: Square =  pawn_from(to, us, .up);
                     store_promotions(do_all_promotions, from, to, storage) orelse return;
@@ -1350,8 +1174,7 @@ pub const Position = struct
 
                 // left normal captures,
                 var bb_northwest_normal =  bb_northwest & ~last_rank;
-                while (bb_northwest_normal != 0)
-                {
+                while (bb_northwest_normal != 0) {
                     const to: Square = pop_square(&bb_northwest_normal);
                     const from: Square = pawn_from(to, us, .northwest);
                     store(from, to, storage) orelse return;
@@ -1359,8 +1182,7 @@ pub const Position = struct
 
                 // right normal captures,
                 var bb_northeast_normal =  bb_northeast & ~last_rank;
-                while (bb_northeast_normal != 0)
-                {
+                while (bb_northeast_normal != 0) {
                     const to: Square = pop_square(&bb_northeast_normal);
                     const from: Square = pawn_from(to, us, .northeast);
                     store(from, to, storage) orelse return;
@@ -1368,44 +1190,37 @@ pub const Position = struct
 
                 const ep: Square = st.ep_square;
                 // Enpassant.
-                if (ep.u > 0)
-                {
+                if (ep.u > 0) {
                     var bb_enpassant: u64 = data.get_pawn_attacks(ep, them) & our_pawns; // inversion trick.
-                    inline for (0..2) |_|
-                    {
+                    inline for (0..2) |_| {
                         if (bb_enpassant == 0) break;
                         const from: Square = pop_square(&bb_enpassant);
                         if (self.is_legal_enpassant(us, king_sq, from, ep))
                             store_enpassant(from, ep, storage) orelse return;
                     }
                 }
-
             } // (pawns)
 
             // Knights.
-            // A knight can never escape a pin.
-            var bb_knights: u64 = if (!ctp.pins) our_knights else our_knights & ~st.pins;
-            while (bb_knights != 0)
-            {
+            var bb_knights: u64 = if (!ctp.pins) our_knights else our_knights & ~st.pins; // A knight can never escape a pin.
+            while (bb_knights != 0) {
                 const from: Square = pop_square(&bb_knights);
                 var bb_to: u64 = data.get_knight_attacks(from) & target;
-                inline for (0..8) |_|
-                {
+                inline for (0..8) |_| {
                     if (bb_to == 0) break;
                     store(from, pop_square(&bb_to), storage) orelse return;
                 }
             }
 
             // Diagonal sliders.
-            if (!ctp.pins)
-            {
+            if (!ctp.pins) {
                 var our_sliders: u64 = our_queens_bishops;
-                while (our_sliders != 0)
-                {
+                while (our_sliders != 0) {
                     const from: Square = pop_square(&our_sliders);
                     var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target;
-                    while (bb_to != 0)
+                    while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
+                    }
                 }
             }
             else
@@ -1415,40 +1230,39 @@ pub const Position = struct
                 {
                     const from: Square = pop_square(&non_pinned_sliders);
                     var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target;
-                    while (bb_to != 0)
+                    while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
+                    }
                 }
                 var pinned_sliders: u64 = our_queens_bishops & st.pins_diagonal;
                 while (pinned_sliders != 0)
                 {
                     const from: Square = pop_square(&pinned_sliders);
                     var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target & st.pins_diagonal;
-                    while (bb_to != 0)
+                    while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
+                    }
                 }
             }
 
             // Orthogonal sliders.
-            if (!ctp.pins)
-            {
+            if (!ctp.pins) {
                 var our_sliders: u64 = our_queens_rooks;
-                while (our_sliders != 0)
-                {
+                while (our_sliders != 0) {
                     const from: Square = pop_square(&our_sliders);
                     var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target;
-                    while (bb_to != 0)
+                    while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
+                    }
                 }
-            }
-            else
-            {
+            } else {
                 var non_pinned_sliders: u64 = our_queens_rooks & ~st.pins;
-                while (non_pinned_sliders != 0)
-                {
+                while (non_pinned_sliders != 0) {
                     const from: Square = pop_square(&non_pinned_sliders);
                     var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target;
-                    while (bb_to != 0)
+                    while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
+                    }
                 }
 
                 var pinned_sliders: u64 = our_queens_rooks & st.pins_orthogonal;
@@ -1456,8 +1270,9 @@ pub const Position = struct
                 {
                     const from: Square = pop_square(&pinned_sliders);
                     var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target & st.pins_orthogonal;
-                    while (bb_to != 0)
+                    while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
+                    }
                 }
             }
 
@@ -1468,44 +1283,36 @@ pub const Position = struct
         var bb_to = data.get_king_attacks(king_sq) & king_target;
 
         // The king is a troublemaker. For now this 'popcount heuristic' gives the best avg speed, using 2 different approaches to check legality.
-        if (popcnt(bb_to) > 2)
-        {
+        if (popcnt(bb_to) > 2) {
             const bb_unsafe: u64 = self.get_unsafe_squares_for_king(us);
             bb_to &= ~bb_unsafe;
-            while (bb_to != 0)
+            // Normal.
+            while (bb_to != 0) {
                 store(king_sq, pop_square(&bb_to), storage) orelse return;
-
-            if (!ctp.check and !ctp.captures and st.castling_rights != 0)
-            {
-                inline for (CastleType.all) |ct|
-                {
-                    if (st.is_castling_allowed(us, ct) and self.is_castlingpath_empty(us, ct) and self.is_legal_castle(us, ct, bb_unsafe))
-                    {
-                        // Castling is encoded as "king takes rook".
-                        const to: Square = self.layout.rook_start_squares[us.u][ct.u];
+            }
+            // Castling.
+            if (!ctp.check and !ctp.captures and st.castling_rights != 0) {
+                inline for (CastleType.all) |ct| {
+                    if (st.is_castling_allowed(us, ct) and self.is_castlingpath_empty(us, ct) and self.is_legal_castle(us, ct, bb_unsafe)) {
+                        const to: Square = self.layout.rook_start_squares[us.u][ct.u]; // Castling is "king takes rook".
                         store_castle(king_sq, to, ct, storage) orelse return;
                     }
                 }
             }
-        }
-        else
-        {
+        } else {
             const bb_without_king: u64 = bb_all ^ self.kings(us);
-            while (bb_to != 0)
-            {
+            // Normal.
+            while (bb_to != 0) {
                 const to: Square = pop_square(&bb_to);
-                if (self.is_legal_kingmove(us, bb_without_king, to))
+                if (self.is_legal_kingmove(us, bb_without_king, to)) {
                     store(king_sq, to, storage) orelse return;
+                }
             }
-
-            if (!ctp.check and !ctp.captures and st.castling_rights != 0)
-            {
-                inline for (CastleType.all) |ct|
-                {
-                    if (st.is_castling_allowed(us, ct) and self.is_castlingpath_empty(us, ct) and self.is_legal_castle_check_attacks(us, ct))
-                    {
-                        // Castling is encoded as "king takes rook".
-                        const to: Square = self.layout.rook_start_squares[us.u][ct.u];
+            // Castling.
+            if (!ctp.check and !ctp.captures and st.castling_rights != 0) {
+                inline for (CastleType.all) |ct| {
+                    if (st.is_castling_allowed(us, ct) and self.is_castlingpath_empty(us, ct) and self.is_legal_castle_check_attacks(us, ct)) {
+                        const to: Square = self.layout.rook_start_squares[us.u][ct.u]; // Castling is "king takes rook".
                         store_castle(king_sq, to, ct, storage) orelse return;
                     }
                 }
@@ -1513,36 +1320,30 @@ pub const Position = struct
         }
     }
 
-    fn store(from: Square, to: Square, noalias storage: anytype) ?void
-    {
+    fn store(from: Square, to: Square, noalias storage: anytype) ?void {
         return storage.store(Move.create(from, to));
     }
 
-    fn store_enpassant(from: Square, to: Square, noalias storage: anytype) ?void
-    {
+    fn store_enpassant(from: Square, to: Square, noalias storage: anytype) ?void {
         return storage.store(Move.create_enpassant(from, to));
     }
 
-    fn store_promotions(comptime do_all: bool, from: Square, to: Square, noalias storage: anytype) ?void
-    {
+    fn store_promotions(comptime do_all: bool, from: Square, to: Square, noalias storage: anytype) ?void {
         storage.store(Move.create_promotion(from, to, .queen)) orelse return null;
 
-        if (do_all)
-        {
+        if (do_all) {
             storage.store(Move.create_promotion(from, to, .rook)) orelse return null;
             storage.store(Move.create_promotion(from, to, .bishop)) orelse return null;
             storage.store(Move.create_promotion(from, to, .knight)) orelse return null;
         }
     }
 
-    fn store_castle(from: Square, to: Square, comptime castletype: CastleType, noalias storage: anytype) ?void
-    {
+    fn store_castle(from: Square, to: Square, comptime castletype: CastleType, noalias storage: anytype) ?void {
         return storage.store(Move.create_castle(from, to, castletype));
     }
 
     /// Tricky one. An ep move can uncover a check.
-    fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from: Square, to: Square) bool
-    {
+    fn is_legal_enpassant(self: *const Position, comptime us: Color, king_sq: Square, from: Square, to: Square) bool {
         const them: Color = comptime us.opp();
         const capt_sq = if (us.e == .white) to.sub(8) else to.add(8);
         const occ: u64 = (self.all() ^ from.to_bitboard() ^ capt_sq.to_bitboard()) | to.to_bitboard();
@@ -1552,27 +1353,23 @@ pub const Position = struct
         return att == 0;
     }
 
-    fn is_legal_kingmove(self: *const Position, comptime us: Color, bb_without_king: u64, to: Square) bool
-    {
+    fn is_legal_kingmove(self: *const Position, comptime us: Color, bb_without_king: u64, to: Square) bool {
         const them = comptime us.opp();
         return !self.is_square_attacked_by_for_occupation(bb_without_king, to, them);
     }
 
     /// Compares the kings path with unsafe squares.
-    fn is_legal_castle(self: *const Position, comptime us: Color, comptime castletype: CastleType, bb_unsafe: u64) bool
-    {
+    fn is_legal_castle(self: *const Position, comptime us: Color, comptime castletype: CastleType, bb_unsafe: u64) bool {
         const path: u64 = self.layout.castling_king_paths[us.u][castletype.u];
         return path & bb_unsafe == 0;
     }
 
     /// Checks for each square on the kings path if it is attacked.
-    fn is_legal_castle_check_attacks(self: *const Position, comptime us: Color, comptime castletype: CastleType) bool
-    {
+    fn is_legal_castle_check_attacks(self: *const Position, comptime us: Color, comptime castletype: CastleType) bool {
         //_ = king_sq;
         const them: Color = comptime us.opp();
         var path: u64 = self.layout.castling_king_paths[us.u][castletype.u];
-        while (path != 0)
-        {
+        while (path != 0) {
             const sq = pop_square(&path);
             if (self.is_square_attacked_by(sq, them)) return false;
         }
@@ -1580,8 +1377,7 @@ pub const Position = struct
     }
 
     /// Meant to be a validation after UCI position command.
-    pub fn validate(self: *const Position) Error!void
-    {
+    pub fn validate(self: *const Position) Error!void {
 
         const wk: u8 = popcnt(self.kings(Color.WHITE));
         const bk: u8 = popcnt(self.kings(Color.BLACK));
@@ -1590,40 +1386,38 @@ pub const Position = struct
         if (wk > 1 or bk > 1) return Error.TooManyKings;
 
         const wk_sq: Square = self.king_square(Color.WHITE);
-        if (self.to_move.e == .black and self.is_square_attacked_by(wk_sq, Color.BLACK)) return Error.InCheckAndNotToMove;
+        if (self.to_move.e == .black and self.is_square_attacked_by(wk_sq, Color.BLACK)) {
+            return Error.InCheckAndNotToMove;
+        }
 
         const bk_sq: Square = self.king_square(Color.BLACK);
-        if (self.to_move.e == .white and self.is_square_attacked_by(bk_sq, Color.WHITE)) return Error.InCheckAndNotToMove;
-
+        if (self.to_move.e == .white and self.is_square_attacked_by(bk_sq, Color.WHITE)) {
+            return Error.InCheckAndNotToMove;
+        }
         // For the rest everything is assumed to be ok.
     }
 
     /// ### Debug only.
-    pub fn pos_ok(self: *const Position) bool
-    {
+    pub fn pos_ok(self: *const Position) bool {
         lib.not_in_release();
 
-        if (popcnt(self.kings(Color.WHITE)) != 1)
-        {
+        if (popcnt(self.kings(Color.WHITE)) != 1) {
             lib.io.debugprint("WHITE KING ERROR", .{});
             return false;
         }
 
-        if (popcnt(self.kings(Color.BLACK)) != 1)
-        {
+        if (popcnt(self.kings(Color.BLACK)) != 1) {
             lib.io.debugprint("BLACK KING ERROR", .{});
             return false;
         }
 
-        if (popcnt(self.all()) > 32)
-        {
+        if (popcnt(self.all()) > 32) {
             lib.io.debugprint("TOO MANY PIECES", .{});
             return false;
         }
 
         const a = self.compute_hashkey();
-        if (a != self.state.key)
-        {
+        if (a != self.state.key) {
             lib.io.debugprint("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, a, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
             lib.io.debugprint("KEY\n", .{});
             return false;
@@ -1631,131 +1425,36 @@ pub const Position = struct
 
         // In check and not to move.
         const king_sq_white: Square = self.king_square(Color.WHITE);
-        if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.to_move.e != .white)
-        {
+        if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.to_move.e != .white) {
             lib.io.debugprint("CHECK\n", .{});
             self.draw() catch wtf();
             return false;
         }
 
         const king_sq_black = self.king_square(Color.BLACK);
-        if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.to_move.e != .black)
-        {
+        if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.to_move.e != .black) {
             lib.io.debugprint("CHECK\n", .{});
             self.draw() catch wtf();
-
             return false;
         }
         return true;
     }
 
-    /// OBSOLETE. we use format now
-    /// Returns fen string. Caller becomes owner of the result.
-    // pub fn to_fen(self: *const Position) std.ArrayList(u8)
-    // {
-    //     const st = self.state;
-
-    //     var s: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.galloc, 80) catch wtf();
-
-    //     // Pieces.
-    //     var rank: u3 = 7;
-    //     while (true)
-    //     {
-    //         var empty_squares: u4 = 0;
-    //         var file: u3 = 0;
-    //         while (true)
-    //         {
-    //             const sq: Square = .from_rank_file(rank, file);
-    //             const pc: Piece = self.board[sq.u];
-    //             if (pc.is_empty())
-    //             {
-    //                 empty_squares += 1;
-    //             }
-    //             else
-    //             {
-    //                 if (empty_squares > 0)
-    //                 {
-    //                     s.appendAssumeCapacity(@as(u8, '0') + empty_squares);
-    //                     empty_squares = 0;
-    //                 }
-    //                 s.appendAssumeCapacity(pc.to_fen_char());
-    //             }
-    //             if (file == 7)
-    //             {
-    //                 if (empty_squares > 0)
-    //                 {
-    //                     s.appendAssumeCapacity(@as(u8, '0') + empty_squares);
-    //                 }
-    //                 if (rank > 0) s.appendAssumeCapacity('/');
-    //                 break;
-    //             }
-    //             file += 1;
-    //         }
-    //         if (rank == 0) break;
-    //         rank -= 1;
-    //     }
-
-    //     // Color to move.
-    //     if (self.to_move.e == .white)
-    //         s.appendSliceAssumeCapacity(" w")
-    //     else
-    //         s.appendSliceAssumeCapacity(" b");
-
-    //     // Castling rights.
-    //     s.appendAssumeCapacity(' ');
-    //     if (st.castling_rights == 0)
-    //     {
-    //         s.appendAssumeCapacity('-');
-    //     }
-    //     else
-    //     {
-    //         if (st.castling_rights & cf_white_short != 0) s.appendAssumeCapacity('K');
-    //         if (st.castling_rights & cf_white_long != 0)  s.appendAssumeCapacity('Q');
-    //         if (st.castling_rights & cf_black_short != 0) s.appendAssumeCapacity('k');
-    //         if (st.castling_rights & cf_black_long != 0)  s.appendAssumeCapacity('q');
-    //     }
-
-    //     // Enpassant.
-    //     s.appendAssumeCapacity(' ');
-    //     if (st.ep_square.u > 0)
-    //     {
-    //         s.appendSliceAssumeCapacity(st.ep_square.to_string());
-    //     } else
-    //     {
-    //         s.appendAssumeCapacity('-');
-    //     }
-
-    //     // Draw counter.
-    //     s.fixedWriter().print(" {}", .{st.rule50}) catch wtf();
-
-    //     // Move number.
-    //     const movenr: u16 = funcs.ply_to_movenumber(self.game_ply, self.to_move);
-    //     s.fixedWriter().print(" {}", .{movenr}) catch wtf();
-
-    //     return s;
-    // }
-
     /// Zig-format. Writes the FEN string.
-    pub fn format(self: *const Position, writer: *std.io.Writer) std.io.Writer.Error!void
-    {
+    pub fn format(self: *const Position, writer: *std.io.Writer) std.io.Writer.Error!void {
         const st = self.state;
 
         // Pieces.
         var rank: u3 = 7;
-        while (true)
-        {
+        while (true) {
             var empty_squares: u4 = 0;
             var file: u3 = 0;
-            while (true)
-            {
+            while (true) {
                 const sq: Square = .from_rank_file(rank, file);
                 const pc: Piece = self.board[sq.u];
-                if (pc.is_empty())
-                {
+                if (pc.is_empty()) {
                     empty_squares += 1;
-                }
-                else
-                {
+                } else {
                     if (empty_squares > 0)
                     {
                         try writer.print("{}", .{ empty_squares });
@@ -1763,13 +1462,13 @@ pub const Position = struct
                     }
                     try writer.print("{u}", .{ pc.to_fen_char() });
                 }
-                if (file == 7)
-                {
-                    if (empty_squares > 0)
-                    {
+                if (file == 7) {
+                    if (empty_squares > 0) {
                         try writer.print("{}", .{ empty_squares });
                     }
-                    if (rank > 0) try writer.print("/", .{});
+                    if (rank > 0) {
+                        try writer.print("/", .{});
+                    }
                     break;
                 }
                 file += 1;
@@ -1779,19 +1478,17 @@ pub const Position = struct
         }
 
         // Color to move.
-        if (self.to_move.e == .white)
-            try writer.print(" w", .{})
-        else
+        if (self.to_move.e == .white) {
+            try writer.print(" w", .{});
+        } else {
             try writer.print(" b", .{});
+        }
 
         // Castling rights.
         try writer.print(" ", .{});
-        if (st.castling_rights == 0)
-        {
+        if (st.castling_rights == 0) {
             try writer.print("-", .{});
-        }
-        else
-        {
+        } else {
             if (st.castling_rights & cf_white_short != 0) try writer.print("K", .{});
             if (st.castling_rights & cf_white_long != 0)  try writer.print("Q", .{});
             if (st.castling_rights & cf_black_short != 0) try writer.print("k", .{});
@@ -1800,10 +1497,11 @@ pub const Position = struct
 
         // Enpassant.
         try writer.print(" ", .{});
-        if (st.ep_square.u > 0)
-            try writer.print("{t}", .{st.ep_square.e})
-        else
+        if (st.ep_square.u > 0) {
+            try writer.print("{t}", .{st.ep_square.e});
+        } else {
             try writer.print("-", .{});
+        }
 
         // Draw counter.
         try writer.print(" {}", .{st.rule50});
@@ -1814,15 +1512,10 @@ pub const Position = struct
     }
 
     /// Prints the position diagram + information to the io.
-    pub fn draw(self: *const Position) !void
-    {
-        //var fen_str = self.to_fen();
-        //defer fen_str.deinit(ctx.galloc);
-
+    pub fn draw(self: *const Position) !void {
         // Pieces.
         try io.print_buffered("\n", .{});
-        for (Square.all_for_printing) |square|
-        {
+        for (Square.all_for_printing) |square| {
             const pc: Piece = self.get(square);
             const ch: u8 = if (pc.is_empty()) '.' else pc.to_print_char();
             try io.print_buffered("{u} ", .{ch});
@@ -1836,11 +1529,9 @@ pub const Position = struct
         try io.print_buffered("Key: {x:0>16}\n", .{self.state.key});
         //try io.print_buffered("Last move: {s}\n", .{move_str});
         try io.print_buffered("Checkers: ", .{});
-        if (self.state.checkers != 0)
-        {
+        if (self.state.checkers != 0) {
             var bb: u64 = self.state.checkers;
-            while (bb != 0)
-            {
+            while (bb != 0) {
                 const sq: Square = pop_square(&bb);
                 try io.print_buffered("{s} ", .{sq.to_string()});
             }
@@ -1849,16 +1540,14 @@ pub const Position = struct
         try io.flush();
     }
 
-    pub fn print_history(self: *const Position) !void
-    {
+    pub fn print_history(self: *const Position) !void {
         var reversed_stateinfo_list: std.ArrayList(*const StateInfo) = .empty;
         defer reversed_stateinfo_list.deinit(ctx.galloc);
 
         var movenr: u16 = self.game_ply;
         var stm: Color = self.to_move;
         var curr_state: *const StateInfo = self.state;
-        while (true)
-        {
+        while (true) {
             if (curr_state.last_move.is_empty()) break;
             stm = stm.opp();
             movenr -|= 1;
@@ -1870,11 +1559,9 @@ pub const Position = struct
         var iter = std.mem.reverseIterator(reversed_stateinfo_list.items);
         var i: usize = 0;
         movenr = funcs.ply_to_movenumber(movenr, stm);
-        while (iter.next()) |st|
-        {
+        while (iter.next()) |st| {
             const m = st.last_move;
-            if (stm.e == .white)
-            {
+            if (stm.e == .white) {
                 try io.print_buffered("{}. ", .{ movenr});
                 movenr += 1;
             }
@@ -1890,8 +1577,7 @@ pub const Position = struct
     /// Compares everything except `state` and `game_ply`.
     /// * The inner contents of the state *are* compared.
     /// * If `check_moves` then we also check if the generated moves are the same.
-    pub fn equals(self: *const Position, other: *const Position, comptime check_moves: bool) bool
-    {
+    pub fn equals(self: *const Position, other: *const Position, comptime check_moves: bool) bool {
         lib.not_in_release();
 
         // Types not directly binary comparable with Zig std.
@@ -1913,8 +1599,7 @@ pub const Position = struct
 
         if (!eql) return false;
 
-        if (check_moves)
-        {
+        if (check_moves) {
             var store1: MoveStorage = .init();
             var store2: MoveStorage = .init();
             self.lazy_generate_moves(&store1);
@@ -1926,8 +1611,7 @@ pub const Position = struct
 };
 
 /// 4 bits comptime struct for generating moves.
-pub const Params = packed struct
-{
+pub const Params = packed struct {
     /// Only generate captures and promotions. Used in quiet search.
     /// * When in check this is mostly ignored. In that case we generate all moves (evasions).
     /// * Whether in check or not: when captures is true we only generate queen promotions.
@@ -1939,125 +1623,98 @@ pub const Params = packed struct
     /// There are pins. If not we can comptime skip all pin checks.
     pins: bool = false,
 
-    fn create(comptime captures: bool, comptime us: Color, comptime check: bool, comptime pins: bool) Params
-    {
+    fn create(comptime captures: bool, comptime us: Color, comptime check: bool, comptime pins: bool) Params {
         return Params{ .captures = captures, .us = us, .check = check, .pins = pins };
     }
 };
 
 /// Basic storage of moves.
-pub const MoveStorage = struct
-{
+pub const MoveStorage = struct {
     moves: [types.max_move_count]Move,
     count: u8,
 
-    pub fn init() MoveStorage
-    {
+    pub fn init() MoveStorage {
         return .{ .moves = undefined, .count = 0 };
     }
 
     /// Required function.
-    pub fn reset(self: *MoveStorage) void
-    {
+    pub fn reset(self: *MoveStorage) void {
         self.count = 0;
     }
 
     /// Required function.
-    pub fn store(self: *MoveStorage, move: Move) ?void
-    {
+    pub fn store(self: *MoveStorage, move: Move) ?void {
         assert(self.count < 224);
         self.moves[self.count] = move;
         self.count += 1;
     }
 
-    pub fn slice(self: *const MoveStorage) []const Move
-    {
+    pub fn slice(self: *const MoveStorage) []const Move {
         return self.moves[0..self.count];
     }
 };
 
-pub const JustCount = struct
-{
+pub const JustCount = struct {
     moves: u8,
 
-    pub fn init() JustCount
-    {
+    pub fn init() JustCount {
         return .{ .moves = 0 };
     }
 
     /// Required function.
-    pub fn reset(self: *JustCount) void
-    {
+    pub fn reset(self: *JustCount) void {
         self.moves = 0;
     }
 
     /// Required function.
-    pub fn store(self: *JustCount, move: Move) ?void
-    {
-        _ = move;
+    pub fn store(self: *JustCount, _: Move) ?void {
         self.moves += 1;
-    }
-
-    pub fn len(self: *const JustCount) u8
-    {
-        return self.moves;
     }
 };
 
-pub const Any = struct
-{
+pub const Any = struct {
     has_moves: bool,
 
-    pub fn init() Any
-    {
+    pub fn init() Any {
         return .{ .has_moves = false };
     }
 
     /// Required function.
-    pub fn reset(self: *Any) void
-    {
+    pub fn reset(self: *Any) void {
         self.has_moves = false;
     }
 
     /// Required function.
-    pub fn store(self: *Any, move: Move) ?void
-    {
-        _ = move;
+    pub fn store(self: *Any, _: Move) ?void {
         self.has_moves = true;
         return null;
     }
 };
 
-pub const MoveFinder = struct
-{
+pub const MoveFinder = struct {
     /// The (exactly defined) move to find.
     to_find: Move,
     found: bool,
 
-    pub fn init(m: Move) MoveFinder
-    {
+    pub fn init(m: Move) MoveFinder {
         return .{ .to_find = m, .found = false };
     }
 
     /// Required function.
-    pub fn reset(self: *MoveFinder) void
-    {
+    pub fn reset(self: *MoveFinder) void {
         self.found = false;
     }
 
     /// Required function.
-    pub fn store(self: *MoveFinder, move: Move) ?void
-    {
-        if (self.to_find == move)
-        {
+    pub fn store(self: *MoveFinder, move: Move) ?void {
+        if (self.to_find == move) {
             self.found = true;
             return null;
         }
     }
 };
 
-pub const Error = error
-{
+pub const Error = error {
     MissingKing,
     TooManyKings,
     InCheckAndNotToMove,
