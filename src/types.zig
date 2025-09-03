@@ -821,7 +821,7 @@ const piece_material_values: [15]Value = .{
 /// Strings
 ////////////////////////////////////////////////////////////////
 
-pub const castle_strings: [2][]u8 = .{ "O-O", "O-O-O" };
+pub const castle_strings: [2][]const u8 = .{ "O-O", "O-O-O" };
 
 // TODO: centralize stuff
 pub const ChessChars = struct
