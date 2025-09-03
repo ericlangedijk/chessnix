@@ -21,43 +21,31 @@ pub const Bound = enum(u2) { None, Exact, Lower, Upper };
 
 /// Must be 16 bytes.
 pub const Entry = packed struct {
-
     const empty: Entry = .{ .bound = .None, .key = 0, .depth = 0, .move = .empty, .score = 0, .age = 0 };
-
     /// The kind (exact, alpha or beta) with which this entry was stored..
     bound: Bound,
-
     /// The position hash key. If key == 0 we assume this entry is empty.
     key: u64,
-
     /// The search depth when this entry was stored,
     depth: u8,
-
     /// The best move according to search.
     move: Move,
-
     /// The evaluation according to search.
     score: Value,
-
     /// The age
     age: u6,
 };
 
 // 64 MB = ok, 256 MB = very good.
 pub const TranspositionTable = struct {
-
     /// Array on heap.
     data: []Entry,
-
     /// The number of entries.
     len: u64,
-
     /// Used megabytes.
     mb: u64,
-
     /// Number of filled entries.
     filled: u64,
-
     /// Reuse slots.
     age: u6,
 
