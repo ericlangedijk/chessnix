@@ -51,10 +51,10 @@ pub const cf_black_long: u4 = 0b1000;
 pub const cf_all: u4 = 0b1111;
 
 /// Indexing [color][castletype].
-pub const king_castle_destination_squares: [2][2]Square = .{ .{ Square.G1, Square.C1 }, .{ Square.G8, Square.C8 } };
+pub const king_castle_destination_squares: [2][2]Square = .{ .{ .G1, .C1 }, .{ .G8, .C8 } };
 
 /// Indexing [color][castletype].
-pub const rook_castle_destination_squares: [2][2]Square = .{ .{ Square.F1, Square.D1 }, .{ Square.F8, Square.D8 } };
+pub const rook_castle_destination_squares: [2][2]Square = .{ .{ .F1, .D1 }, .{ .F8, .D8 } };
 
 /// Indexing [color][castletype].
 pub const castle_flags: [2][2]u4 = .{ .{ cf_white_short, cf_white_long }, .{ cf_black_short, cf_black_long } };
@@ -164,10 +164,8 @@ pub const Position = struct {
     state: *StateInfo,
 
     fn init_empty() Position {
-        return
-        .{
-            .layout =
-            .{
+        return .{
+            .layout = .{
                 .start_files = @splat(0),
                 .king_start_squares = @splat(Square.zero),
                 .rook_start_squares = .{ .{ Square.zero, Square.zero }, .{ Square.zero, Square.zero } },
@@ -197,7 +195,7 @@ pub const Position = struct {
             .layout = .{
                 .start_files = .{ b.file_a, b.file_h, b.file_e },
                 .king_start_squares = .{ Square.E1, Square.E8 },
-                .rook_start_squares = .{ .{ Square.H1, Square.A1 }, .{ Square.H8, Square.A8 } },
+                .rook_start_squares = .{ .{ .H1, .A1 }, .{ .H8, .A8 } },
                 .castling_between_bitboards = .{ .{ b.bb_f1 | b.bb_g1, b.bb_d1 | b.bb_c1 | b.bb_b1 }, .{ b.bb_f8 | b.bb_g8, b.bb_d8 | b.bb_c8 | b.bb_b8 } },
                 .castling_king_paths = .{ .{ b.bb_f1 | b.bb_g1, b.bb_d1 | b.bb_c1 }, .{ b.bb_f8 | b.bb_g8, b.bb_d8 | b.bb_c8 } },
                 .castling_masks = .{ 2, 0, 0, 0, 3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 12, 0, 0, 4 },

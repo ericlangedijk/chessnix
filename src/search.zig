@@ -107,8 +107,8 @@ pub const Search = struct {
     nodes: Nodes,
     /// For scoring quiet moves. Indexing [Piece][Square].
     quiet_heuristic_history: [16][64]Value,
-    /// We always keep track of the best move a.s.a.p.
-    best_move: Move,
+    /// We always keep track of the the best move a.s.a.p.
+    the_move: Move,
     /// Updated after each iteration.
     pv_node: Node,
     /// The total amount
@@ -131,7 +131,7 @@ pub const Search = struct {
             .rootmoves = .init(true),
             .nodes = .empty,
             .quiet_heuristic_history = std.mem.zeroes([16][64]Value),
-            .best_move = .empty,
+            .the_move = .empty,
             .pv_node = .init(),
             .processed_nodes = 0,
             .seldepth = 0,
@@ -156,7 +156,7 @@ pub const Search = struct {
         self.timer.reset();
         self.rootmoves.reset();
         self.nodes = .empty;
-        self.best_move = .empty;
+        self.the_move = .empty;
         self.stopped = false;
         self.iteration = 0;
         self.processed_nodes = 0;
@@ -185,7 +185,7 @@ pub const Search = struct {
         // Debug print
         print_san_pv(input_pos, &self.pv_node) catch wtf();
         // UCI write bestmove after search.
-        lib.io.print("bestmove {f}\n", .{ self.best_move }) catch wtf();
+        lib.io.print("bestmove {f}\n", .{ self.the_move }) catch wtf();
     }
 
     fn stop_search(self: *Search) void {
@@ -194,22 +194,13 @@ pub const Search = struct {
 
     fn iterative_deepening(self: *Search, comptime us: Color) void {
         const pos: *Position = &self.pos;
+        // Create our rootmoves.
         self.rootmoves.generate_moves(pos, us);
         self.rootmoves.process_and_score_moves(self, Move.empty);
         self.rootmoves.sort();
         // Have something a.s.a.p.
-        if (self.rootmoves.count > 0) self.best_move = self.rootmoves.extmoves[0].move;
-
-        // io.debugprint("start: ", .{});
-        // for (self.rootmoves.slice(), 0..) |e, i|
-        // {
-        //     //const e = self.rootmoves.extract_next(idx, .empty);
-        //     io.debugprint("{f} {}, ", .{e.move, e.score});
-        //     if (i > 10) break;
-        // }
-        // io.debugprint("\n", .{});
-
-        //if (true) return;
+        if (self.rootmoves.count > 0) self.the_move = self.rootmoves.extmoves[0].move;
+        // self.rootmoves.debugprint(0);
 
         var depth: u8 = 1;
         var best_score: Value = -types.infinity;
@@ -225,9 +216,9 @@ pub const Search = struct {
                 }
                 // Copy the last finished pv.
                 self.pv_node.copy_from(self.get_node(2));
-                self.best_move = self.pv_node.first_move();
+                self.the_move = self.pv_node.first_move();
             }
-            self.rootmoves.sort();
+            //self.rootmoves.debugprint(depth);
             print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
             if (self.check_stop(.iterative_deepening)) break;
             if (depth >= max_search_depth) break;
@@ -290,7 +281,7 @@ pub const Search = struct {
         }
 
         var best_score: Value = alpha;
-        var best: Move = .empty;
+        var best_move: Move = .empty;
         var st: StateInfo = undefined;
 
         // Go trough the moves.
@@ -301,13 +292,13 @@ pub const Search = struct {
             const score: Value = -self.alpha_beta(false, them, depth - 1, -beta, -best_score);
             pos.unmake_move(us);
 
-            // Adjust score if rootmoves for move ordering in the next iteration.
-            if (is_root) {
-                extmove_ptr.score = score;
-            }
-
             // Discard result.
             if (self.stopped) break;
+
+            // // // Adjust score if rootmoves for move ordering in the next iteration.
+            // if (is_root) {
+            //     extmove_ptr.score = score;
+            // }
 
             // Better move.
             if (score > best_score) {
@@ -317,15 +308,18 @@ pub const Search = struct {
                     self.tt_store(.Lower, key, depth, ply, e.move, score);
                     return score;
                 }
-                best = e.move;
+                best_move = e.move;
                 best_score = score;
                 node.update_pv(e.move, score, childnode);
             }
         }
 
-        if (!best.is_empty()) {
+        if (!best_move.is_empty()) {
             const bound: Bound = if (best_score <= alpha) .Upper else .Exact;
-            self.tt_store(bound, key, depth, ply, best, best_score);
+            self.tt_store(bound, key, depth, ply, best_move, best_score);
+            if (is_root) {
+                 movepicker.promote(best_move, depth);
+            }
         }
         return best_score;
     }
@@ -414,8 +408,7 @@ pub const Search = struct {
 
     /// Returns a Entry when usable for scoring. The score of the entry is adjusted for the ply when mating distance is there.
     /// Hashmove can be used for move ordering and is always the entry's move except when nothing found. Then it is empty.
-    fn tt_probe(self: *Search, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value, hashmove: *Move) ?Entry
-    {
+    fn tt_probe(self: *Search, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value, hashmove: *Move) ?Entry {
         var entry: Entry = self.transpositiontable.probe(key) orelse {
             hashmove.* = .empty;
             return null;
@@ -458,8 +451,7 @@ pub const Search = struct {
     }
 
     /// In case of a stop the last search result must be discarded immediately.
-    fn check_stop(self: *Search, comptime callsite: CallSite) bool
-    {
+    fn check_stop(self: *Search, comptime callsite: CallSite) bool {
         if (self.stopped) return true;
         if (self.termination == .infinite) return false;
 
@@ -544,6 +536,7 @@ pub const Node = struct {
     }
 
     fn first_move(self: *const Node) Move {
+        assert(self.pv.len > 0);
         return self.pv.buffer[0];
     }
 
@@ -577,39 +570,31 @@ pub const Node = struct {
 const MovePicker = struct {
     extmoves: [types.max_move_count]ExtMove,
     count: u8,
-    current: u8,
     is_root: bool,
-    is_sorted: bool,
 
     fn init(is_root: bool) MovePicker {
         return .{
             .extmoves = undefined,
             .count = 0,
-            .current = 0,
             .is_root = is_root,
-            .is_sorted = false,
         };
     }
 
     /// Required function.
     pub fn reset(self: *MovePicker) void {
         self.count = 0;
-        self.current = 0;
-        self.is_sorted = false;
     }
 
     /// Required function.
     pub fn store(self: *MovePicker, move: Move) ?void {
-        self.extmoves[self.current] = ExtMove{ .move = move, .score = 0, .info = .empty };
+        self.extmoves[self.count] = ExtMove{ .move = move, .score = 0, .info = .empty };
         self.count += 1;
-        self.current += 1;
     }
 
     fn copy_from(self: *MovePicker, other: *const MovePicker) void {
         const cnt: u8 = other.count;
         @memcpy(self.extmoves[0..cnt], other.extmoves[0..cnt]);
         self.count = cnt;
-        self.current = 0;
     }
 
     fn generate_moves(self: *MovePicker, pos: *const Position, comptime us: Color) void {
@@ -674,13 +659,14 @@ const MovePicker = struct {
                     // TODO: e.score = search.quiet_heuristic_history[m.info.movedpiece.u][m.to];
                 },
             }
-            if (e.move == hashmove) e.score += 1000000;
+            if (e.move == hashmove) e.score += 4_000_000;
         }
     }
 
     fn extract_next(self: *MovePicker, current_idx: usize) *ExtMove {
         const ptr: [*]ExtMove = &self.extmoves;
-        if (!self.is_sorted) {
+        // The order of rootmoves is handled independantly.
+        if (!self.is_root) {
             var best_idx: usize = current_idx;
             var max_score: Value = ptr[current_idx].score;
             for (current_idx + 1..self.count) |idx| {
@@ -701,18 +687,48 @@ const MovePicker = struct {
         return self.extmoves[0..self.count];
     }
 
-    fn sort(self: *MovePicker) void {
-        std.mem.sort(ExtMove, self.slice(), {}, less_then);
-        self.is_sorted = true;
+    /// Put move in front. Typically the pv move. We make sure this score is the highest.
+    /// * TODO: still a bit clunky and naive...
+    /// * TODO: Pointers can be used. No searching needed.
+    fn promote(self: *MovePicker, m: Move, depth: Value) void
+    {
+        if (comptime lib.is_paranoid) {
+            assert(self.is_root);
+            assert(self.count > 0);
+        }
+
+        if (self.extmoves[0].move == m) return;
+        for (self.extmoves[1..self.count]) |*e|
+        {
+            if (e.move == m) {
+                e.score += 10_000_000 + depth;
+                self.sort();
+                return;
+            }
+        }
     }
 
-    fn less_then(_: void, a: ExtMove, b: ExtMove) bool {
+    fn sort(self: *MovePicker) void {
+        std.mem.sort(ExtMove, self.slice(), {}, less_than);
+    }
+
+    fn less_than(_: void, a: ExtMove, b: ExtMove) bool {
         return a.score > b.score;
+    }
+
+    fn debugprint(self: *const MovePicker, iteration: u8) void
+    {
+        io.debugprint("#{}: ", .{ iteration });
+        for (self.extmoves[0..self.count], 0..) |e, i|
+        {
+           io.debugprint("{f} {}; ", .{e.move, e.score});
+           if (i > 10) break;
+        }
+        io.debugprint("\n", .{});
     }
 };
 
-pub const SearchParams = struct
-{
+pub const SearchParams = struct {
     const infinite_search_params: SearchParams = .{
         .termination = .infinite,
         .max_depth = types.max_search_depth,
