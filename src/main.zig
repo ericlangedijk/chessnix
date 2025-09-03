@@ -11,13 +11,10 @@ pub fn main() !void
     defer lib.finalize();
 
     //  Debug tests.
-    if (comptime lib.is_debug)
-    {
+    if (comptime lib.is_debug) {
         try tests.run_silent_debugmode_tests();
         tests.print_struct_sizes();
     }
-
-    //try @import("tools/lichess.zig").reorder_lichess_puzzles();
 
     uci.run();
 }
