@@ -1533,7 +1533,7 @@ pub const Position = struct {
             var bb: u64 = self.state.checkers;
             while (bb != 0) {
                 const sq: Square = pop_square(&bb);
-                try io.print_buffered("{s} ", .{sq.to_string()});
+                try io.print_buffered("{t} ", .{sq.e});
             }
         }
         try io.print_buffered("\n", .{});
