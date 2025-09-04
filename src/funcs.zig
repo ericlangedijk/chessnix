@@ -120,6 +120,10 @@ pub fn popcnt(bitboard: u64) u7 {
     return @popCount(bitboard);
 }
 
+pub fn popcnt_v(bitboard: u64) Value {
+    return @popCount(bitboard);
+}
+
 pub fn contains_square(bitboard: u64, sq: Square) bool {
     return test_bit_64(bitboard, sq.u);
 }

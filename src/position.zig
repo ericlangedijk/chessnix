@@ -188,8 +188,8 @@ pub const Position = struct {
 
     fn init_empty_classic() Position {
         const b = bitboards;
-        const v_sum: Value = P.value() * 8 + N.value() * 2 + B.value() * 2 + Q.value() + K.value();
-        const m_sum: Value = P.material() * 8 + N.material() * 2 + B.material() * 2 + Q.material() + K.material();
+        const v_sum: Value = (P.value() * 8) + (N.value() * 2) + (B.value() * 2) + (R.value() * 2) + Q.value() + K.value();
+        const m_sum: Value = (P.material() * 8) + (N.material() * 2) + (B.material() * 2) + (R.material() * 2) + Q.material() + K.material();
 
         return .{
             .layout = .{
@@ -525,9 +525,9 @@ pub const Position = struct {
 
     pub fn phase_of(material_without_pawns: Value) GamePhase {
         return
-            if (material_without_pawns <= types.endgame_threshold) .Endgame
-            else if (material_without_pawns <= types.midgame_threshold) .Midgame
-            else .Opening;
+            if (material_without_pawns > types.midgame_threshold) .Opening
+            else if (material_without_pawns > types.endgame_threshold) .Midgame
+            else .Endgame;
     }
 
     pub fn phase(self: *const Position) GamePhase {

@@ -34,6 +34,7 @@ const wtf = lib.wtf;
 const float = funcs.float;
 const int = funcs.int;
 const popcnt = funcs.popcnt;
+const popcnt_v = funcs.popcnt_v;
 
 const Value = types.Value;
 const Float = types.Float;
@@ -178,25 +179,28 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                     {
                         const our_pawns: u64 = bb_current;
 
+                        // EXPERIMENTAL
+                        if (phase == .Opening and is_first_piece) {
+                            const e: Value = popcnt_v(our_pawns & bitboards.bb_center) * 10;
+                            add(&pawn_score, e, piece, .center_pawn, tracking, sq);
+                        }
+
                         // Reward passed pawn.
-                        if (is_passed_pawn(pos, us, sq))
-                        {
+                        if (is_passed_pawn(pos, us, sq)) {
                             const e: Value = Tables.passed_pawn_by_rank_scores[relative_rank];
                             add(&pawn_score, e, piece, .passed_pawn, tracking, sq);
                         }
 
                         // Punish doubled pawn.
                         const bb_doubled = bitboards.file_bitboards[file] & our_pawns;
-                        if (popcnt(bb_doubled) > 1)
-                        {
+                        if (popcnt(bb_doubled) > 1) {
                             const e: Value = Tables.doubled_pawn;
                             add(&pawn_score, e, piece, .doubled_pawn, tracking, sq);
                         }
 
                         // Punish isolated pawn.
                         const bb_isolated = masks.get_isolated_pawn_mask(sq) & our_pawns;
-                        if (bb_isolated == 0)
-                        {
+                        if (bb_isolated == 0) {
                             const e: Value = Tables.isolated_pawn;
                             add(&pawn_score, e, piece, .isolated_pawn, tracking, sq);
                         }
@@ -206,8 +210,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                             //add(&pawn_score, 10);
                         }
                     },
-                    .knight =>
-                    {
+                    .knight => {
                         // Reward knight is supported by a pawn.
                         if (is_supported_by_pawn(pos, us, sq))
                         {
@@ -220,8 +223,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         add(&mobility, popcnt(knight_attacks), piece, .mobility, tracking, sq);
                         //add(&mobility, Tables.mobility(piecetype, phase, knight_attacks), piece, .mobility, tracking, sq);
                     },
-                    .bishop =>
-                    {
+                    .bishop => {
                         const our_bishops: u64 = bb_current;
 
                         // Reward bishop pair.
@@ -235,8 +237,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         const bishop_attacks: u64 = data.get_bishop_attacks(sq, pos.all()) & ~bb_us;
                         add(&mobility, popcnt(bishop_attacks), piece, .mobility, tracking, sq);
                     },
-                    .rook =>
-                    {
+                    .rook => {
                         const our_rooks: u64 = bb_current;
                         const rook_attacks: u64 = data.get_rook_attacks(sq, bb_all);
 
@@ -262,8 +263,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         // Rook mobility
                         add(&mobility, popcnt(rook_attacks & ~bb_us), piece, .mobility, tracking, sq);
                     },
-                    .queen =>
-                    {
+                    .queen => {
                         //const our_queens: u64 = bb_current;
                         const queen_attacks: u64 = data.get_queen_attacks(sq, bb_all);
 
@@ -273,8 +273,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         // Queen mobility
                         add(&mobility, popcnt(queen_attacks & ~bb_us), piece, .mobility, tracking, sq);
                     },
-                    .king =>
-                    {
+                    .king => {
                         king_safety += 0; // not yet used.
 
                         const our_king_area: u64 = data.get_king_attacks(our_king_sq) & bb_us;
@@ -617,6 +616,7 @@ const Feature = enum
     passed_pawn,
     doubled_pawn,
     isolated_pawn,
+    center_pawn,
 
     // Bishop.
     bishop_pair,

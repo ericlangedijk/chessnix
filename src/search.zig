@@ -31,9 +31,9 @@ const Entry = tt.Entry;
 const Bound = tt.Bound;
 
 const max_u64: u64 = std.math.maxInt(u64);
-
 const max_search_depth: u8 = types.max_search_depth;
 const max_threads: u16 = types.max_threads;
+const infinity = types.infinity;
 
 const PV = lib.BoundedArray(Move, max_search_depth);
 const Nodes = lib.BoundedArray(Node, max_search_depth);
@@ -194,36 +194,59 @@ pub const Search = struct {
 
     fn iterative_deepening(self: *Search, comptime us: Color) void {
         const pos: *Position = &self.pos;
+
         // Create our rootmoves.
         self.rootmoves.generate_moves(pos, us);
         self.rootmoves.process_and_score_moves(self, Move.empty);
         self.rootmoves.sort();
+
         // Have something a.s.a.p.
         if (self.rootmoves.count > 0) self.the_move = self.rootmoves.extmoves[0].move;
-        // self.rootmoves.debugprint(0);
 
+        // Stuff we need.
+        // var window: Value = 16;
+        // var alpha: Value = -infinity;
+        // var beta: Value = infinity;
         var depth: u8 = 1;
-        var best_score: Value = -types.infinity;
-        while (true) {
+        var best_score: Value = -infinity;
+        var score: Value = 0;
+
+        // Search with increasing depth.
+        iterationloop: while (true) {
             self.iteration = depth;
-            const score: Value = self.alpha_beta(true, us, depth, -types.infinity, types.infinity);
+            self.seldepth = 0;
+            // // Setup aspiration window.
+            // window = if (depth >= 4) 5 else infinity;
+            // alpha = @max(-infinity, score - window);
+            // beta = @min(score + window, infinity);
+
+            // // Search widening scoring window.
+            // aspirationloop: while (window <= infinity) {
+            //     score = self.alpha_beta(true, us, depth, alpha, beta);
+            //     if (self.stopped) break :aspirationloop;
+            // }
+
+            score = self.alpha_beta(true, us, depth, -infinity, infinity);
+
             // Discard result if timeout.
-            if (!self.stopped)
-            {
-                // We found a better move.
-                if (score > best_score) {
-                    best_score = score;
-                }
-                // Copy the last finished pv.
-                self.pv_node.copy_from(self.get_node(2));
-                self.the_move = self.pv_node.first_move();
+            if (self.stopped) break :iterationloop;
+
+            // We found a better move.
+            if (score > best_score) {
+                best_score = score;
             }
-            //self.rootmoves.debugprint(depth);
+
+            // Copy the last finished pv.
+            self.pv_node.copy_from(self.get_node(2));
+            self.the_move = self.pv_node.first_move();
+
             print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
-            if (self.check_stop(.iterative_deepening)) break;
-            if (depth >= max_search_depth) break;
+
+            if (self.check_stop(.iterative_deepening)) break :iterationloop;
+            if (depth >= max_search_depth) break :iterationloop;
             depth += 1;
         }
+        print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
     }
 
     fn alpha_beta(self: *Search, comptime is_root: bool, comptime us: Color, depth: u8, alpha: Value, beta: Value) Value {
@@ -294,11 +317,6 @@ pub const Search = struct {
 
             // Discard result.
             if (self.stopped) break;
-
-            // // // Adjust score if rootmoves for move ordering in the next iteration.
-            // if (is_root) {
-            //     extmove_ptr.score = score;
-            // }
 
             // Better move.
             if (score > best_score) {
@@ -690,8 +708,7 @@ const MovePicker = struct {
     /// Put move in front. Typically the pv move. We make sure this score is the highest.
     /// * TODO: still a bit clunky and naive...
     /// * TODO: Pointers can be used. No searching needed.
-    fn promote(self: *MovePicker, m: Move, depth: Value) void
-    {
+    fn promote(self: *MovePicker, m: Move, depth: Value) void {
         if (comptime lib.is_paranoid) {
             assert(self.is_root);
             assert(self.count > 0);

@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
+const bitboards = @import("bitboards.zig");
 const funcs = @import("funcs.zig");
 const bounded_array = @import("bounded_array.zig");
 const types = @import("types.zig");
@@ -123,6 +124,9 @@ fn uci_loop() !void
             else if (eql(cmd, "e")) {
                 const e = eval.evaluate_abs(&engine.pos, true);
                 try io.print("eval abs = {}\n", .{ e });
+                io.debugprint("{t}\n", .{ engine.pos.phase()});
+                io.debugprint("{}\n", .{ engine.pos.non_pawn_material()});
+                io.debugprint("{any}\n", .{ engine.pos.materials});
                 //eval.bench(&engine.pos);
             }
         }
