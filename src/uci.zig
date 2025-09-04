@@ -45,38 +45,33 @@ fn uci_loop() !void
     }
 
     command_loop: while (true) {
-        const input = try io.readline() orelse break;
+        const input = try io.readline() orelse break :command_loop;
         var tokenizer: Tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :command_loop;
 
         // Uci commands.
         if (eql(cmd, "uci")) {
-            try io.print
-            (
-                \\id chessnix {s}
-                \\nauthor eric
-                \\uciok
-                \\
-                , .{ lib.version }
-            );
+            try print_uciok();
         }
         else if (eql(cmd, "isready")) {
             try io.print("readyok\n", .{});
         }
         else if (eql(cmd, "ucinewgame")) {
-            try engine.set_startpos(null);
+            engine.set_startpos();
+            engine.clear_for_new_game();
         }
         else if (eql(cmd, "go")) {
             const go: Go = parse_go(&tokenizer) catch continue :command_loop;
-            try engine.start(&go);
-            // Each go command must be eventually responded to with bestmove, once the search is completed or interrupted with stop.
+            try engine.start(&go); // Each go command must be eventually responded to with bestmove, once the search is completed or interrupted with stop.
         }
         else if (eql(cmd, "stop")) {
-            try engine.stop();
-            // Return bestmove if we were thinking, otherwise ignore.
+            try engine.stop(); // Return bestmove if we were thinking, otherwise ignore.
+        }
+        else if (eql(cmd, "setoption")) {
+            try parse_and_set_option(&tokenizer);
         }
         else if (eql(cmd, "position")) {
-            parse_position(&tokenizer) catch |err| { print_error(err); continue :command_loop; };
+            parse_and_set_position(&tokenizer) catch |err| { print_error(err); continue :command_loop; };
         }
         else if (eql(cmd, "quit")) {
             return;
@@ -90,13 +85,17 @@ fn uci_loop() !void
                 try perft.bench();
             }
             else if (eql(cmd, "perft")) {
-                const next = tokenizer.next() orelse continue :command_loop;
-                const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :command_loop;
+                var depth: u8 = 1;
+                if (tokenizer.next()) |next| {
+                    depth = std.fmt.parseInt(u8, next, 10) catch 1;
+                }
                 perft.run(&engine.pos, depth);
             }
             else if (eql(cmd, "qperft")) {
-                const next = tokenizer.next() orelse continue :command_loop;
-                const depth: u8 = std.fmt.parseInt(u8, next, 10) catch continue :command_loop;
+                var depth: u8 = 1;
+                if (tokenizer.next()) |next| {
+                    depth = std.fmt.parseInt(u8, next, 10) catch 1;
+                }
                 perft.qrun(&engine.pos, depth);
             }
             // DEBUG TEMP
@@ -124,9 +123,9 @@ fn uci_loop() !void
             else if (eql(cmd, "e")) {
                 const e = eval.evaluate_abs(&engine.pos, true);
                 try io.print("eval abs = {}\n", .{ e });
-                io.debugprint("{t}\n", .{ engine.pos.phase()});
-                io.debugprint("{}\n", .{ engine.pos.non_pawn_material()});
-                io.debugprint("{any}\n", .{ engine.pos.materials});
+                // io.debugprint("{t}\n", .{ engine.pos.phase()});
+                // io.debugprint("{}\n", .{ engine.pos.non_pawn_material()});
+                // io.debugprint("{any}\n", .{ engine.pos.materials});
                 //eval.bench(&engine.pos);
             }
         }
@@ -138,8 +137,43 @@ pub fn print_error(err: anyerror) void {
     lib.io.print("info string error: {t}\n", .{ err }) catch lib.wtf();
 }
 
-/// Parce uci command after "position"
-fn parse_position(tokenizer: *Tokenizer) !void {
+fn print_uciok() !void {
+    try io.print
+    (
+        \\id chessnix {s}
+        \\id author eric
+        \\option name Hash spin default {} min {} max {}
+        \\uciok
+        \\
+        ,
+        .{
+            lib.version,
+            engine.Options.default_hash_size, engine.Options.min_hash_size, engine.Options.max_hash_size,
+        }
+    );
+}
+
+/// Parse UCI command after "setoption"
+fn parse_and_set_option(tokenizer: *Tokenizer) !void {
+    // name Hash value 32
+    const name_token: []const u8 = tokenizer.next() orelse return;
+    if (!eql(name_token, "name")) return;
+
+    const name: []const u8 = tokenizer.next() orelse return;
+
+    const value_token: []const u8 = tokenizer.next() orelse return;
+    if (!eql(value_token, "value")) return;
+
+    const value: []const u8 = tokenizer.next() orelse return;
+    if (eql(name, "Hash")) {
+        const v: u64 = std.fmt.parseInt(u64, value, 10) catch return;
+        engine.options.set_hash_size(v);
+    }
+    io.debugprint("{any}\n", .{ engine.options});
+}
+
+/// Parce UCI command after "position"
+fn parse_and_set_position(tokenizer: *Tokenizer) !void {
     const next = tokenizer.next() orelse return;
     if (eql(next, "fen")) {
         var fen_and_moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
@@ -147,15 +181,15 @@ fn parse_position(tokenizer: *Tokenizer) !void {
     }
     else if (eql(next, "startpos")) {
         if (tokenizer.next()) |n| {
-            if (eql(n, "moves")) try engine.set_startpos(tokenizer.rest());
+            if (eql(n, "moves")) try engine.set_startpos_with_optional_moves(tokenizer.rest());
         }
         else {
-            try engine.set_startpos(null);
+            engine.set_startpos();
         }
     }
 }
 
-/// Parse uci after "go"
+/// Parse UCI command after "go"
 fn parse_go(tokenizer: *Tokenizer) !Go
 {
     var go: Go = .empty;

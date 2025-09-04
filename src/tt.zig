@@ -7,12 +7,14 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
+const engine = @import("engine.zig");
 
 const ctx = lib.ctx;
 const wtf = lib.wtf();
 
 const Value = types.Value;
 const Move = types.Move;
+const using = engine.using;
 
 /// Test phase only.
 pub const using_tt: bool = true;
@@ -77,7 +79,7 @@ pub const TranspositionTable = struct {
 
     /// TODO: atomic store when threading.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: u8, move: Move, score: Value) void {
-        if (!using_tt) return;
+        if (!using.tt) return;
         const entry: *Entry = self.get_mut(key);
         const was_empty = entry.key == 0;
         const overwrite: bool = was_empty or entry.age != self.age or entry.key != key or depth >= entry.depth;
@@ -88,7 +90,7 @@ pub const TranspositionTable = struct {
 
     /// Just return the entry if not empty and key matches. Ignoring age.
     pub fn probe(self: *TranspositionTable, key: u64) ?Entry {
-        if (!using_tt) return null;
+        if (!using.tt) return null;
         const entry: Entry = self.get(key);
         if (entry.bound == .None or entry.key != key) return null;
         return entry;
@@ -128,6 +130,9 @@ const Error = error {
 };
 
 test "transpositiontable" {
+
+    if (!using.tt) return;
+
     const position = @import("position.zig");
     try lib.initialize();
 

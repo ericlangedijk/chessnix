@@ -97,6 +97,7 @@ pub const Color = packed union
     pub fn idx(self: Color) usize {
         return self.u;
     }
+
 };
 
 pub const Coord = packed struct {
@@ -347,6 +348,7 @@ pub const Square = packed union
     pub fn char_of_rank(self: Square) u8 {
         return @as(u8, '1') + self.rank();
     }
+
     pub fn char_of_file(self: Square) u8 {
         return @as(u8, 'a') + self.file();
     }
@@ -591,6 +593,13 @@ pub const MoveType = enum(u2) {
 
 /// Quite a struct for 2 bits.
 pub const MoveInfo = packed union {
+    /// In case of a promotion.
+    prom: Prom,
+    /// In case of castling.
+    castletype: CastleType,
+    /// Raw value.
+    u: u2,
+
     pub const empty: MoveInfo = .{ .u = 0 };
 
     pub const Prom = enum(u2) {
@@ -628,15 +637,7 @@ pub const MoveInfo = packed union {
         pub fn to_san_char(self: Prom) u8 {
             return "NBRQ"[@intFromEnum(self)];
         }
-
     };
-
-    /// In case of a promotion.
-    prom: Prom,
-    /// In case of castling.
-    castletype: CastleType,
-    /// Raw value.
-    u: u2,
 };
 
 pub const Move = packed struct(u16) {

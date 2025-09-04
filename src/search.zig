@@ -10,13 +10,14 @@ const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const uci = @import("uci.zig");
 const eval = @import("eval.zig");
+const engine = @import("engine.zig");
 const tt = @import("tt.zig");
 
 const assert = std.debug.assert;
 const ctx = lib.ctx;
 const io = lib.io;
 const wtf = lib.wtf;
-
+const using = engine.using;
 
 const Value = types.Value;
 const Color = types.Color;
@@ -34,6 +35,8 @@ const max_u64: u64 = std.math.maxInt(u64);
 const max_search_depth: u8 = types.max_search_depth;
 const max_threads: u16 = types.max_threads;
 const infinity = types.infinity;
+const mate = types.mate;
+const stalemate = types.stalemate;
 
 const PV = lib.BoundedArray(Move, max_search_depth);
 const Nodes = lib.BoundedArray(Node, max_search_depth);
@@ -47,14 +50,14 @@ pub const SearchManager = struct {
     /// Settings from uci, for timeout etc.
     searchparams: SearchParams,
     /// The actual worker.
-    searcher: Search,
+    searcher: Searcher,
 
     pub fn init() !SearchManager {
         var mgr: SearchManager = undefined;
         mgr.transpositiontable = try .init(64);
         mgr.num_threads = 1;
         mgr.searchparams = .infinite_search_params;
-        mgr.searcher = Search.init();
+        mgr.searcher = Searcher.init();
         return mgr;
     }
 
@@ -82,7 +85,7 @@ pub const SearchManager = struct {
 
         self.searchparams = .init(go);
         //try lib.io.print("{any}\n", .{ self.searchparams });
-        self.searcher.start_search(self, pos);
+        self.searcher.start(self, pos);
     }
 
     pub fn stop(self: *SearchManager) !void {
@@ -90,9 +93,14 @@ pub const SearchManager = struct {
         _ = self;
         try lib.io.print("WE SHOULD STTOP THINKING\n", .{});
     }
+
+    pub fn clear_for_new_game(self: *SearchManager) void
+    {
+        self.transpositiontable.clear();
+    }
 };
 
-pub const Search = struct {
+pub const Searcher = struct {
     /// Backlink ref. Only valid after start_search. TODO: Bad design still. Maybe use @fieldParentPtr().
     mgr: *SearchManager,
     /// Copied from mgr, for direct access.
@@ -122,7 +130,7 @@ pub const Search = struct {
     /// Tracking search time.
     timer: utils.Timer,
 
-    fn init() Search {
+    fn init() Searcher {
         return .{
             .mgr = undefined,
             .transpositiontable = undefined,
@@ -141,11 +149,11 @@ pub const Search = struct {
         };
     }
 
-    fn deinit(self: *Search) void {
+    fn deinit(self: *Searcher) void {
         _ = self;
     }
 
-    fn start_search(self: *Search, mgr: *SearchManager, input_pos: *const Position) void {
+    fn start(self: *Searcher, mgr: *SearchManager, input_pos: *const Position) void {
         // Shared stuff.
         self.mgr = mgr;
         self.termination = mgr.searchparams.termination;
@@ -188,11 +196,11 @@ pub const Search = struct {
         lib.io.print("bestmove {f}\n", .{ self.the_move }) catch wtf();
     }
 
-    fn stop_search(self: *Search) void {
+    fn stop(self: *Searcher) void {
         _ = self;
     }
 
-    fn iterative_deepening(self: *Search, comptime us: Color) void {
+    fn iterative_deepening(self: *Searcher, comptime us: Color) void {
         const pos: *Position = &self.pos;
 
         // Create our rootmoves.
@@ -204,9 +212,6 @@ pub const Search = struct {
         if (self.rootmoves.count > 0) self.the_move = self.rootmoves.extmoves[0].move;
 
         // Stuff we need.
-        // var window: Value = 16;
-        // var alpha: Value = -infinity;
-        // var beta: Value = infinity;
         var depth: u8 = 1;
         var best_score: Value = -infinity;
         var score: Value = 0;
@@ -215,18 +220,8 @@ pub const Search = struct {
         iterationloop: while (true) {
             self.iteration = depth;
             self.seldepth = 0;
-            // // Setup aspiration window.
-            // window = if (depth >= 4) 5 else infinity;
-            // alpha = @max(-infinity, score - window);
-            // beta = @min(score + window, infinity);
 
-            // // Search widening scoring window.
-            // aspirationloop: while (window <= infinity) {
-            //     score = self.alpha_beta(true, us, depth, alpha, beta);
-            //     if (self.stopped) break :aspirationloop;
-            // }
-
-            score = self.alpha_beta(true, us, depth, -infinity, infinity);
+            score = self.search(true, us, depth, -infinity, infinity);
 
             // Discard result if timeout.
             if (self.stopped) break :iterationloop;
@@ -240,6 +235,8 @@ pub const Search = struct {
             self.pv_node.copy_from(self.get_node(2));
             self.the_move = self.pv_node.first_move();
 
+            if (lib.is_debug and best_score >= types.mate_threshold) break :iterationloop;
+
             print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
 
             if (self.check_stop(.iterative_deepening)) break :iterationloop;
@@ -249,11 +246,14 @@ pub const Search = struct {
         print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
     }
 
-    fn alpha_beta(self: *Search, comptime is_root: bool, comptime us: Color, depth: u8, alpha: Value, beta: Value) Value {
+    /// Alpha beta.
+    fn search(self: *Searcher, comptime is_root: bool, comptime us: Color, depth: u8, input_alpha: Value, input_beta: Value) Value {
         const them = comptime us.opp();
+        const beta = input_beta;
         const pos: *Position = &self.pos;
         const key: u64 = pos.state.key;
         const ply: u16 = pos.ply;
+        var alpha = input_alpha;
 
         self.processed_nodes += 1;
         self.seldepth = @max(self.seldepth, ply);
@@ -270,7 +270,7 @@ pub const Search = struct {
         }
 
         // Requested depth reached: plunge into quiescence.
-        if (depth == 0) return self.quiet(is_root, us, alpha, beta);
+        if (depth == 0) return self.qsearch(is_root, us, alpha, beta);
 
         // Too deep.
         if (ply >= max_search_depth) return eval.evaluate(pos, false);
@@ -281,25 +281,23 @@ pub const Search = struct {
 
         // Clear current node.
         node.clear();
+        node.extension = parentnode.extension;
 
         // Draw by rule.
         if (pos.state.rule50 >= 100) return 0;
 
-        const is_check: bool = pos.is_check();
-
-        // Use rootmoves or generate on stack.
-        const movepicker: *MovePicker =
-            if (is_root) &self.rootmoves
-            else local: {
-                var mp = MovePicker.init(false);
-                mp.generate_moves(pos, us);
-                mp.process_and_score_moves(self, hashmove);
-                break :local &mp;
-            };
+        // Use rootmoves or generate on stack. Assuming that for is_root the local mp is optimized so erased.
+        var local_movepicker: MovePicker = .empty;
+        const movepicker: *MovePicker = if (is_root) &self.rootmoves else &local_movepicker;
+        if (!is_root) {
+            local_movepicker.generate_moves(pos, us);
+            local_movepicker.process_and_score_moves(self, hashmove);
+        }
 
         // Is this checkmate or stalemate?
+        const is_check: bool = pos.is_check();
         if (movepicker.count == 0) {
-            const score = if (is_check) -types.mate + pos.ply else types.stalemate;
+            const score = if (is_check) -mate + pos.ply else stalemate;
             self.tt_store(.Exact, key, depth, ply, .empty, score);
             return score;
         }
@@ -307,52 +305,77 @@ pub const Search = struct {
         // Stuff we need.
         var best_score: Value = alpha;
         var best_move: Move = .empty;
-        var st: StateInfo = undefined;
-        var ext: u8 = 0;
+        var extension: u8 = 0;
+        var score: Value = 0;
 
         // Go trough the moves.
-        for (0..movepicker.count) |move_idx| {
+        moveloop: for (0..movepicker.count) |move_idx| {
             const extmove_ptr: *ExtMove = movepicker.extract_next(move_idx);
             const e: ExtMove = extmove_ptr.*;
 
-            // Interesting extension.
-            if (is_check and parentnode.ext == 0 and depth < 8) {
-                ext = 1;
-                node.ext = parentnode.ext + 1;
-            }
+            // A scoped block for 1 move.
+            this_move: {
+                var st: StateInfo = undefined;
+                pos.make_move(us, &st, e.move);
+                defer pos.unmake_move(us);
 
-            pos.make_move(us, &st, e.move);
-            const score: Value = -self.alpha_beta(false, them, depth - 1 + ext, -beta, -best_score);
-            pos.unmake_move(us);
+                // Interesting extension.
+                if (using.extensions and is_check and node.extension < 2 and depth < 8) {
+                    extension = 1;
+                    node.extension += 1;
+                }
+
+                // TODO: LMR
+
+                // Normal
+                if (!using.pvs or move_idx == 0) {
+                    score = -self.search(false, them, depth - 1 + extension, -beta, -alpha);
+                    if (self.stopped) break :this_move;
+                }
+                // PVS. Never on the first move.
+                else {
+                    score = -self.search(false, them, depth - 1 + extension, -alpha - 1, -alpha);
+                    if (self.stopped) break :this_move;
+                    // PVS fail -> research.
+                    if (score > alpha and score < beta) {
+                        score = -self.search(false, them, depth - 1 + extension, -beta, -alpha);
+                        if (self.stopped) break :this_move;
+                    }
+                }
+            } // (this_move:)
 
             // Discard result.
-            if (self.stopped) break;
+            if (self.stopped) break :moveloop;
 
             // Better move.
             if (score > best_score) {
-                // Fail high.
-                if (score >= beta) {
-                    if (e.info.is_quiet) self.record_quietmove_beta_cutoff(depth, e);
-                    self.tt_store(.Lower, key, depth, ply, e.move, score);
-                    return score;
-                }
-                best_move = e.move;
                 best_score = score;
-                node.update_pv(e.move, score, childnode);
+                if (score > alpha)
+                {
+                    best_move = e.move;
+                    alpha = score;
+                    node.update_pv(e.move, score, childnode);
+                    // Fail high.
+                    if (score >= beta) {
+                        if (e.info.is_quiet) self.record_quietmove_beta_cutoff(depth, e);
+                        break :moveloop;
+                    }
+                }
             }
         }
 
         if (!best_move.is_empty()) {
-            const bound: Bound = if (best_score <= alpha) .Upper else .Exact;
+            const bound: Bound = if (best_score >= beta) .Lower else if (alpha != input_alpha) .Exact else .Upper;
             self.tt_store(bound, key, depth, ply, best_move, best_score);
             if (is_root) {
-                 movepicker.promote(best_move, depth);
+                movepicker.promote(best_move, depth);
             }
         }
-        return best_score;
+        return alpha;
     }
 
-    fn quiet(self: *Search, comptime is_root: bool, comptime us: Color, input_alpha: Value, beta: Value) Value {
+    /// Quiescence.
+    fn qsearch(self: *Searcher, comptime is_root: bool, comptime us: Color, input_alpha: Value, beta: Value) Value {
         assert(is_root == false); // TODO: so remove this nonsense!!
         // TT probing and storing is done here with depth zero.
          //_ = is_root;
@@ -406,7 +429,7 @@ pub const Search = struct {
             const e: ExtMove = extmove_ptr.*;
             var st: StateInfo = undefined;
             pos.make_move(us, &st, e.move);
-            const score: Value = -self.quiet(false, them, -beta, -alpha);
+            const score: Value = -self.qsearch(false, them, -beta, -alpha);
             pos.unmake_move(us);
 
             // Discard result.
@@ -425,18 +448,18 @@ pub const Search = struct {
         return alpha;
     }
 
-    fn record_quietmove_beta_cutoff(self: *Search, depth: Value, e: ExtMove) void {
+    fn record_quietmove_beta_cutoff(self: *Searcher, depth: Value, e: ExtMove) void {
         self.quiet_heuristic_history[e.info.moved_piece.u][e.move.to.u] += depth * depth;
     }
 
-    fn tt_store(self: *Search, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
+    fn tt_store(self: *Searcher, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
         const adjusted_score = tt.get_adjusted_score_for_store(score, ply);
         self.transpositiontable.store(bound, key, depth, move, adjusted_score);
     }
 
     /// Returns a Entry when usable for scoring. The score of the entry is adjusted for the ply when mating distance is there.
     /// Hashmove can be used for move ordering and is always the entry's move except when nothing found. Then it is empty.
-    fn tt_probe(self: *Search, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value, hashmove: *Move) ?Entry {
+    fn tt_probe(self: *Searcher, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value, hashmove: *Move) ?Entry {
         var entry: Entry = self.transpositiontable.probe(key) orelse {
             hashmove.* = .empty;
             return null;
@@ -479,7 +502,7 @@ pub const Search = struct {
     }
 
     /// In case of a stop the last search result must be discarded immediately.
-    fn check_stop(self: *Search, comptime callsite: CallSite) bool {
+    fn check_stop(self: *Searcher, comptime callsite: CallSite) bool {
         if (self.stopped) return true;
         if (self.termination == .infinite) return false;
 
@@ -532,7 +555,7 @@ pub const Search = struct {
         unreachable;
     }
 
-    fn get_node(self: *Search, index: u16) *Node {
+    fn get_node(self: *Searcher, index: u16) *Node {
         return &self.nodes.buffer[index];
     }
 
@@ -552,8 +575,8 @@ pub const Node = struct {
     pv: PV = .{},
     /// Current eval.
     score: Value = 0,
-    /// Extensions done
-    ext: u8 = 0,
+    /// Extensions done (sum of chain).
+    extension: u8 = 0,
 
     const empty: Node = .{};
 
@@ -564,7 +587,7 @@ pub const Node = struct {
     fn clear(self: *Node) void {
         self.pv.len = 0;
         self.score = 0;
-        self.ext = 0;
+        self.extension = 0;
     }
 
     fn first_move(self: *const Node) Move {
@@ -604,6 +627,8 @@ const MovePicker = struct {
     count: u8,
     is_root: bool,
 
+    const empty: MovePicker = .{ .extmoves = undefined, .count = 0, .is_root = false };
+
     fn init(is_root: bool) MovePicker {
         return .{
             .extmoves = undefined,
@@ -639,7 +664,7 @@ const MovePicker = struct {
     }
 
     /// Fill ExtMove info and give each generated move an initial heuristic score. Crucial for the search algorithm.
-    fn process_and_score_moves(self: *MovePicker, search: *const Search, hashmove: Move) void {
+    fn process_and_score_moves(self: *MovePicker, search: *const Searcher, hashmove: Move) void {
         const pos: *const Position = &search.pos;
 
         // 1. TT move
@@ -831,6 +856,9 @@ fn print_san_pv(input_pos: *const Position, pv_node: *const Node) !void {
     try san.write_san_line(input_pos, pv_node.pv.slice(), lib.io.out);
     lib.io.print("\n", .{}) catch wtf();
 }
+
+// TODO: search extension on 1 legal move?
+// TODO: PVS corrupts distance to mate.
 
 // Case 1 – Fail Low
     // Child’s score <= alpha.
