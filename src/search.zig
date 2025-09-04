@@ -277,6 +277,7 @@ pub const Search = struct {
 
         const node: *Node = self.get_node(ply + 2);
         const childnode: *const Node = self.get_node(ply + 3);
+        const parentnode: *const Node = self.get_node(ply + 1);
 
         // Clear current node.
         node.clear();
@@ -303,16 +304,25 @@ pub const Search = struct {
             return score;
         }
 
+        // Stuff we need.
         var best_score: Value = alpha;
         var best_move: Move = .empty;
         var st: StateInfo = undefined;
+        var ext: u8 = 0;
 
         // Go trough the moves.
         for (0..movepicker.count) |move_idx| {
             const extmove_ptr: *ExtMove = movepicker.extract_next(move_idx);
             const e: ExtMove = extmove_ptr.*;
+
+            // Interesting extension.
+            if (is_check and parentnode.ext == 0 and depth < 8) {
+                ext = 1;
+                node.ext = parentnode.ext + 1;
+            }
+
             pos.make_move(us, &st, e.move);
-            const score: Value = -self.alpha_beta(false, them, depth - 1, -beta, -best_score);
+            const score: Value = -self.alpha_beta(false, them, depth - 1 + ext, -beta, -best_score);
             pos.unmake_move(us);
 
             // Discard result.
@@ -538,11 +548,14 @@ pub const Search = struct {
 };
 
 pub const Node = struct {
-    const empty: Node = .{};
     /// Local PV during search.
     pv: PV = .{},
     /// Current eval.
     score: Value = 0,
+    /// Extensions done
+    ext: u8 = 0,
+
+    const empty: Node = .{};
 
     fn init() Node {
         return .{};
@@ -551,6 +564,7 @@ pub const Node = struct {
     fn clear(self: *Node) void {
         self.pv.len = 0;
         self.score = 0;
+        self.ext = 0;
     }
 
     fn first_move(self: *const Node) Move {
