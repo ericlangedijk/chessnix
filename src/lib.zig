@@ -69,8 +69,8 @@ pub const MemoryContext = struct {
     }
 };
 
-var in_buffer: [4096]u8 = undefined;
-var out_buffer: [4096]u8 = undefined;
+var in_buffer: [1024]u8 = undefined;
+var out_buffer: [1924]u8 = undefined;
 var stdin: std.fs.File.Reader = undefined;
 var stdout: std.fs.File.Writer = undefined;
 

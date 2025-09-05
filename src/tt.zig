@@ -111,20 +111,6 @@ pub const TranspositionTable = struct {
     }
 };
 
-/// Adjust score for mate in X when storing.
-pub fn get_adjusted_score_for_store(score: Value, ply: u16) Value {
-    if (score >= types.mate_threshold) return score + ply;
-    if (score <= -types.mate_threshold) return score - ply;
-    return score;
-}
-
-/// Adjust score for mate in X when probing.
-pub fn get_adjusted_score_for_probe(score: Value, ply: u16) Value {
-    if (score >= types.mate_threshold) return score - ply;
-    if (score <= -types.mate_threshold) return score + ply;
-    return score;
-}
-
 const Error = error {
     TTSizeMustBeAPowerOfTwo,
 };

@@ -221,7 +221,7 @@ pub const Searcher = struct {
             self.iteration = depth;
             self.seldepth = 0;
 
-            score = self.search(true, us, depth, -infinity, infinity);
+            score = self.search(true, false, us, depth, -infinity, infinity);
 
             // Discard result if timeout.
             if (self.stopped) break :iterationloop;
@@ -235,7 +235,7 @@ pub const Searcher = struct {
             self.pv_node.copy_from(self.get_node(2));
             self.the_move = self.pv_node.first_move();
 
-            if (lib.is_debug and best_score >= types.mate_threshold) break :iterationloop;
+            //if (lib.is_debug and best_score >= types.mate_threshold) break :iterationloop;
 
             print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
 
@@ -247,7 +247,7 @@ pub const Searcher = struct {
     }
 
     /// Alpha beta.
-    fn search(self: *Searcher, comptime is_root: bool, comptime us: Color, depth: u8, input_alpha: Value, input_beta: Value) Value {
+    fn search(self: *Searcher, comptime is_root: bool, comptime is_pvs: bool, comptime us: Color, depth: u8, input_alpha: Value, input_beta: Value) Value {
         const them = comptime us.opp();
         const beta = input_beta;
         const pos: *Position = &self.pos;
@@ -263,7 +263,7 @@ pub const Searcher = struct {
 
         // Probe.
         var hashmove: Move = .empty;
-        if (!is_root) {
+        if (!is_root and !is_pvs) {
             if (self.tt_probe(key, depth, ply, alpha, beta, &hashmove)) |entry| {
                 return entry.score;
             }
@@ -297,8 +297,7 @@ pub const Searcher = struct {
         // Is this checkmate or stalemate?
         const is_check: bool = pos.is_check();
         if (movepicker.count == 0) {
-            const score = if (is_check) -mate + pos.ply else stalemate;
-            self.tt_store(.Exact, key, depth, ply, .empty, score);
+            const score = if (is_check) -mate + ply else stalemate;
             return score;
         }
 
@@ -329,16 +328,16 @@ pub const Searcher = struct {
 
                 // Normal
                 if (!using.pvs or move_idx == 0) {
-                    score = -self.search(false, them, depth - 1 + extension, -beta, -alpha);
+                    score = -self.search(false, false, them, depth - 1 + extension, -beta, -alpha);
                     if (self.stopped) break :this_move;
                 }
                 // PVS. Never on the first move.
                 else {
-                    score = -self.search(false, them, depth - 1 + extension, -alpha - 1, -alpha);
+                    score = -self.search(false, true, them, depth - 1 + extension, -alpha - 1, -alpha);
                     if (self.stopped) break :this_move;
                     // PVS fail -> research.
                     if (score > alpha and score < beta) {
-                        score = -self.search(false, them, depth - 1 + extension, -beta, -alpha);
+                        score = -self.search(false, false, them, depth - 1 + extension, -beta, -alpha);
                         if (self.stopped) break :this_move;
                     }
                 }
@@ -452,8 +451,22 @@ pub const Searcher = struct {
         self.quiet_heuristic_history[e.info.moved_piece.u][e.move.to.u] += depth * depth;
     }
 
+    /// Adjust score for mate in X when storing.
+    fn get_adjusted_score_for_tt_store(score: Value, ply: u16) Value {
+        if (score >= types.mate_threshold) return score + ply
+        else if (score <= -types.mate_threshold) return score - ply;
+        return score;
+    }
+
+    /// Adjust score for mate in X when probing.
+    fn get_adjusted_score_for_tt_probe(score: Value, ply: u16) Value {
+        if (score >= types.mate_threshold) return score - ply
+        else if (score <= -types.mate_threshold) return score + ply;
+        return score;
+    }
+
     fn tt_store(self: *Searcher, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
-        const adjusted_score = tt.get_adjusted_score_for_store(score, ply);
+        const adjusted_score = get_adjusted_score_for_tt_store(score, ply);
         self.transpositiontable.store(bound, key, depth, move, adjusted_score);
     }
 
@@ -480,7 +493,7 @@ pub const Searcher = struct {
                 return if (entry.depth >= depth) entry else null;
             },
             .Lower => {
-                const adjusted_score: Value = tt.get_adjusted_score_for_probe(entry.score, ply);
+                const adjusted_score: Value = get_adjusted_score_for_tt_probe(entry.score, ply);
                 if (adjusted_score >= beta) {
                     entry.score = adjusted_score;
                     return entry;
@@ -490,7 +503,7 @@ pub const Searcher = struct {
             .Upper =>
             {
                 if (entry.depth >= depth) {
-                    const adjusted_score: Value = tt.get_adjusted_score_for_probe(entry.score, ply);
+                    const adjusted_score: Value = get_adjusted_score_for_tt_probe(entry.score, ply);
                     if (adjusted_score <= alpha) {
                         entry.score = adjusted_score;
                         return entry;
@@ -856,6 +869,8 @@ fn print_san_pv(input_pos: *const Position, pv_node: *const Node) !void {
     try san.write_san_line(input_pos, pv_node.pv.slice(), lib.io.out);
     lib.io.print("\n", .{}) catch wtf();
 }
+
+//const TimeOut = error {};
 
 // TODO: search extension on 1 legal move?
 // TODO: PVS corrupts distance to mate.
