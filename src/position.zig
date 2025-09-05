@@ -1605,6 +1605,7 @@ pub const Position = struct {
             const ok: bool = std.mem.eql(Move, store1.slice(), store2.slice());
             return ok;
         }
+        else return true;
     }
 };
 

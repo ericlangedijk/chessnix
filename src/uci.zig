@@ -13,6 +13,7 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 const engine = @import("engine.zig");
 const search = @import("search.zig");
+const tt = @import("tt.zig");
 const eval = @import("eval.zig");
 const perft = @import("perft.zig");
 const tests = @import("tests.zig");
@@ -101,6 +102,9 @@ fn uci_loop() !void
             // DEBUG TEMP
             else if (eql(cmd, "kiwi")) {
                 try engine.set_position(tests.kiwi_fen, null);
+            }
+            else if (eql(cmd, "state")) {
+                print_state();
             }
             else if (eql(cmd, "deb")) {
                 try temp();
@@ -285,4 +289,15 @@ fn temp() !void {
     const good = eval.see(&engine.pos, m);
     const v = eval.see_score(&engine.pos, m);
     lib.io.debugprint("good capture = {}, see = {}\n", .{good, v});
+}
+
+/// Another stupid debug function.
+fn print_state() void {
+    const t: *const tt.TranspositionTable = &engine.searchmgr.transpositiontable;
+    io.debugprint("tt slots {}\n", .{t.len});
+    io.debugprint("tt filled {}\n", .{t.filled});
+    io.debugprint("tt permille {}\n", .{t.permille()});
+    // io.debugprint("\n", .{});
+    // io.debugprint("\n", .{});
+    // io.debugprint("\n", .{});
 }

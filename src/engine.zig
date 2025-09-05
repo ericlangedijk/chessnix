@@ -29,9 +29,9 @@ pub const using = packed struct {
     /// Principal Variation Search.
     pub const pvs: bool = true;
     /// Late Move Reduction.
-    pub const lmr: bool = true;
+    pub const lmr: bool = false;
     /// Interesting moves extensions.
-    pub const extensions: bool = true;
+    pub const ext: bool = true;
 };
 
 pub var history: [types.max_game_length]StateInfo = @splat(.empty);
@@ -58,7 +58,7 @@ pub fn set_startpos() void {
 
 /// After an illegal move we stop without crashing.
 pub fn set_startpos_with_optional_moves(moves: ?[]const u8) !void {
-    pos.set_startpos(&history[0]);
+    set_startpos();
     if (moves) |str| {
         parse_moves(str);
     }
@@ -70,12 +70,11 @@ pub fn set_startpos_with_optional_moves(moves: ?[]const u8) !void {
 /// * After an illegal move we stop without crashing.
 pub fn set_position(fen: ?[]const u8, moves: ?[]const u8) !void {
     const f = fen orelse {
-        pos.set_startpos(&history[0]);
+        set_startpos();
         return;
     };
 
     try pos.set(&history[0], f);
-    try pos.validate();
 
     if (moves) |m| {
         parse_moves(m);
@@ -103,6 +102,7 @@ pub fn stop() !void {
 
 pub fn clear_for_new_game() void
 {
+    // TODO: set startpos
     searchmgr.clear_for_new_game();
 }
 

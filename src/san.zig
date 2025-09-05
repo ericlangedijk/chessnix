@@ -38,7 +38,18 @@ pub fn write_san_line(input_pos: *const Position, moves: []const Move, writer: *
     if (moves.len == 0 ) return;
 
     var states: [128]StateInfo = undefined;
-    var pos: Position = .clone(input_pos, &states[0]);
+    var pos: Position = .empty;
+    pos.copy_from(input_pos, &states[0]);
+    //std.debug.assert(pos.equals(input_pos, true));
+
+    if (!pos.equals(input_pos, false)) {
+        //std.debug.hex
+        try pos.draw();
+        try input_pos.draw();
+    }
+
+    //if (true) return;
+
     var movenr = funcs.ply_to_movenumber(pos.game_ply, pos.to_move);
 
     // Write move nr.

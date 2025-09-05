@@ -777,7 +777,7 @@ pub const max_search_depth: u8 = 128;
 pub const max_threads: u16 = 32;
 
 pub const infinity: Value = 32000;
-pub const mate: Value = 28000;
+pub const mate: Value = 30000;
 pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;

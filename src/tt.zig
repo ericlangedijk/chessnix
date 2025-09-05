@@ -66,6 +66,7 @@ pub const TranspositionTable = struct {
 
     pub fn clear(self: *TranspositionTable) void {
         @memset(self.data, Entry.empty);
+        self.age = 0;
         self.filled = 0;
     }
 

@@ -109,8 +109,6 @@ pub const Searcher = struct {
     termination: Termination,
     /// A private copy of the engine pos.
     pos: Position,
-    /// Rootmoves, resorted each iteration.
-    rootmoves: MovePicker,
     /// Our node stack.
     nodes: Nodes,
     /// For scoring quiet moves. Indexing [Piece][Square].
@@ -124,7 +122,7 @@ pub const Searcher = struct {
     /// The max reached depth, including quiet depth and possible extensions.
     seldepth: u16,
     /// Iterative deepening nr.
-    iteration: u16,
+    iteration: u8,
     /// Timeout
     stopped: bool,
     /// Tracking search time.
@@ -136,7 +134,6 @@ pub const Searcher = struct {
             .transpositiontable = undefined,
             .termination = .infinite,
             .pos = .empty,
-            .rootmoves = .init(true),
             .nodes = .empty,
             .quiet_heuristic_history = std.mem.zeroes([16][64]Value),
             .the_move = .empty,
@@ -162,7 +159,6 @@ pub const Searcher = struct {
 
         // Reset stuff.
         self.timer.reset();
-        self.rootmoves.reset();
         self.nodes = .empty;
         self.the_move = .empty;
         self.stopped = false;
@@ -190,8 +186,8 @@ pub const Searcher = struct {
 
         // TODO: when threading put this out!
 
-        // Debug print
-        print_san_pv(input_pos, &self.pv_node) catch wtf();
+        // Debug print TODO: BUG IN THERE!!
+        // print_san_pv(input_pos, &self.pv_node) catch wtf();
         // UCI write bestmove after search.
         lib.io.print("bestmove {f}\n", .{ self.the_move }) catch wtf();
     }
@@ -201,27 +197,20 @@ pub const Searcher = struct {
     }
 
     fn iterative_deepening(self: *Searcher, comptime us: Color) void {
-        const pos: *Position = &self.pos;
-
-        // Create our rootmoves.
-        self.rootmoves.generate_moves(pos, us);
-        self.rootmoves.process_and_score_moves(self, Move.empty);
-        self.rootmoves.sort();
-
-        // Have something a.s.a.p.
-        if (self.rootmoves.count > 0) self.the_move = self.rootmoves.extmoves[0].move;
-
         // Stuff we need.
         var depth: u8 = 1;
         var best_score: Value = -infinity;
         var score: Value = 0;
+
+        const ss: SearchState = comptime .new(us);
 
         // Search with increasing depth.
         iterationloop: while (true) {
             self.iteration = depth;
             self.seldepth = 0;
 
-            score = self.search(true, false, us, depth, -infinity, infinity);
+            score = self.search(ss, depth, -infinity, infinity);
+
 
             // Discard result if timeout.
             if (self.stopped) break :iterationloop;
@@ -235,6 +224,7 @@ pub const Searcher = struct {
             self.pv_node.copy_from(self.get_node(2));
             self.the_move = self.pv_node.first_move();
 
+            //assert(self.rootmoves.extmoves[0].move == self.the_move);
             //if (lib.is_debug and best_score >= types.mate_threshold) break :iterationloop;
 
             print_pv(&self.pv_node, self.iteration, self.seldepth, self.processed_nodes, self.timer.read(), self.transpositiontable.permille());
@@ -247,9 +237,10 @@ pub const Searcher = struct {
     }
 
     /// Alpha beta.
-    fn search(self: *Searcher, comptime is_root: bool, comptime is_pvs: bool, comptime us: Color, depth: u8, input_alpha: Value, input_beta: Value) Value {
-        const them = comptime us.opp();
-        const beta = input_beta;
+    fn search(self: *Searcher, comptime ss: SearchState, depth: u8, input_alpha: Value, beta: Value) Value {
+        const us: Color = comptime ss.us;
+        const is_root = comptime ss.is_root;
+        //const is_pvs = comptime ss.stage == .pvs;
         const pos: *Position = &self.pos;
         const key: u64 = pos.state.key;
         const ply: u16 = pos.ply;
@@ -263,14 +254,25 @@ pub const Searcher = struct {
 
         // Probe.
         var hashmove: Move = .empty;
-        if (!is_root and !is_pvs) {
+        if (!is_root) {
             if (self.tt_probe(key, depth, ply, alpha, beta, &hashmove)) |entry| {
-                return entry.score;
+
+
+                if (ss.is_full()) return entry.score
+                else if (entry.bound != .Exact) return entry.score;
+
+
+
+                // switch (ss.stage) {
+                //     .full => return entry.score,
+                //     .lmr => if (entry.bound != .Exact) return entry.score,
+                //     .pvs => if (entry.bound != .Exact) return entry.score,
+                // }
             }
         }
 
         // Requested depth reached: plunge into quiescence.
-        if (depth == 0) return self.qsearch(is_root, us, alpha, beta);
+        if (depth == 0) return self.qsearch(us, alpha, beta);
 
         // Too deep.
         if (ply >= max_search_depth) return eval.evaluate(pos, false);
@@ -286,13 +288,12 @@ pub const Searcher = struct {
         // Draw by rule.
         if (pos.state.rule50 >= 100) return 0;
 
+        const pvmove: Move = if (parentnode.pv.len > 0) parentnode.pv.buffer[0] else .empty;
         // Use rootmoves or generate on stack. Assuming that for is_root the local mp is optimized so erased.
-        var local_movepicker: MovePicker = .empty;
-        const movepicker: *MovePicker = if (is_root) &self.rootmoves else &local_movepicker;
-        if (!is_root) {
-            local_movepicker.generate_moves(pos, us);
-            local_movepicker.process_and_score_moves(self, hashmove);
-        }
+        var movepicker: MovePicker = .init();
+        movepicker.generate_moves(pos, us);
+        movepicker.process_and_score_moves(self, pvmove, node.killers);
+
 
         // Is this checkmate or stalemate?
         const is_check: bool = pos.is_check();
@@ -300,6 +301,10 @@ pub const Searcher = struct {
             const score = if (is_check) -mate + ply else stalemate;
             return score;
         }
+        // Have at least a move ready asap.
+        if (is_root and self.the_move.is_empty()) self.the_move = movepicker.extmoves[0].move;
+
+        if (is_root) movepicker.debugprint(self.iteration);
 
         // Stuff we need.
         var best_score: Value = alpha;
@@ -319,29 +324,34 @@ pub const Searcher = struct {
                 defer pos.unmake_move(us);
 
                 // Interesting extension.
-                if (using.extensions and is_check and node.extension < 2 and depth < 8) {
+                if (using.ext and (is_check or movepicker.count < 3) and node.extension < 2 and depth > 1 and depth < 8) {
                     extension = 1;
                     node.extension += 1;
                 }
 
-                // TODO: LMR
-
-                // Normal
+                // Full search.
                 if (!using.pvs or move_idx == 0) {
-                    score = -self.search(false, false, them, depth - 1 + extension, -beta, -alpha);
+                    score = -self.search(ss.full(), depth - 1 + extension, -beta, -alpha);
                     if (self.stopped) break :this_move;
                 }
-                // PVS. Never on the first move.
+                // LMR or PVS. Never on the first move.
                 else {
-                    score = -self.search(false, true, them, depth - 1 + extension, -alpha - 1, -alpha);
+                    const reduction = compute_lmr_reduction(depth, move_idx, e, is_check);
+                    if (reduction > 0) {
+                        score = -self.search(ss.lmr(), depth - 1 + extension - reduction, -alpha - 1, -alpha);
+                    }
+                    else {
+                        score = -self.search(ss.pvs(), depth - 1 + extension, -alpha - 1, -alpha);
+                    }
                     if (self.stopped) break :this_move;
-                    // PVS fail -> research.
+
+                    // LMR or PVS fail -> research.
                     if (score > alpha and score < beta) {
-                        score = -self.search(false, false, them, depth - 1 + extension, -beta, -alpha);
+                        score = -self.search(ss.full(), depth - 1 + extension, -beta, -alpha);
                         if (self.stopped) break :this_move;
                     }
                 }
-            } // (this_move:)
+            } // (this_move)
 
             // Discard result.
             if (self.stopped) break :moveloop;
@@ -356,26 +366,22 @@ pub const Searcher = struct {
                     node.update_pv(e.move, score, childnode);
                     // Fail high.
                     if (score >= beta) {
-                        if (e.info.is_quiet) self.record_quietmove_beta_cutoff(depth, e);
+                        if (e.info.is_quiet) self.record_quietmove_beta_cutoff(node, depth, e);
                         break :moveloop;
                     }
                 }
             }
-        }
+        } // (moveloop)
 
         if (!best_move.is_empty()) {
             const bound: Bound = if (best_score >= beta) .Lower else if (alpha != input_alpha) .Exact else .Upper;
             self.tt_store(bound, key, depth, ply, best_move, best_score);
-            if (is_root) {
-                movepicker.promote(best_move, depth);
-            }
         }
         return alpha;
     }
 
     /// Quiescence.
-    fn qsearch(self: *Searcher, comptime is_root: bool, comptime us: Color, input_alpha: Value, beta: Value) Value {
-        assert(is_root == false); // TODO: so remove this nonsense!!
+    fn qsearch(self: *Searcher, comptime us: Color, input_alpha: Value, beta: Value) Value {
         // TT probing and storing is done here with depth zero.
          //_ = is_root;
 
@@ -409,9 +415,9 @@ pub const Searcher = struct {
         //     return result.score;
         // }
 
-        var movepicker: MovePicker = .init(false);
+        var movepicker: MovePicker = .init();
         movepicker.generate_captures(pos, us);
-        movepicker.process_and_score_moves(self, Move.empty);
+        movepicker.process_and_score_moves(self, Move.empty, .{ Move.empty, Move.empty});
 
         // Mate or stalemate?
         if (movepicker.count == 0) {
@@ -428,7 +434,7 @@ pub const Searcher = struct {
             const e: ExtMove = extmove_ptr.*;
             var st: StateInfo = undefined;
             pos.make_move(us, &st, e.move);
-            const score: Value = -self.qsearch(false, them, -beta, -alpha);
+            const score: Value = -self.qsearch(them, -beta, -alpha);
             pos.unmake_move(us);
 
             // Discard result.
@@ -447,8 +453,36 @@ pub const Searcher = struct {
         return alpha;
     }
 
-    fn record_quietmove_beta_cutoff(self: *Searcher, depth: Value, e: ExtMove) void {
-        self.quiet_heuristic_history[e.info.moved_piece.u][e.move.to.u] += depth * depth;
+    fn record_quietmove_beta_cutoff(self: *Searcher, node: *Node, depth: Value, e: ExtMove) void {
+        const m: Move = e.move;
+        // Update piece square history.
+        self.quiet_heuristic_history[e.info.moved_piece.u][m.to.u] += depth * depth;
+        // Update killers.
+        if (node.killers[0] != m) {
+            node.killers[1] = node.killers[0];
+            node.killers[0] = m;
+        }
+    }
+
+    /// Returns search extension and increases the node.ext with the result.
+    fn compute_depth_extension(node: *Node, depth: u8, e: ExtMove, is_check: bool, legal_moves: u8) u8 {
+        if (!using.ext) return 0;
+        if (node.extension < 2  and depth > 2 and depth < 6 and (is_check or e.move.type == .promotion or legal_moves == 1)) {
+            node.extension += 1;
+            return 1;
+        }
+        return 0;
+    }
+
+    fn compute_lmr_reduction(depth: u8, move_idx: usize, e: ExtMove, is_check: bool) u8 {
+        if (!using.lmr) return 0;
+        if (!e.info.is_quiet or is_check) return 0;
+        if (depth < 3 or move_idx < 1) return 0;
+        var r: u8 = 1;
+        if (depth >= 5) r += 1;
+        if (move_idx >= 6) r += 1 else if (move_idx >= 4) r += 0;
+        if (r > depth - 1) r = depth - 1;
+        return r;
     }
 
     /// Adjust score for mate in X when storing.
@@ -590,6 +624,8 @@ pub const Node = struct {
     score: Value = 0,
     /// Extensions done (sum of chain).
     extension: u8 = 0,
+    /// Killer move heuristic.
+    killers: [2]Move = .{ .empty, .empty },
 
     const empty: Node = .{};
 
@@ -638,15 +674,13 @@ pub const Node = struct {
 const MovePicker = struct {
     extmoves: [types.max_move_count]ExtMove,
     count: u8,
-    is_root: bool,
 
-    const empty: MovePicker = .{ .extmoves = undefined, .count = 0, .is_root = false };
+    const empty: MovePicker = .{ .extmoves = undefined, .count = 0, };
 
-    fn init(is_root: bool) MovePicker {
+    fn init() MovePicker {
         return .{
             .extmoves = undefined,
             .count = 0,
-            .is_root = is_root,
         };
     }
 
@@ -677,7 +711,7 @@ const MovePicker = struct {
     }
 
     /// Fill ExtMove info and give each generated move an initial heuristic score. Crucial for the search algorithm.
-    fn process_and_score_moves(self: *MovePicker, search: *const Searcher, hashmove: Move) void {
+    fn process_and_score_moves(self: *MovePicker, search: *const Searcher, pvmove: Move, killers: [2]Move) void {
         const pos: *const Position = &search.pos;
 
         // 1. TT move
@@ -690,8 +724,10 @@ const MovePicker = struct {
         // 8. Losing captures
 
         const promotion    : Value =  1_000_000;
-        const capture      : Value =    200_000;
         const good_capture : Value =    500_000;
+        const killer1      : Value =    400_000;
+        const killer2      : Value =    300_000;
+        const capture      : Value =    200_000;
         const bad_capture  : Value = -1_000_000;
         const castle       : Value =    100_000;
 
@@ -729,26 +765,26 @@ const MovePicker = struct {
                     // TODO: e.score = search.quiet_heuristic_history[m.info.movedpiece.u][m.to];
                 },
             }
-            if (e.move == hashmove) e.score += 4_000_000;
+            if (e.move == killers[0]) e.score = killer1;
+            if (e.move == killers[1]) e.score = killer2;
+            if (e.move == pvmove) e.score += 4_000_000;
+            //if (killers[0] == Move.create(.E7, .E1)) io.debugprint("killer {f}, ", .{killers[0]});
         }
     }
 
     fn extract_next(self: *MovePicker, current_idx: usize) *ExtMove {
         const ptr: [*]ExtMove = &self.extmoves;
-        // The order of rootmoves is handled independantly.
-        if (!self.is_root) {
-            var best_idx: usize = current_idx;
-            var max_score: Value = ptr[current_idx].score;
-            for (current_idx + 1..self.count) |idx| {
-                const e = ptr[idx];
-                if (e.score > max_score) {
-                    max_score = e.score;
-                    best_idx = idx;
-                }
+        var best_idx: usize = current_idx;
+        var max_score: Value = ptr[current_idx].score;
+        for (current_idx + 1..self.count) |idx| {
+            const e = ptr[idx];
+            if (e.score > max_score) {
+                max_score = e.score;
+                best_idx = idx;
             }
-            if (best_idx != current_idx) {
-                std.mem.swap(ExtMove, &ptr[best_idx], &ptr[current_idx]);
-            }
+        }
+        if (best_idx != current_idx) {
+            std.mem.swap(ExtMove, &ptr[best_idx], &ptr[current_idx]);
         }
         return &ptr[current_idx];
     }
@@ -760,22 +796,22 @@ const MovePicker = struct {
     /// Put move in front. Typically the pv move. We make sure this score is the highest.
     /// * TODO: still a bit clunky and naive...
     /// * TODO: Pointers can be used. No searching needed.
-    fn promote(self: *MovePicker, m: Move, depth: Value) void {
-        if (comptime lib.is_paranoid) {
-            assert(self.is_root);
-            assert(self.count > 0);
-        }
+    // fn promote(self: *MovePicker, m: Move, depth: Value) void {
+    //     if (comptime lib.is_paranoid) {
+    //         assert(self.is_root);
+    //         assert(self.count > 0);
+    //     }
 
-        if (self.extmoves[0].move == m) return;
-        for (self.extmoves[1..self.count]) |*e|
-        {
-            if (e.move == m) {
-                e.score += 10_000_000 + depth;
-                self.sort();
-                return;
-            }
-        }
-    }
+    //     if (self.extmoves[0].move == m) return;
+    //     for (self.extmoves[1..self.count]) |*e|
+    //     {
+    //         if (e.move == m) {
+    //             e.score += 10_000_000 + depth;
+    //             self.sort();
+    //             return;
+    //         }
+    //     }
+    // }
 
     fn sort(self: *MovePicker) void {
         std.mem.sort(ExtMove, self.slice(), {}, less_than);
@@ -791,12 +827,13 @@ const MovePicker = struct {
         for (self.extmoves[0..self.count], 0..) |e, i|
         {
            io.debugprint("{f} {}; ", .{e.move, e.score});
-           if (i > 10) break;
+           if (i > 20) break;
         }
         io.debugprint("\n", .{});
     }
 };
 
+/// TODO: rename.
 pub const SearchParams = struct {
     const infinite_search_params: SearchParams = .{
         .termination = .infinite,
@@ -850,6 +887,47 @@ pub const SearchParams = struct {
 /// Criterium for ending the search.
 pub const Termination = enum { infinite, nodes, time, movetime, depth };
 const CallSite = enum { iterative_deepening, alpha_beta, quiet };
+
+const SearchState = struct {
+    us: Color,
+    is_root: bool,
+    stagebits: u2,
+
+    const sb_lmr : u2 = 0b01;
+    const sb_pvs : u2 = 0b10;
+
+    /// The state for iterative deepening.
+    fn new(comptime us: Color) SearchState {
+        return .{ .us = us, .is_root = true, .stagebits = 0 };
+    }
+
+    /// Flip for normal recursion.
+    fn full(comptime ss: SearchState) SearchState {
+        return .{ .us = ss.us.opp(), .is_root = false, .stagebits = ss.stagebits };
+    }
+
+    /// Flip for LMR recursion.
+    fn lmr(comptime ss: SearchState) SearchState {
+        return .{ .us = ss.us.opp(), .is_root = false, .stagebits = ss.stagebits | sb_lmr };
+    }
+
+    /// Flip for PVS recursion.
+    fn pvs(comptime ss: SearchState) SearchState {
+        return .{ .us = ss.us.opp(), .is_root = false, .stagebits = ss.stagebits | sb_pvs };
+    }
+
+    fn is_full(comptime ss: SearchState) bool {
+        return ss.stagebits == 0;
+    }
+
+    fn is_lmr(comptime ss: SearchState) bool {
+        return ss.stagebits & sb_lmr != 0;
+    }
+
+    fn in_pvs(comptime ss: SearchState) bool {
+        return ss.stagebits & sb_pvs != 0;
+    }
+};
 
 fn print_pv(pv_node: *const Node, depth: u16, seldepth: u16, nodes: u64, elapsed_nanoseconds: u64, hash_full: usize) void {
     const ms = elapsed_nanoseconds / std.time.ns_per_ms;

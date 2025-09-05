@@ -16,19 +16,5 @@ pub fn main() !void
         tests.print_struct_sizes();
     }
 
-    // var i: i32 = 0;
-    // while (true) {
-    //     i = -search(i) orelse break;
-    //     lib.io.debugprint("{},", .{i});
-    // }
-
     uci.run();
 }
-
-// fn search(v: i32) Error!i32 {
-//     if (v > 40) return ;
-//     if (v < 40) return null;
-//     return v + 2;
-// }
-
-// const Error = error { timeout };
