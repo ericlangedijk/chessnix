@@ -29,9 +29,11 @@ pub const using = packed struct {
     /// Principal Variation Search.
     pub const pvs: bool = true;
     /// Late Move Reduction.
-    pub const lmr: bool = false;
+    pub const lmr: bool = true;
     /// Interesting moves extensions.
     pub const ext: bool = true;
+    /// Use killer moves
+    pub const killers: bool = true;
 };
 
 pub var history: [types.max_game_length]StateInfo = @splat(.empty);

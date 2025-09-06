@@ -1572,7 +1572,7 @@ pub const Position = struct {
     }
 
     /// ### Debug only.
-    /// Compares everything except `state` and `game_ply`.
+    /// Compares everything except `state`, `ply` and `game_ply`.
     /// * The inner contents of the state *are* compared.
     /// * If `check_moves` then we also check if the generated moves are the same.
     pub fn equals(self: *const Position, other: *const Position, comptime check_moves: bool) bool {
@@ -1591,7 +1591,7 @@ pub const Position = struct {
             std.meta.eql(self.layout.castling_masks, other.layout.castling_masks) and
             std.meta.eql(self.values, other.values) and
             std.meta.eql(self.materials, other.materials) and
-            self.ply == other.ply and
+            //self.ply == other.ply and
             self.is_960 == other.is_960 and
             self.state.equals(other.state);
 

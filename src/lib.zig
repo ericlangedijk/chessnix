@@ -36,8 +36,8 @@ pub const version = "0.1";
 // Some app consts.
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-/// For now we set paranoid false, too speedup debugging.
-pub const is_paranoid: bool = if (is_debug) true else false;
+/// Set paranoid to false to speedup debugging.
+pub const is_paranoid: bool = if (is_debug) false else false;
 /// The global memory.
 pub const ctx: *const MemoryContext = &memory_context;
 /// The global io.
