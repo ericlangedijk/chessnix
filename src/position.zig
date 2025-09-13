@@ -1579,8 +1579,8 @@ pub const Position = struct {
 
         // Info.
         //const move_str: []const u8 = if (self.state.last_move.is_empty()) "" else self.state.last_move.to_string().slice();
-        try io.print_buffered("Fen: {f}\n", .{self});
-        try io.print_buffered("Key: {x:0>16}\n", .{self.state.key});
+        try io.print_buffered("Fen: {f}\n", .{ self });
+        try io.print_buffered("Key: 0x{x:0>16}\n", .{ self.state.key });
         //try io.print_buffered("Last move: {s}\n", .{move_str});
         try io.print_buffered("Checkers: ", .{});
         if (self.state.checkers != 0) {

@@ -30,9 +30,9 @@ pub const Entry = packed struct {
     /// The evaluation according to search.
     score: i16,
     // The age
-    // age: u8,
+    age: u8,
 
-    const empty: Entry = .{ .bound = .None, .key = 0, .depth = 0, .move = .empty, .score = 0 };
+    const empty: Entry = .{ .bound = .None, .key = 0, .depth = 0, .move = .empty, .score = 0, .age = 0 };
 };
 
 // 64 MB = ok, 256 MB = very good.
@@ -49,8 +49,8 @@ pub const TranspositionTable = struct {
     probes: u64,
     /// Hits
     hits: u64,
-
-    // age: u8,
+    /// Age keeper.
+    age: u8,
 
     pub fn init(size_in_megabytes: u64) !TranspositionTable {
         comptime if (@sizeOf(Entry) != 16) @compileError("TT Entry must be 16 bytes");
@@ -58,11 +58,17 @@ pub const TranspositionTable = struct {
         const len: u64 = (size_in_megabytes * 1024 * 1024) / 16;
         const data: []Entry = try ctx.galloc.alloc(Entry, len);
         @memset(data, Entry.empty);
-        return .{ .data = data, .len = len, .mb = size_in_megabytes, .filled = 0, .probes = 0, .hits = 0, };
+        return .{ .data = data, .len = len, .mb = size_in_megabytes, .filled = 0, .probes = 0, .hits = 0, .age = 0, };
     }
 
     pub fn deinit(self: *TranspositionTable) void {
         ctx.galloc.free(self.data);
+    }
+
+    pub fn inc_age(self: *TranspositionTable) void {
+        self.probes = 0;
+        self.hits = 0;
+        self.age +%= 1;
     }
 
     pub fn clear(self: *TranspositionTable) void {
@@ -70,31 +76,38 @@ pub const TranspositionTable = struct {
         self.filled = 0;
         self.probes = 0;
         self.hits = 0;
-        // self.uci_offsetkey = 0;
-        // self.age = 0;
+        self.age = 0;
     }
-
-    // pub fn increase_age(self: *TranspositionTable) void {
-    //     self.age +%= 1;
-    // }
 
     pub fn permille(self: *const TranspositionTable) usize {
         return funcs.permille(self.len, self.filled);
     }
 
-    /// TODO: atomic store when threading.
+    /// TODO: atomic store when multiple threads.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
         assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
         const entry: *Entry = self.get_mut(key);
         const was_empty: bool =  entry.bound == .None;
         const adjusted_score = get_adjusted_score_for_tt_store(score, ply);
-        if (entry.key != key or entry.bound == .None or depth >= entry.depth) {
+
+        // const should_replace = (entry.key != key or entry.bound == .None or depth >= entry.depth or entry.age != self.age)
+
+        // Empty or different key → must overwrite
+        // Same key but deeper or same-depth new info → overwrite
+        // If ages differ and depth is equal, prefer newer
+        const should_replace =
+            entry.bound == .None or entry.key != key or
+            depth >= entry.depth or
+            (depth == entry.depth and entry.age != self.age);
+
+        if (should_replace) {
             entry.* = .{
                 .bound = bound,
                 .key = key,
                 .depth = depth,
                 .move = move,
                 .score = @truncate(adjusted_score),
+                .age = self.age,
             };
         }
         if (was_empty) self.filled += 1;
@@ -105,7 +118,7 @@ pub const TranspositionTable = struct {
         self.probes += 1;
         const entry: Entry = self.get(key);
         if (entry.bound == .None or entry.key != key) return null;
-        tt_move.* = entry.move;
+        tt_move.* = entry.move; // usable.
         if (entry.depth < depth) return null;
         const adjusted_score = get_adjusted_score_for_tt_probe(entry.score, ply);
         switch (entry.bound) {
@@ -148,7 +161,7 @@ pub const TranspositionTable = struct {
         return &self.data[idx];
     }
 
-    fn get(self: *TranspositionTable, key: u64) Entry {
+    pub fn get(self: *TranspositionTable, key: u64) Entry {
         const idx = self.index_of(key);
         return self.data[idx];
     }

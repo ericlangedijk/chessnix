@@ -41,7 +41,7 @@ pub const is_paranoid: bool = if (is_debug) true else false;
 /// The global memory.
 pub const ctx: *const MemoryContext = &memory_context;
 /// The global io.
-pub const io: *const IoContext = &io_context;
+pub const io: *IoContext = &io_context;
 /// Global memory.
 var memory_context: MemoryContext = undefined;
 /// Global Io.
@@ -69,6 +69,8 @@ pub const MemoryContext = struct {
     }
 };
 
+
+// TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
 var in_buffer: [1024]u8 = undefined;
 var out_buffer: [1024]u8 = undefined;
 var stdin: std.fs.File.Reader = undefined;
@@ -79,6 +81,7 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
+        // var tralala = std.fs.File.stderr().writer();
         stdin = std.fs.File.stdin().reader(&in_buffer);
         stdout = std.fs.File.stdout().writer(&out_buffer);
         return .{

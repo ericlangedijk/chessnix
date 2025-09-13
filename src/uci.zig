@@ -29,7 +29,7 @@ var engine: *Engine = undefined;
 pub fn run() void {
     // TODO: what to do in non-terminal mode? Just crash?
     uci_loop() catch |err| {
-        io.debugprint("info string error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
+        io.debugprint("error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
         //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
     };
 }
@@ -210,6 +210,9 @@ const UCI = struct {
             }
             else if (eql(next, "movetime")) {
                 result.movetime = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+            }
+            else if (eql(next, "nodes")) {
+                result.nodes = parse_64(tokenizer.next()) orelse return Error.ParsingError;
             }
             else if (eql(next, "depth")) {
                 result.depth = parse_32(tokenizer.next()) orelse return Error.ParsingError;
