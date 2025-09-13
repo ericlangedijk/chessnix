@@ -1,0 +1,8 @@
+/.zig-cache
+/zig-out
+/notes
+/testdata
+/src/tools
+/src/tests
+testdata
+
