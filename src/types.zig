@@ -762,7 +762,7 @@ pub const draw: Value = 0;
 const value_pawn: Value = 100;
 const value_knight: Value = 305;
 const value_bishop: Value = 333;
-const value_rook: Value = 563;
+const value_rook: Value = 474;//// 463; // was: 563
 const value_queen: Value = 950;
 
 // Values used in Position stolen from Stockfish.

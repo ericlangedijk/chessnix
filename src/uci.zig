@@ -45,8 +45,8 @@ fn uci_loop() !void {
     }
 
     command_loop: while (true) {
-        const input = try io.readline() orelse continue :command_loop;
-        if (input.len == 0) continue :command_loop;
+        const input = try io.readline() orelse break :command_loop; // continue?
+        if (input.len == 0) break :command_loop; // continue?
         var tokenizer: Tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :command_loop;
 
@@ -267,23 +267,28 @@ const TTY = struct {
     fn print_state() void {
         const t: *const tt.TranspositionTable = &engine.transpositiontable;
 
+// position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8
+
+        //io.debugprint("upcoming rep {}\n", .{engine.pos.is_repetition()});
+        io.debugprint("threefold rep {}\n", .{engine.pos.is_threefold_repetition()});
+
         io.debugprint("engine thinking {}\n", .{engine.is_running()});
         io.debugprint("engine controller thread active {}\n", .{engine.controller_thread != null});
         io.debugprint("engine search thread active {}\n", .{engine.search_thread != null});
 
         io.debugprint("tt MB {}\n", .{t.mb});
         io.debugprint("tt slots {}\n", .{t.len});
-        io.debugprint("tt filled {}\n", .{t.filled});
+        //io.debugprint("tt filled {}\n", .{t.filled});
         io.debugprint("tt permille {}\n", .{t.permille()});
         //io.debugprint("tt age {}\n", .{t.age});
 
-        const s = &engine.searcher;
+//        const s = &engine.searcher;
 
         //io.debugprint("{}\n", .{});
-        io.debugprint("tt probes {}\n", .{ s.transpositiontable.probes });
-        io.debugprint("tt hits   {}\n", .{ s.transpositiontable.hits });
-        io.debugprint("nodes     {}\n", .{ s.processed_nodes });
-        io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
+        // io.debugprint("tt probes {}\n", .{ s.transpositiontable.probes });
+        // io.debugprint("tt hits   {}\n", .{ s.transpositiontable.hits });
+        // io.debugprint("nodes     {}\n", .{ s.processed_nodes });
+        // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
     }
 };
 

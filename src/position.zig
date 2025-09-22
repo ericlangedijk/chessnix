@@ -706,6 +706,26 @@ pub const Position = struct {
         return false;
     }
 
+    pub fn is_upcoming_repetition(self: *const Position) bool {
+        const st: *const StateInfo = self.state;
+        if (st.rule50 < 4) return false;
+
+        const end: u16 = @min(st.rule50, self.ply);
+        if (end < 3) return false; // ??? 3
+
+        var count: u8 = 0;
+        var i: u16 = 4;
+        var run: *const StateInfo = st;
+        while (i <= end) : (i += 2) {
+            run = run.prev.?.prev.?;
+            if (run.key == st.key) {
+                count += 1;
+                if (count >= 1) return true;
+            }
+        }
+        return false;
+    }
+
     /// Makes the move on the board.
     /// * `us` is comptime for performance reasons and must be the stm.
     /// * `st` will become the new state and will be fully updated.

@@ -227,6 +227,15 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
     return s;
 }
 
+// /// Calculates something per second.
+// pub fn percentage(done: u64, total: u64) u64 {
+//     if (total == 0) return 0;
+//     const a: f64 = @floatFromInt(done);
+//     const b: f64 = @floatFromInt(total);
+//     const s: f64 = (a * 100) / b;
+//     return @intFromFloat(s);
+// }
+
 pub fn float(i: Value) f32 {
     return @floatFromInt(i);
 }

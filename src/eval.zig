@@ -94,14 +94,15 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
     const bb_all = pos.all();
     const negate: bool = pos.to_move.e == .black;
 
-    const material_scores: [2]Value = .{ pos.values[Color.WHITE.u], pos.values[Color.BLACK.u] };
-
     // EXPERIMENTAL: pawn up in pawn endgame is often desastrous.
-    // if (non_pawn_material == 0) {
-    //     material_score *= 2;
-    // }
+    const pawns_multiply: Value = if (non_pawn_material == 0) 2 else 1;
 
-    // TODO: exit early?
+    const material_scores: [2]Value = .{ pos.values[Color.WHITE.u] * pawns_multiply, pos.values[Color.BLACK.u] * pawns_multiply };
+
+    // // TODO: not sure.
+    // // Exit early.
+    // const simple_score: Value = if (!negate) material_scores[0] - material_scores[1] else material_scores[1] - material_scores[0];
+    // if (@abs(simple_score) >= 900) return simple_score;
 
     // Sliding values of the Pesto tables, which we taper at the end.
     // var pesto_phase: Value = 0;
@@ -209,6 +210,12 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                             add(threat, get_threat(piecetype, theirs), us, piecetype, .threat, tracking, sq);
                         }
 
+                        // Pawn center
+                        if (is_first_piece and phase != .Endgame) {
+                            const ctrl: u64 = our_pawns & bitboards.bb_center;// (bitboards.bb_rank_4 | bitboards.bb_rank_5);
+                            add(p_score, popcnt_v(ctrl) * 20, us, piecetype, .control, tracking, sq);
+                        }
+
                         // King area threat.
                         const att_king_area: u64 = (pawn_attacks | pawn_moves) & their_king_area;
                         add(king_threat, get_king_threat(piecetype, att_king_area), us, piecetype, .threat, tracking, sq);
@@ -228,8 +235,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         // Isolated pawn.
                         const bb_isolated = masks.get_isolated_pawn_mask(sq) & our_pawns;
                         if (bb_isolated == 0) {
-                            const e: Value = Tables.isolated_pawn;
-                            add(p_score, e, us, piecetype, .isolated_pawn, tracking, sq);
+                            add(p_score, Tables.isolated_pawn, us, piecetype, .isolated_pawn, tracking, sq);
                         }
                         // Connected pawn.
                     },
@@ -372,41 +378,17 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                             add(k_score, Tables.in_check, us, piecetype, .in_check, tracking, sq);
                         }
 
-                        // TODO: put this inside king threats
-                        // Punish when enemy pieces are indirectly pointing at our king.
-                        // if (!check) {
-                        //     var rooks_queens: u64 = data.get_rook_attacks(our_king_sq, 0) & pos.queens_rooks(them);
-                        //     while (rooks_queens != 0) {
-                        //         const q: Square = funcs.pop_square(&rooks_queens);
-                        //         const in_between = squarepairs.in_between_bitboard(q, sq) & bb_all;
-                        //         const popcount = popcnt(in_between);
-                        //         if (popcount <= 2) {
-                        //             const e: Value = Tables.rooks_or_queens_staring_at_king;
-                        //             add(&king_score, e, piece, .rooks_or_queens_staring_at_king, tracking, sq);
-                        //         }
-                        //     }
-                        //     var bishop_queens: u64 = data.get_bishop_attacks(our_king_sq, 0) & pos.queens_bishops(them);
-                        //     while (bishop_queens != 0) {
-                        //         const q: Square = funcs.pop_square(&bishop_queens);
-                        //         const in_between = squarepairs.in_between_bitboard(q, sq) & bb_all;
-                        //         const popcount = popcnt(in_between);
-                        //         if (popcount <= 2) {
-                        //             const e: Value = Tables.bishops_or_queens_staring_at_king;
-                        //             add(&king_score, e, piece, .bishops_or_queens_staring_at_king, tracking, sq);
-                        //         }
-                        //     }
-                        // }
+                        // Open files to our king
+                        if (phase != .Endgame) {
+                            const open_files: u64 = data.get_file_attacks(our_king_sq, bb_all) & ~bb_us;
+                            add(k_score, -popcnt_v(open_files) * 4, us, piecetype, .open_file_to_our_king, tracking, sq);
+                        }
 
-                        // var swarming: u64 = pos.by_color(them);
-                        // while (swarming != 0) {
-                        //     const q: Square = funcs.pop_square(&swarming);
-                        //     const d = squarepairs.get(q, our_king_sq).distance;
-                        //     //io.debugprint("d{},", .{d});
-                        //     if (d < 4)
-                        //         add(&king_score, -30, piece, .pieces_swarming_around_king, tracking, q);
-                        // }
-
-                        //const dd: Value = popcnt_v(attacks)
+                        // Open diagonals to our king
+                        if (phase != .Endgame) {
+                            const open_files: u64 = data.get_bishop_attacks(our_king_sq, bb_all) & ~bb_us;
+                            add(k_score, -popcnt_v(open_files) * 4, us, piecetype, .open_diagonal_to_our_king, tracking, sq);
+                        }
 
                         // King pawn protection
                         const pawn_protection = our_king_area & pos.pawns(us);
@@ -458,11 +440,10 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
     const b_score: Value =
         material_scores[1] + b_pesto + p_scores[1] + n_scores[1] + b_scores[1] + r_scores[1] + q_scores[1] + k_scores[1] + mobility_scores[1] + space_scores[1] + threats_scores[1] + king_threat_scores[1];
 
-    const result = if (negate) b_score - w_score else w_score - b_score;
+    var result = if (negate) b_score - w_score else w_score - b_score;
 
-    // if (phase == .Endgame) {
-    //     result = scale_towards_draw(result, pos.state.rule50);
-    // }
+    // TODO: not sure.
+    result = scale_towards_draw(result, pos.state.rule50);
 
 
     if (tracking) {
@@ -535,7 +516,7 @@ fn get_threat(ours: PieceType, theirs: PieceType) Value {
     //_ = theirs;
     if (lib.is_paranoid) assert(ours.u > 0 and theirs.u > 0);
     const diff: Value = Tables.threat_values[theirs.u] - Tables.threat_values[ours.u];
-    return if (diff < 0) 2 else diff;
+    return if (diff < 0) 0 else diff; // #EL 0 was 2
 }
 
 fn get_king_threat(attacking_pt: PieceType, bb_squares: u64) Value {
@@ -793,6 +774,8 @@ const Feature = enum {
     king_protection_by_pawns,
     king_protection_by_pieces,
     king_pushing_king,
+    open_file_to_our_king,
+    open_diagonal_to_our_king,
 
     threat,
     king_threat,
@@ -804,6 +787,7 @@ const Feature = enum {
     supported_by_pawn,
     space,
     mobility,
+    control,
     in_check,
 
     experimental,
