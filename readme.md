@@ -1,3 +1,5 @@
+Discontinued because I have not enough brains.
+
 ### UCI Chess Engine. Work in progress version
 - Needs Zig 0.15.1
 - On Windows run chessnix in administrator mode for better performance.
