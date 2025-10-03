@@ -6,7 +6,7 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const data = @import("data.zig");
+const attacks = @import("attacks.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
@@ -41,7 +41,9 @@ pub fn print_struct_sizes() void
     //     lib.io.debugprint("{s} {}\n", .{ @typeName(t),  @sizeOf(t)});
     // }
 
-    // lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
+    lib.io.debugprint("Position {}\n", .{ @sizeOf(position.Position)});
+    lib.io.debugprint("Layout {}\n", .{ @sizeOf(position.Layout)});
+    lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
     lib.io.debugprint("ExtMove {} {}\n", .{ @sizeOf(ExtMove), @bitSizeOf(ExtMove)});
     lib.io.debugprint("Entry {} {}\n", .{ @sizeOf(Entry), @bitSizeOf(Entry)});
     // lib.io.debugprint("Node {}\n", .{ @sizeOf(search.Node)});

@@ -14,10 +14,9 @@ pub fn initialize() !void {
     io_context = .init();
 
     // Then initialize chess.
-    @import("squarepairs.zig").initialize();
+    @import("attacks.zig").initialize();
+    @import("bitboards.zig").initialize();
     @import("zobrist.zig").initialize();
-    @import("data.zig").initialize();
-    @import("masks.zig").initialize();
 
     startup_time = timer.read();
     lib_is_initialized = true;
@@ -31,23 +30,16 @@ pub fn finalize() void {
 /// For now we put it here.
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 
-
+// Globals.
 pub const version = "0.1";
-// Some app consts.
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-/// Set paranoid to false to speedup debugging.
-pub const is_paranoid: bool = if (is_debug) true else false;
-/// The global memory.
+pub const is_paranoid: bool = if (is_debug) true else false; // Set paranoid to false to speedup debugging.
 pub const ctx: *const MemoryContext = &memory_context;
-/// The global io.
 pub const io: *IoContext = &io_context;
-/// Global memory.
 var memory_context: MemoryContext = undefined;
-/// Global Io.
 var io_context: IoContext = undefined;
 var lib_is_initialized: bool = false;
-
 pub var startup_time: u64 = 0;
 
 /// The global memory context of our exe
@@ -71,8 +63,8 @@ pub const MemoryContext = struct {
 
 
 // TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
-var in_buffer: [1024]u8 = undefined;
-var out_buffer: [1024]u8 = undefined;
+var in_buffer: [2048]u8 = undefined;
+var out_buffer: [2048]u8 = undefined;
 var stdin: std.fs.File.Reader = undefined;
 var stdout: std.fs.File.Writer = undefined;
 

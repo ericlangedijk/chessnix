@@ -7,8 +7,7 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
-const data = @import("data.zig");
-const masks = @import("masks.zig");
+const attacks = @import("attacks.zig");
 const position = @import("position.zig");
 
 const Value = types.Value;
@@ -88,12 +87,12 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
     }
 }
 
-pub fn all_pawns_attacks(pawns: u64, comptime us: Color) u64 {
-    return switch(us.e) {
-        .white => ((pawns & ~bitboards.bb_file_a) << 7) | ((pawns & ~bitboards.bb_file_h) << 9),
-        .black => ((pawns & ~bitboards.bb_file_h) >> 7) | ((pawns & ~bitboards.bb_file_a) >> 9),
-    };
-}
+// pub fn all_pawns_attacks(pawns: u64, comptime us: Color) u64 {
+//     return switch(us.e) {
+//         .white => ((pawns & ~bitboards.bb_file_a) << 7) | ((pawns & ~bitboards.bb_file_h) << 9),
+//         .black => ((pawns & ~bitboards.bb_file_h) >> 7) | ((pawns & ~bitboards.bb_file_a) >> 9),
+//     };
+// }
 
 // fn mirrorHorizontally(bits: u64) u64 {
 //     var x = bits;
@@ -248,15 +247,20 @@ pub fn mul(i: Value, f: Float) Value {
     return @intFromFloat(float(i) * f);
 }
 
+pub fn div(i: Value, d: Value) Value {
+    return @divTrunc(i, d);
+}
+
 pub fn percent(max: usize, count: usize) usize {
-    assert(max > 0);
+    if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
     const m: f32 = @floatFromInt(max);
     return @intFromFloat((c * 100) / m);
 }
 
 pub fn permille(max: usize, count: usize) usize {
-    assert(max > 0);
+    //assert(max > 0);
+    if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
     const m: f32 = @floatFromInt(max);
     return @intFromFloat((c * 1000) / m);

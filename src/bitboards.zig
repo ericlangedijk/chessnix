@@ -1,6 +1,22 @@
 // zig fmt: off
 
-//! Constant bitboard values.
+//! Lots of bitboards.
+//! NOTE: initialize *after* attacks.zig.
+
+const lib = @import("lib.zig");
+const attacks = @import("attacks.zig");
+const types = @import("types.zig");
+const funcs = @import("funcs.zig");
+
+const Orientation = types.Orientation;
+const Direction = types.Direction;
+const Color = types.Color;
+const Piece = types.Piece;
+const Square = types.Square;
+
+////////////////////////////////////////////////////////////////
+// Const stuff
+////////////////////////////////////////////////////////////////
 
 pub const bb_rank_1: u64 = 0x00000000000000ff;
 pub const bb_rank_2: u64 = 0x000000000000ff00;
@@ -137,3 +153,234 @@ pub const square_bitboards: [64]u64 = .{
     bb_a7, bb_b7, bb_c7, bb_d7, bb_e7, bb_f7, bb_g7, bb_h7,
     bb_a8, bb_b8, bb_c8, bb_d8, bb_e8, bb_f8, bb_g8, bb_h8,
 };
+
+////////////////////////////////////////////////////////////////
+// Initialized stuff
+////////////////////////////////////////////////////////////////
+
+var bb_north: [64]u64 = @splat(0);
+var bb_south: [64]u64 = @splat(0);
+var bb_west: [64]u64 = @splat(0);
+var bb_east: [64]u64 = @splat(0);
+var bb_northwest: [64]u64 = @splat(0);
+var bb_southeast: [64]u64 = @splat(0);
+var bb_northeast: [64]u64 = @splat(0);
+var bb_southwest: [64]u64 = @splat(0);
+
+pub const ptr_bb_north: [*]const u64 = &bb_north;
+pub const ptr_bb_south: [*]const u64 = &bb_south;
+pub const ptr_bb_west: [*]const u64 =  &bb_west;
+pub const ptr_bb_east: [*]const u64 =  &bb_east;
+pub const ptr_bb_northwest: [*]const u64 =  &bb_northwest;
+pub const ptr_bb_southeast: [*]const u64 = &bb_southeast;
+pub const ptr_bb_northeast: [*]const u64 = &bb_northeast;
+pub const ptr_bb_southwest: [*]const u64 =  &bb_southwest;
+
+/// Using the `Orientation` enum order.
+pub const direction_bitboards: [8][*]const u64 = .{
+    ptr_bb_north,
+    ptr_bb_east,
+    ptr_bb_south,
+    ptr_bb_west,
+    ptr_bb_northwest,
+    ptr_bb_northeast,
+    ptr_bb_southeast,
+    ptr_bb_southwest,
+};
+
+var pairs: [64 * 64]SquarePair = @splat(SquarePair.empty);
+pub const ptr_pairs: [*]SquarePair = &pairs;
+
+/// Information about a pair of squares.
+/// * Mainly used for determining pinners and pinned pieces.
+pub const SquarePair = struct
+{
+    const empty: SquarePair = .{};
+
+    /// The bitboard of the squares in between two squares.
+    in_between_bitboard: u64 = 0,
+    /// The from-to direction.
+    direction: ?Direction = null,
+    /// The from-to or to-from orientation.
+    orientation: ?Orientation = null,
+    /// A mask for quick checking if a piece can cover this direction.\
+    /// We can `and` the piecetype's numeric value with this mask.
+    ///
+    /// * orthoganal  = 100
+    /// * diagonal    = 001
+    /// * bishop      = 011 (value 3)
+    /// * rook        = 100 (value 4)
+    /// * queen       = 101 (value 5)
+    ///
+    mask: u3 = 0,
+    /// The manhattan distance.
+    distance: u3 = 0,
+};
+
+var isolated_pawn_masks: [64]u64 = @splat(0);
+var passed_pawn_masks_white: [64]u64 = @splat(0);
+var passed_pawn_masks_black: [64]u64 = @splat(0);
+var ep_masks: [64]u64 =  @splat(0);
+var king_areas: [64]u64 = @splat(0);
+
+const ptr_passed_pawn_masks_white: [*]const u64 = &passed_pawn_masks_white;
+const ptr_passed_pawn_masks_black: [*]const u64 = &passed_pawn_masks_black;
+const ptr_ep_masks: [*]const u64 = &ep_masks;
+const ptr_king_areas: [*]const u64 = &king_areas;
+
+////////////////////////////////////////////////////////////////
+// Funcs
+////////////////////////////////////////////////////////////////
+
+pub fn initialize() void {
+    for (Square.all) |sq| {
+        // Raw direction bitboards.
+        bb_north[sq.u] = sq.ray_bitboard(.north);
+        bb_east[sq.u] = sq.ray_bitboard(.east);
+        bb_south[sq.u] = sq.ray_bitboard(.south);
+        bb_west[sq.u] = sq.ray_bitboard(.west);
+        bb_northwest[sq.u] = sq.ray_bitboard(.north_west);
+        bb_northeast[sq.u] = sq.ray_bitboard(.north_east);
+        bb_southeast[sq.u] = sq.ray_bitboard(.south_east);
+        bb_southwest[sq.u] = sq.ray_bitboard(.south_west);
+    }
+
+    // Set directions.
+    for (Square.all) |from| {
+        inline for (Direction.all) |dir| {
+            const ray = from.ray(dir);
+            for (ray.slice()) |to| {
+                const pair: *SquarePair = get_squarepair_mut(from, to);
+                const ori = dir.to_orientation();
+//                pair.distance = calc_distance(from, to);
+                pair.direction = dir;
+                pair.orientation = ori;
+                if (ori == .diagmain or ori == .diaganti) pair.mask |= 0b001;
+                if (ori == .horizontal or ori == .vertical) pair.mask |= 0b100;
+            }
+        }
+    }
+
+    // Set in-between bitboards
+    for (Square.all) |from| {
+        for (Square.all) |to| {
+            const pair: *SquarePair = get_squarepair_mut(from, to);
+            pair.distance = calc_distance(from, to);
+
+            if (pair.direction) |dir| {
+                const ray = from.ray(dir);
+                for (ray.slice()) |sq| {
+                    if (sq.u == to.u) break;
+                    pair.in_between_bitboard |= sq.to_bitboard();
+                }
+            }
+        }
+    }
+
+    // Passed pawn masks. TODO: just loop squares.
+    for (ranks) |rank| {
+        for (files) |file| {
+            var bb: u64 = 0;
+            const sq: Square = .from_rank_file(rank, file);
+            const black_sq: Square = sq.relative(Color.BLACK);
+
+            bb = ptr_bb_north[sq.u];
+            if (file > file_a) bb |= ptr_bb_north[sq.sub(1).u];
+            if (file < file_h) bb |= ptr_bb_north[sq.add(1).u];
+
+            // Passed pawn mask.
+            passed_pawn_masks_white[sq.u] = bb;
+            passed_pawn_masks_black[black_sq.u] = funcs.mirror_vertically(bb);
+
+            // Ep mask.
+            if (rank == rank_4 or rank == rank_5) {
+                if (sq.next(.west)) |n| ep_masks[sq.u] |= n.to_bitboard();
+                if (sq.next(.east)) |n| ep_masks[sq.u] |= n.to_bitboard();
+            }
+
+            // Isolated pawn mask.
+            if (file > file_a) isolated_pawn_masks[sq.u] |= file_bitboards[file - 1];
+            if (file < file_h) isolated_pawn_masks[sq.u] |= file_bitboards[file + 1];
+        }
+    }
+
+    // King areas's
+    for (Square.all) |sq| {
+        const rank = sq.rank();
+        const file = sq.file();
+
+        king_areas[sq.u] = sq.to_bitboard();
+
+        // King area.
+        king_areas[sq.u] |= attacks.get_king_attacks(sq);
+
+        if (rank == 0) king_areas[sq.u] |= attacks.get_king_attacks(sq.add(8));
+        if (rank == 7) king_areas[sq.u] |= attacks.get_king_attacks(sq.sub(8));
+
+        if (file == 0) king_areas[sq.u] |= attacks.get_king_attacks(sq.add(1));
+        if (file == 7) king_areas[sq.u] |= attacks.get_king_attacks(sq.sub(1));
+
+        if (sq.e == Square.A1.e) king_areas[sq.u] |= Square.C3.to_bitboard();
+        if (sq.e == Square.A8.e) king_areas[sq.u] |= Square.C6.to_bitboard();
+        if (sq.e == Square.H1.e) king_areas[sq.u] |= Square.F3.to_bitboard();
+        if (sq.e == Square.H8.e) king_areas[sq.u] |= Square.F6.to_bitboard();
+    }
+
+}
+
+fn calc_distance(a: Square, b: Square) u3
+{
+    const ar: i32 = a.rank();
+    const br: i32 = b.rank();
+
+    const af: i32 = a.file();
+    const bf: i32 = b.file();
+
+    const d: u32 = @max
+    (
+        @abs(ar - br),
+        @abs(af - bf)
+    );
+    return @truncate(@abs(d));
+}
+
+fn get_squarepair_mut(from: Square, to: Square) *SquarePair
+{
+    const idx: usize = from.idx() * 64 + to.idx();
+    return &ptr_pairs[idx];
+}
+
+pub fn get_squarepair(from: Square, to: Square) *const SquarePair
+{
+    const idx: usize = from.idx() * 64 + to.idx();
+    return &ptr_pairs[idx];
+}
+
+pub fn in_between_bitboard(from: Square, to: Square) u64
+{
+    return get_squarepair(from, to).in_between_bitboard;
+}
+
+
+pub fn get_isolated_pawn_mask(sq: Square) u64 {
+    return isolated_pawn_masks[sq.u];
+}
+
+pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
+    return switch (us.e) {
+        .white => ptr_passed_pawn_masks_white[sq.u],
+        .black => ptr_passed_pawn_masks_black[sq.u],
+    };
+}
+
+/// `to` is the to-square of the  double pushed pawn (e4).
+pub fn get_ep_mask(to: Square) u64 {
+    return ptr_ep_masks[to.u];
+}
+
+pub fn get_king_area(to: Square) u64
+{
+    return ptr_king_areas[to.u];
+}
+
+

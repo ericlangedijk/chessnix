@@ -6,7 +6,7 @@ const std = @import("std");
 
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
-const data = @import("data.zig");
+const attacks = @import("attacks.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
@@ -157,10 +157,10 @@ fn determine_disambiguation(m: Move, pos: *const Position) Disambiguation {
 
 fn get_pseudo_moves_to(pt: PieceType, to: Square, our_pieces: u64) u64 {
     return switch(pt.e) {
-        .knight => data.get_knight_attacks(to) & our_pieces,
-        .bishop => data.get_bishop_attacks(to, 0) & our_pieces,
-        .rook   => data.get_rook_attacks(to, 0) & our_pieces,
-        .queen  => data.get_queen_attacks(to, 0) & our_pieces,
+        .knight => attacks.get_knight_attacks(to) & our_pieces,
+        .bishop => attacks.get_bishop_attacks(to, 0) & our_pieces,
+        .rook   => attacks.get_rook_attacks(to, 0) & our_pieces,
+        .queen  => attacks.get_queen_attacks(to, 0) & our_pieces,
         else => bitboards.bb_full,
     };
 }

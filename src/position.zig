@@ -6,9 +6,7 @@ const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
 const funcs = @import("funcs.zig");
 const zobrist = @import("zobrist.zig");
-const squarepairs = @import("squarepairs.zig");
-const masks = @import("masks.zig");
-const data = @import("data.zig");
+const attacks = @import("attacks.zig");
 
 const assert = std.debug.assert;
 const ctx = lib.ctx;
@@ -57,16 +55,24 @@ pub const rook_castle_destination_squares: [2][2]Square = .{ .{ .F1, .D1 }, .{ .
 /// Indexing [color][castletype].
 pub const castle_flags: [2][2]u4 = .{ .{ cf_white_short, cf_white_long }, .{ cf_black_short, cf_black_long } };
 
+// TODO: build in asserts
+var invalid_state_info: StateInfo = .empty;
+const invalid_state_ptr: *StateInfo = &invalid_state_info;
+
 pub const StateInfo = struct {
 
     pub const empty: StateInfo = .{};
 
+    /// (copied) For cashed pawn evalution.
+    pawnkey: u64 = 0,
     /// (copied) Draw counter. After 50 reversible moves (100 ply) it is a draw.
     rule50: u16 = 0,
     /// (copied) The enpassant square of this state.
     ep_square: Square = Square.zero,
     /// (copied) Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4 = 0,
+    /// (copied) The piece material for both sides.
+    non_pawn_material: [2]Value = .{ 0, 0 },
     /// The move that was played to reach the current position.
     last_move: Move = .empty,
     /// The piece that did the last_move.
@@ -101,9 +107,11 @@ pub const StateInfo = struct {
     pub fn equals(self: *const StateInfo, other: *const StateInfo) bool {
         lib.not_in_release();
         return
+            self.pawnkey == other.pawnkey and
             self.rule50 == other.rule50 and
             self.ep_square.u == other.ep_square.u and
             self.castling_rights == other.castling_rights and
+            std.meta.eql(self.non_pawn_material, other.non_pawn_material) and
             self.last_move == other.last_move and
             self.moved_piece.u == other.moved_piece.u and
             self.captured_piece.u == other.captured_piece.u and
@@ -154,13 +162,15 @@ pub const Position = struct {
     materials: [2]Value,
     /// The current side to move.
     to_move: Color,
-    /// Depth during search. Must match state chain.
+    /// Depth during search.
     ply: u16,
-    /// The real game ply.
+    /// Used for search and repetition detection.
+    ply_from_root: u16,
+    /// The real game ply. Just for output / debug.
     game_ply: u16,
     /// Is this chess960?
     is_960: bool,
-    /// State indicating we did a nullmove somewhere in the search.
+    /// State indicating we did a nullmove.
     nullmove_state: bool = false,
     /// The current state.
     state: *StateInfo,
@@ -182,10 +192,11 @@ pub const Position = struct {
             .materials = @splat(0),
             .to_move = Color.WHITE,
             .ply = 0,
+            .ply_from_root = 0,
             .game_ply = 0,
             .is_960 = false,
             .nullmove_state = false,
-            .state = undefined,
+            .state = invalid_state_ptr,
         };
     }
 
@@ -218,10 +229,11 @@ pub const Position = struct {
             .materials = .{ m_sum, m_sum },
             .to_move = Color.WHITE,
             .ply = 0,
+            .ply_from_root = 0,
             .game_ply = 0,
             .is_960 = false,
             .nullmove_state = false,
-            .state = undefined,
+            .state = invalid_state_ptr,
         };
     }
 
@@ -278,6 +290,10 @@ pub const Position = struct {
                             else => {
                                 const pc: Piece = try Piece.from_fen_char(c);
                                 const sq: Square = Square.from_rank_file(rank, file);
+                                if (!pc.is_pawn()) {
+                                    const color: Color = pc.color();
+                                    st.non_pawn_material[color.u] += pc.material();
+                                }
                                 self.lazy_add_piece(sq, pc);
                                 file +|= 1;
                             },
@@ -365,19 +381,21 @@ pub const Position = struct {
         self.* = empty_classic;
         self.state = new_state;
         self.init_hash();
+        new_state.non_pawn_material[0] = (N.material() * 2) + (B.material() * 2) + (R.material() * 2) + Q.material() + K.material();
+        new_state.non_pawn_material[1] = (N.material() * 2) + (B.material() * 2) + (R.material() * 2) + Q.material() + K.material();
         // Update state not needed.
     }
 
-    /// Clones a position.
-    pub fn clone(src: *const Position, new_state: *StateInfo) Position {
-        var pos: Position = src.*;
-        new_state.* = src.state.*;
-        new_state.prev = null;
-        new_state.next = null;
-        pos.state = new_state;
-        pos.ply = 0;
-        return pos;
-    }
+    // /// Clones a position.
+    // pub fn clone(src: *const Position, new_state: *StateInfo) Position {
+    //     var pos: Position = src.*;
+    //     new_state.* = src.state.*;
+    //     new_state.prev = null;
+    //     new_state.next = null;
+    //     pos.state = new_state;
+    //     pos.ply = 0;
+    //     return pos;
+    // }
 
     /// Clones a position.
     pub fn copy_from(self: *Position, other: *const Position, new_state: *StateInfo) void {
@@ -418,6 +436,8 @@ pub const Position = struct {
             new_state.ep_square = bk_state.ep_square.flipped();
         }
 
+        new_state.non_pawn_material[0] = bk_state.non_pawn_material[1];
+        new_state.non_pawn_material[1] = bk_state.non_pawn_material[0];
         new_state.last_move = bk_state.last_move.flipped();
         new_state.moved_piece = bk_state.moved_piece.opp();
         new_state.captured_piece = bk_state.captured_piece.opp();
@@ -444,8 +464,8 @@ pub const Position = struct {
         self.layout.king_start_squares[0] = king;
         self.layout.rook_start_squares[WHITE][O_O] = rook_o_o;
         self.layout.rook_start_squares[WHITE][O_O_O] = rook_o_o_o;
-        self.layout.castling_between_bitboards[WHITE][O_O] = squarepairs.in_between_bitboard(king, rook_o_o);
-        self.layout.castling_between_bitboards[WHITE][O_O_O] = squarepairs.in_between_bitboard(king, rook_o_o_o);
+        self.layout.castling_between_bitboards[WHITE][O_O] = bitboards.in_between_bitboard(king, rook_o_o);
+        self.layout.castling_between_bitboards[WHITE][O_O_O] = bitboards.in_between_bitboard(king, rook_o_o_o);
         self.layout.castling_king_paths[WHITE][O_O] = determine_king_path(king, Square.G1);
         self.layout.castling_king_paths[WHITE][O_O_O] = determine_king_path(king, Square.C1);
         self.layout.castling_masks[rook_o_o.u] = cf_white_short;
@@ -460,8 +480,8 @@ pub const Position = struct {
         self.layout.king_start_squares[1] = king;
         self.layout.rook_start_squares[BLACK][O_O] = rook_o_o;
         self.layout.rook_start_squares[BLACK][O_O_O] = rook_o_o_o;
-        self.layout.castling_between_bitboards[BLACK][O_O] = squarepairs.in_between_bitboard(king, rook_o_o);
-        self.layout.castling_between_bitboards[BLACK][O_O_O] = squarepairs.in_between_bitboard(king, rook_o_o_o);
+        self.layout.castling_between_bitboards[BLACK][O_O] = bitboards.in_between_bitboard(king, rook_o_o);
+        self.layout.castling_between_bitboards[BLACK][O_O_O] = bitboards.in_between_bitboard(king, rook_o_o_o);
         self.layout.castling_king_paths[BLACK][O_O] = determine_king_path(king, Square.G8);
         self.layout.castling_king_paths[BLACK][O_O_O] = determine_king_path(king, Square.C8);
         self.layout.castling_masks[rook_o_o.u] = cf_black_short;
@@ -491,23 +511,27 @@ pub const Position = struct {
     }
 
     fn init_hash(self: *Position) void {
-        self.state.key = self.compute_hashkey();
+        self.compute_hashkeys(&self.state.key, &self.state.pawnkey);
     }
 
-    fn compute_hashkey(self: *const Position) u64 {
+    fn compute_hashkeys(self: *const Position, k: *u64, p: *u64)void {
         const st = self.state;
-        var k: u64 = 0;
+        k.* = 0;
+        p.* = 0;
         // Loop through occupied squares.
         var occ: u64 = self.all();
         while (occ != 0) {
             const sq = pop_square(&occ);
             const pc = self.get(sq);
-            k ^= zobrist.piece_square(pc, sq);
+            const z_key: u64 = zobrist.piece_square(pc, sq);
+            k.* ^= z_key;
+            if (pc.is_pawn()) {
+                p.* ^= z_key;
+            }
         }
-        k ^= zobrist.castling(st.castling_rights);
-        if (st.ep_square.u > 0) k ^= zobrist.enpassant(st.ep_square.file());
-        if (self.to_move.e == .black) k ^= zobrist.btm();
-        return k;
+        k.* ^= zobrist.castling(st.castling_rights);
+        if (st.ep_square.u > 0) k.* ^= zobrist.enpassant(st.ep_square.file());
+        if (self.to_move.e == .black) k.* ^= zobrist.btm();
     }
 
     pub fn get(self: *const Position, sq: Square) Piece {
@@ -561,6 +585,10 @@ pub const Position = struct {
 
     pub fn all_queens_rooks(self: *const Position) u64 {
         return (self.by_type(R) | self.by_type(Q));
+    }
+
+    pub fn all_queens(self: *const Position) u64 {
+        return self.by_type(Q);
     }
 
     pub fn all_kings(self: *const Position) u64 {
@@ -617,8 +645,18 @@ pub const Position = struct {
         return self.materials[0] + self.materials[1];
     }
 
+    pub fn has_valid_state(self: *const Position) bool {
+        return self.state != invalid_state_ptr;
+    }
+
     pub fn non_pawn_material(self: *const Position) Value {
-        return (self.materials[0] + self.materials[1]) - (P.material() * popcnt(self.all_pawns()));
+        if (comptime lib.is_paranoid) {
+            assert(self.has_valid_state());
+            const a: Value = (self.materials[0] + self.materials[1]) - (P.material() * popcnt(self.all_pawns()));
+            const b: Value = self.state.non_pawn_material[0] + self.state.non_pawn_material[1];
+            assert(a == b);
+        }
+        return self.state.non_pawn_material[0] + self.state.non_pawn_material[1];// (self.materials[0] + self.materials[1]) - (P.material() * popcnt(self.all_pawns()));
     }
 
     fn is_usable_ep_square(self: *const Position, ep: Square) bool {
@@ -626,12 +664,12 @@ pub const Position = struct {
         if (rank == bitboards.rank_3) {
             const w_pawn_sq = ep.add(8);
             const requirements: bool = self.board[w_pawn_sq.u].e == .w_pawn and self.board[ep.u].e == .no_piece and self.board[ep.u - 8].e == .no_piece;
-            return requirements and (masks.get_ep_mask(w_pawn_sq) & self.pawns(Color.BLACK) != 0);
+            return requirements and (bitboards.get_ep_mask(w_pawn_sq) & self.pawns(Color.BLACK) != 0);
         }
         else if (rank == bitboards.rank_6) {
             const b_pawn_sq = ep.sub(8);
             const requirements:  bool = self.board[b_pawn_sq.u].e == .b_pawn and self.board[ep.u].e == .no_piece and self.board[ep.u + 8].e == .no_piece;
-            return requirements and (masks.get_ep_mask(b_pawn_sq) & self.pawns(Color.WHITE) != 0);
+            return requirements and (bitboards.get_ep_mask(b_pawn_sq) & self.pawns(Color.WHITE) != 0);
         }
         return false;
     }
@@ -690,7 +728,7 @@ pub const Position = struct {
         const st: *const StateInfo = self.state;
         if (st.rule50 < 4) return false;
 
-        const end: u16 = @min(st.rule50, self.ply);
+        const end: u16 = @min(st.rule50, self.ply_from_root);
         if (end < 4) return false;
 
         var count: u8 = 0;
@@ -710,8 +748,8 @@ pub const Position = struct {
         const st: *const StateInfo = self.state;
         if (st.rule50 < 4) return false;
 
-        const end: u16 = @min(st.rule50, self.ply);
-        if (end < 3) return false; // ??? 3
+        const end: u16 = @min(st.rule50, self.ply_from_root);
+        if (end < 3) return false; // ??? 4 upcoming = 3??
 
         var count: u8 = 0;
         var i: u16 = 4;
@@ -720,7 +758,7 @@ pub const Position = struct {
             run = run.prev.?.prev.?;
             if (run.key == st.key) {
                 count += 1;
-                if (count >= 1) return true;
+                if (count >= 1) return true; //{ io.debugprint("UREP,", .{}); return true; }
             }
         }
         return false;
@@ -752,9 +790,13 @@ pub const Position = struct {
         var key: u64 = self.state.key ^ zobrist.btm();
 
         // Copy some state stuff. The rest is done down here and in update_state().
+        st.pawnkey = self.state.pawnkey;
         st.rule50 = self.state.rule50 + 1;
         st.ep_square = self.state.ep_square;
         st.castling_rights = self.state.castling_rights;
+        st.non_pawn_material = self.state.non_pawn_material;
+
+        // Update the linked list.
         self.state.next = st;
         st.prev = self.state;
         self.state = st;
@@ -765,10 +807,15 @@ pub const Position = struct {
 
         self.to_move = them;
         self.ply += 1;
+        self.ply_from_root += 1;
         self.game_ply += 1;
 
         // Reset drawcounter by default.
         if (is_pawnmove or is_capture) st.rule50 = 0;
+
+        if (is_capture and !capt.is_pawn()) {
+            st.non_pawn_material[them.u] -= capt.material();
+        }
 
         // Clear ep by default if it is set.
         if (st.ep_square.u > 0) {
@@ -790,13 +837,18 @@ pub const Position = struct {
             .normal => {
                 if (is_capture) {
                     self.remove_piece(them, capt, to);
-                    key ^= zobrist.piece_square(capt, to);
+                    const z_key: u64 = zobrist.piece_square(capt, to);
+                    key ^= z_key;
+                    if (capt.is_pawn()) {
+                        st.pawnkey ^= z_key;
+                    }
                 }
                 self.move_piece(us, pc, from, to);
                 key ^= hash_delta;
                 if (is_pawnmove) {
+                    st.pawnkey ^= hash_delta;
                     // Double pawn push: only set the ep-square if it is actually possible to do an ep-capture.
-                    if (from.u ^ to.u == 16 and masks.get_ep_mask(to) & self.pawns(them) != 0) {
+                    if (from.u ^ to.u == 16 and bitboards.get_ep_mask(to) & self.pawns(them) != 0) {
                         const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
                         st.ep_square = ep;
                         key ^= zobrist.enpassant(ep.file());
@@ -812,7 +864,9 @@ pub const Position = struct {
                 }
                 self.remove_piece(us, pawn, from);
                 self.add_piece(us, prom, to);
+                st.non_pawn_material[us.u] += prom.material();
                 key ^= zobrist.piece_square(pawn, from) ^ zobrist.piece_square(prom, to);
+                st.pawnkey ^= zobrist.piece_square(pc, from);
             },
             .enpassant => {
                 const pawn_us: Piece = comptime Piece.create_pawn(us);
@@ -821,6 +875,7 @@ pub const Position = struct {
                 self.remove_piece(them, pawn_them, capt_sq);
                 self.move_piece(us, pawn_us, from, to);
                 key ^= hash_delta ^ zobrist.piece_square(pawn_them, capt_sq);
+                st.pawnkey ^= hash_delta ^ zobrist.piece_square(capt, capt_sq);
             },
             .castle => {
                 // Castling is encoded as "king takes rook".
@@ -850,6 +905,7 @@ pub const Position = struct {
 
         self.to_move = us;
         self.ply -= 1;
+        self.ply_from_root -= 1;
         self.game_ply -= 1;
 
         const them: Color = comptime us.opp();
@@ -907,9 +963,13 @@ pub const Position = struct {
         var key: u64 = self.state.key ^ zobrist.btm();
 
         // Copy some state stuff. The rest is done down here and in update_state().
+        st.pawnkey = self.state.pawnkey;
         st.rule50 = self.state.rule50;
         st.ep_square = self.state.ep_square;
         st.castling_rights = self.state.castling_rights;
+        st.non_pawn_material = self.state.non_pawn_material;
+
+        // Keep track of linked list.
         self.state.next = st;
         st.prev = self.state;
         self.state = st;
@@ -952,21 +1012,21 @@ pub const Position = struct {
         st.pins_diagonal = .{ 0, 0 };
 
         st.checkmask =
-            (data.get_pawn_attacks(self.king_square(us), us) & self.pawns(us.opp())) |
-            (data.get_knight_attacks(self.king_square(us)) & self.knights(us.opp()));
+            (attacks.get_pawn_attacks(self.king_square(us), us) & self.pawns(us.opp())) |
+            (attacks.get_knight_attacks(self.king_square(us)) & self.knights(us.opp()));
 
         inline for (Color.all) |color| {
             const our_king_sq: Square = self.king_square(color);
             const bb_occ_without_us: u64 = bb_all ^ self.by_color(color);
             var candidate_attackers: u64 =
-                (data.get_bishop_attacks(our_king_sq, bb_occ_without_us) & self.queens_bishops(color.opp())) |
-                (data.get_rook_attacks(our_king_sq, bb_occ_without_us) & self.queens_rooks(color.opp()));
+                (attacks.get_bishop_attacks(our_king_sq, bb_occ_without_us) & self.queens_bishops(color.opp())) |
+                (attacks.get_rook_attacks(our_king_sq, bb_occ_without_us) & self.queens_rooks(color.opp()));
 
             // Use candidate attackers for both checkers and pins.
             while (candidate_attackers != 0) {
                 const attacker_sq: Square = pop_square(&candidate_attackers);
                 const attacker_square_bitboard: u64 = attacker_sq.to_bitboard();
-                const pair = squarepairs.get(self.king_square(color), attacker_sq);
+                const pair = bitboards.get_squarepair(self.king_square(color), attacker_sq);
                 const bb_ray: u64 = pair.in_between_bitboard & self.by_color(color);
                 // We have a slider checker when there is nothing in between.
                 if (us.e == color.e and bb_ray == 0) {
@@ -1027,33 +1087,37 @@ pub const Position = struct {
     pub fn is_square_attacked_by(self: *const Position, to: Square, comptime attacker: Color) bool {
         const inverted = comptime attacker.opp();
         return
-            (data.get_knight_attacks(to) & self.knights(attacker)) |
-            (data.get_king_attacks(to) & self.kings(attacker)) |
-            (data.get_pawn_attacks(to, inverted) & self.pawns(attacker)) |
-            (data.get_rook_attacks(to, self.all()) & self.queens_rooks(attacker)) |
-            (data.get_bishop_attacks(to, self.all()) & self.queens_bishops(attacker)) != 0;
+            (attacks.get_knight_attacks(to) & self.knights(attacker)) |
+            (attacks.get_king_attacks(to) & self.kings(attacker)) |
+            (attacks.get_pawn_attacks(to, inverted) & self.pawns(attacker)) |
+            (attacks.get_rook_attacks(to, self.all()) & self.queens_rooks(attacker)) |
+            (attacks.get_bishop_attacks(to, self.all()) & self.queens_bishops(attacker)) != 0;
     }
 
     /// Returns true if square `to` is attacked by any piece of `attacker` for a certain occupation `occ`.
     pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to: Square, comptime attacker: Color) bool {
         const inverted = comptime attacker.opp();
         return
-            (data.get_knight_attacks(to) & self.knights(attacker)) |
-            (data.get_king_attacks(to) & self.kings(attacker)) |
-            (data.get_pawn_attacks(to, inverted) & self.pawns(attacker)) |
-            (data.get_rook_attacks(to, occ) & self.queens_rooks(attacker)) |
-            (data.get_bishop_attacks(to, occ) & self.queens_bishops(attacker)) != 0;
+            (attacks.get_knight_attacks(to) & self.knights(attacker)) |
+            (attacks.get_king_attacks(to) & self.kings(attacker)) |
+            (attacks.get_pawn_attacks(to, inverted) & self.pawns(attacker)) |
+            (attacks.get_rook_attacks(to, occ) & self.queens_rooks(attacker)) |
+            (attacks.get_bishop_attacks(to, occ) & self.queens_bishops(attacker)) != 0;
     }
 
     /// Gives a bitboard of attackers which attack `to` for both colors.
     pub fn get_all_attacks_to_for_occupation(self: *const Position, occ: u64, to: Square) u64 {
         return
-            (data.get_knight_attacks(to) & self.all_knights()) |
-            (data.get_king_attacks(to) & self.all_kings()) |
-            (data.get_pawn_attacks(to, .WHITE) & self.all_pawns()) |
-            (data.get_pawn_attacks(to, .BLACK) & self.all_pawns()) |
-            (data.get_rook_attacks(to, occ) & self.all_queens_rooks()) |
-            (data.get_bishop_attacks(to, occ) & self.all_queens_bishops());
+            (attacks.get_knight_attacks(to) & self.all_knights()) |
+            (attacks.get_king_attacks(to) & self.all_kings()) |
+            (attacks.get_pawn_attacks(to, .WHITE) & self.all_pawns()) |
+            (attacks.get_pawn_attacks(to, .BLACK) & self.all_pawns()) |
+            (attacks.get_rook_attacks(to, occ) & self.all_queens_rooks()) |
+            (attacks.get_bishop_attacks(to, occ) & self.all_queens_bishops());
+    }
+
+    pub fn attacks_by(self: *const Position, comptime attacker: Color) u64 {
+        return self.attacks_by_for_occupation(attacker, self.all());
     }
 
     pub fn attacks_by_for_occupation(self: *const Position, comptime attacker: Color, occ: u64) u64 {
@@ -1069,25 +1133,25 @@ pub const Position = struct {
         var their_knights = self.knights(attacker);
         while (their_knights != 0) {
             const from: Square = pop_square(&their_knights);
-            att |= data.get_knight_attacks(from);
+            att |= attacks.get_knight_attacks(from);
         }
 
         // Diagonal sliders.
         var their_diag_sliders = self.queens_bishops(attacker);
         while (their_diag_sliders != 0) {
             const from: Square = pop_square(&their_diag_sliders);
-            att |= data.get_bishop_attacks(from, occ);
+            att |= attacks.get_bishop_attacks(from, occ);
         }
 
         // Orthogonal sliders.
         var their_orth_sliders = self.queens_rooks(attacker);
         while (their_orth_sliders != 0) {
             const from: Square = pop_square(&their_orth_sliders);
-            att |= data.get_rook_attacks(from, occ);
+            att |= attacks.get_rook_attacks(from, occ);
         }
 
         // King.
-        att |= data.get_king_attacks(self.king_square(attacker));
+        att |= attacks.get_king_attacks(self.king_square(attacker));
 
         return att;
     }
@@ -1270,7 +1334,7 @@ pub const Position = struct {
                 const ep: Square = st.ep_square;
                 // Enpassant.
                 if (ep.u > 0) {
-                    var bb_enpassant: u64 = data.get_pawn_attacks(ep, them) & our_pawns; // inversion trick.
+                    var bb_enpassant: u64 = attacks.get_pawn_attacks(ep, them) & our_pawns; // inversion trick.
                     inline for (0..2) |_| {
                         if (bb_enpassant == 0) break;
                         const from: Square = pop_square(&bb_enpassant);
@@ -1284,7 +1348,7 @@ pub const Position = struct {
             var bb_knights: u64 = if (!ctp.pins) our_knights else our_knights & ~st.pins[us.u]; // A knight can never escape a pin.
             while (bb_knights != 0) {
                 const from: Square = pop_square(&bb_knights);
-                var bb_to: u64 = data.get_knight_attacks(from) & target;
+                var bb_to: u64 = attacks.get_knight_attacks(from) & target;
                 inline for (0..8) |_| {
                     if (bb_to == 0) break;
                     store(from, pop_square(&bb_to), storage) orelse return;
@@ -1296,7 +1360,7 @@ pub const Position = struct {
                 var our_sliders: u64 = our_queens_bishops;
                 while (our_sliders != 0) {
                     const from: Square = pop_square(&our_sliders);
-                    var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target;
+                    var bb_to: u64 = attacks.get_bishop_attacks(from, bb_all) & target;
                     while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
                     }
@@ -1305,7 +1369,7 @@ pub const Position = struct {
                 var non_pinned_sliders: u64 = our_queens_bishops & ~st.pins[us.u];
                 while (non_pinned_sliders != 0) {
                     const from: Square = pop_square(&non_pinned_sliders);
-                    var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target;
+                    var bb_to: u64 = attacks.get_bishop_attacks(from, bb_all) & target;
                     while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
                     }
@@ -1313,7 +1377,7 @@ pub const Position = struct {
                 var pinned_sliders: u64 = our_queens_bishops & st.pins_diagonal[us.u];
                 while (pinned_sliders != 0) {
                     const from: Square = pop_square(&pinned_sliders);
-                    var bb_to: u64 = data.get_bishop_attacks(from, bb_all) & target & st.pins_diagonal[us.u];
+                    var bb_to: u64 = attacks.get_bishop_attacks(from, bb_all) & target & st.pins_diagonal[us.u];
                     while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
                     }
@@ -1325,7 +1389,7 @@ pub const Position = struct {
                 var our_sliders: u64 = our_queens_rooks;
                 while (our_sliders != 0) {
                     const from: Square = pop_square(&our_sliders);
-                    var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target;
+                    var bb_to: u64 = attacks.get_rook_attacks(from, bb_all) & target;
                     while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
                     }
@@ -1334,7 +1398,7 @@ pub const Position = struct {
                 var non_pinned_sliders: u64 = our_queens_rooks & ~st.pins[us.u];
                 while (non_pinned_sliders != 0) {
                     const from: Square = pop_square(&non_pinned_sliders);
-                    var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target;
+                    var bb_to: u64 = attacks.get_rook_attacks(from, bb_all) & target;
                     while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
                     }
@@ -1343,7 +1407,7 @@ pub const Position = struct {
                 var pinned_sliders: u64 = our_queens_rooks & st.pins_orthogonal[us.u];
                 while (pinned_sliders != 0) {
                     const from: Square = pop_square(&pinned_sliders);
-                    var bb_to: u64 = data.get_rook_attacks(from, bb_all) & target & st.pins_orthogonal[us.u];
+                    var bb_to: u64 = attacks.get_rook_attacks(from, bb_all) & target & st.pins_orthogonal[us.u];
                     while (bb_to != 0) {
                         store(from, pop_square(&bb_to), storage) orelse return;
                     }
@@ -1354,7 +1418,7 @@ pub const Position = struct {
 
         // King.
         const king_target = if (ctp.check or !ctp.captures) bb_not_us else bb_them;
-        var bb_to = data.get_king_attacks(king_sq) & king_target;
+        var bb_to = attacks.get_king_attacks(king_sq) & king_target;
 
         // The king is a troublemaker. For now this 'popcount heuristic' gives the best avg speed, using 2 different approaches to check legality.
         if (popcnt(bb_to) > 2) {
@@ -1422,8 +1486,8 @@ pub const Position = struct {
         const capt_sq = if (us.e == .white) to.sub(8) else to.add(8);
         const occ: u64 = (self.all() ^ from.to_bitboard() ^ capt_sq.to_bitboard()) | to.to_bitboard();
         const att: u64 =
-            (data.get_rook_attacks(king_sq, occ) & self.queens_rooks(them)) |
-            (data.get_bishop_attacks(king_sq, occ) & self.queens_bishops(them));
+            (attacks.get_rook_attacks(king_sq, occ) & self.queens_rooks(them)) |
+            (attacks.get_bishop_attacks(king_sq, occ) & self.queens_bishops(them));
         return att == 0;
     }
 
@@ -1475,6 +1539,11 @@ pub const Position = struct {
     pub fn pos_ok(self: *const Position) bool {
         lib.not_in_release();
 
+        if (!self.has_valid_state()) {
+            lib.io.debugprint("INVALID STATE", .{});
+            return false;
+        }
+
         if (popcnt(self.kings(Color.WHITE)) != 1) {
             lib.io.debugprint("WHITE KING ERROR", .{});
             return false;
@@ -1490,10 +1559,22 @@ pub const Position = struct {
             return false;
         }
 
-        const a = self.compute_hashkey();
-        if (a != self.state.key) {
-            lib.io.debugprint("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, a, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
-            lib.io.debugprint("KEY\n", .{});
+        var k: u64 = undefined;
+        var p: u64 = undefined;
+        self.compute_hashkeys(&k, &p);
+        if (k != self.state.key) {
+            lib.io.debugprint("KEY {} <> {} lastmove {s} {s}\n", .{ self.state.key, k, self.state.last_move.to_string().slice(), @tagName(self.state.last_move.type) });
+            return false;
+        }
+
+        if (p != self.state.pawnkey) {
+            lib.io.debugprint("PAWNKEY {} <> {}\n", .{ self.state.pawnkey, p });
+            return false;
+        }
+
+        if (self.state.non_pawn_material[0] + self.state.non_pawn_material[1] != self.non_pawn_material()) {
+            lib.io.debugprint("CHECK\n", .{});
+            self.draw() catch wtf();
             return false;
         }
 
@@ -1599,10 +1680,14 @@ pub const Position = struct {
 
         // Info.
         //const move_str: []const u8 = if (self.state.last_move.is_empty()) "" else self.state.last_move.to_string().slice();
-        try io.print_buffered("Fen: {f}\n", .{ self });
-        try io.print_buffered("Key: 0x{x:0>16}\n", .{ self.state.key });
+        try io.print_buffered("fen: {f}\n", .{ self });
+        try io.print_buffered("key: 0x{x:0>16}\n", .{ self.state.key });
+        try io.print_buffered("pawnkey: 0x{x:0>16}\n", .{ self.state.pawnkey });
+        try io.print_buffered("nullmovestate: {}\n", .{ self.nullmove_state });
+        try io.print_buffered("ply: {}\n", .{ self.ply });
+        //try io.print_buffered("{} == {} + {}\n", .{ self.non_pawn_material(), self.state.non_pawn_material[0], self.state.non_pawn_material[1] });
         //try io.print_buffered("Last move: {s}\n", .{move_str});
-        try io.print_buffered("Checkers: ", .{});
+        try io.print_buffered("checkers: ", .{});
         if (self.state.checkers != 0) {
             var bb: u64 = self.state.checkers;
             while (bb != 0) {

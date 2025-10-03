@@ -1,10 +1,10 @@
 // zig fmt: off
 
 //! All bitboards + magics + functions for move generation.
+//! NOTE: initialize *before* bitboards.zig.
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
 
@@ -88,24 +88,20 @@ pub fn initialize() void
         if (sq.next(.south_east))|n| king_attacks[sq.u] |= n.to_bitboard();
         if (sq.next(.south_west))|n| king_attacks[sq.u] |= n.to_bitboard();
 
-        // Raw direction bitboards.
-        bb_north[sq.u] = sq.ray_bitboard(.north);
-        bb_east[sq.u] = sq.ray_bitboard(.east);
-        bb_south[sq.u] = sq.ray_bitboard(.south);
-        bb_west[sq.u] = sq.ray_bitboard(.west);
-        bb_northwest[sq.u] = sq.ray_bitboard(.north_west);
-        bb_northeast[sq.u] = sq.ray_bitboard(.north_east);
-        bb_southeast[sq.u] = sq.ray_bitboard(.south_east);
-        bb_southwest[sq.u] = sq.ray_bitboard(.south_west);
-
         const entry_file: *MagicEntry = &file_magics[sq.u];
         const entry_main: *MagicEntry = &main_magics[sq.u];
         const entry_anti: *MagicEntry = &anti_magics[sq.u];
 
+        const bb_rank_1: u64 = 0x00000000000000ff;
+        const bb_rank_8: u64 = 0xff00000000000000;
+        const bb_file_a: u64 = 0x0101010101010101;
+        const bb_file_h: u64 = 0x8080808080808080;
+        const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
+
         // Masks without borders and without square itself.
-        entry_file.mask = sq.rays_bitboard(&.{.north, .south}) & ~(bitboards.bb_rank_1 | bitboards.bb_rank_8);
-        entry_main.mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bitboards.bb_border;
-        entry_anti.mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bitboards.bb_border;
+        entry_file.mask = sq.rays_bitboard(&.{.north, .south}) & ~(bb_rank_1 | bb_rank_8);
+        entry_main.mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bb_border;
+        entry_anti.mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bb_border;
 
         // Magics for each square, deduced from the precalculated ones.
         entry_file.magic = PrecomputedMagics.file_magics[file];
@@ -265,16 +261,6 @@ var file_attacks: [64 * 64]u64 = @splat(0);
 var diag_main_attacks: [64 * 64]u64 = @splat(0);
 var diag_anti_attacks: [64 * 64]u64 = @splat(0);
 
-// Raw. TODO: move to masks?
-var bb_north: [64]u64 = @splat(0);
-var bb_south: [64]u64 = @splat(0);
-var bb_west: [64]u64 = @splat(0);
-var bb_east: [64]u64 = @splat(0);
-var bb_northwest: [64]u64 = @splat(0);
-var bb_southeast: [64]u64 = @splat(0);
-var bb_northeast: [64]u64 = @splat(0);
-var bb_southwest: [64]u64 = @splat(0);
-
 // Movgen. (Pointers are faster than array access. Danger of @memcpy calls).
 pub const ptr_file_magics: [*]const MagicEntry = &file_magics;
 pub const ptr_main_magics: [*]const MagicEntry = &main_magics;
@@ -288,28 +274,6 @@ pub const ptr_rank_attacks: [*]const u64 = &rank_attacks;
 pub const ptr_file_attacks: [*]const u64 = &file_attacks;
 pub const ptr_diag_main_attacks: [*]const u64 = &diag_main_attacks;
 pub const ptr_diag_anti_attacks: [*]const u64 = &diag_anti_attacks;
-
-// Raw.
-pub const ptr_bb_north: [*]const u64 = &bb_north;
-pub const ptr_bb_south: [*]const u64 = &bb_south;
-pub const ptr_bb_west: [*]const u64 =  &bb_west;
-pub const ptr_bb_east: [*]const u64 =  &bb_east;
-pub const ptr_bb_northwest: [*]const u64 =  &bb_northwest;
-pub const ptr_bb_southeast: [*]const u64 = &bb_southeast;
-pub const ptr_bb_northeast: [*]const u64 = &bb_northeast;
-pub const ptr_bb_southwest: [*]const u64 =  &bb_southwest;
-
-/// Using the `Orientation` enum order.
-pub const direction_bitboards: [8][*]u64 = .{
-    ptr_bb_north,
-    ptr_bb_east,
-    ptr_bb_south,
-    ptr_bb_west,
-    ptr_bb_northwest,
-    ptr_bb_northeast,
-    ptr_bb_southeast,
-    ptr_bb_southwest,
-};
 
 fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     return switch(ori) {

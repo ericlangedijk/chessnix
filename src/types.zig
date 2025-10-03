@@ -512,8 +512,13 @@ pub const Piece = packed union {
         return self.u != 0;
     }
 
+    /// NOTE: Watch out with empty piece.
     pub fn color(self: Piece) Color {
         return .{ .u = @truncate(self.u >> 3) };
+    }
+
+    pub fn is_color(self: Piece, col: Color) bool {
+        return self.u != 0 and self.color().e == col.e;
     }
 
     pub fn opp(self: Piece) Piece {
@@ -760,9 +765,9 @@ pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
 const value_pawn: Value = 100;
-const value_knight: Value = 305;
+const value_knight: Value = 317; // 305;
 const value_bishop: Value = 333;
-const value_rook: Value = 474;//// 463; // was: 563
+const value_rook: Value = 510; // 474;//// 463; // was: 563
 const value_queen: Value = 950;
 
 // Values used in Position stolen from Stockfish.

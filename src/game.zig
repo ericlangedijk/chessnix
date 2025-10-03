@@ -42,7 +42,7 @@ pub fn Game(comptime history_size: u16) type
             try self.pos.set(&self.history[0], fen);
         }
 
-        pub fn flip(self: *Self) void {
+        pub fn flip_position(self: *Self) void {
             self.pos.flip(&self.history[0]);
         }
     };

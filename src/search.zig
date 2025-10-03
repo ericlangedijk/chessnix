@@ -1,9 +1,10 @@
 // zig fmt: off
 
-//! The heart of the engine: search.
+//! Engine + Search.
 
 const std = @import("std");
 const lib = @import("lib.zig");
+const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
@@ -37,21 +38,46 @@ const K: PieceType = types.K;
 
 const max_u64: u64 = std.math.maxInt(u64);
 const max_u32: u64 = std.math.maxInt(u32);
+const max_game_length: u16 = types.max_game_length;
+const max_move_count: u8 = types.max_move_count;
 const max_search_depth: u8 = types.max_search_depth;
 const max_threads: u16 = types.max_threads;
 const infinity = types.infinity;
 const mate = types.mate;
+const mate_threshold = types.mate_threshold;
 const stalemate = types.stalemate;
 
-const PV = lib.BoundedArray(Move, max_search_depth + 2);
-const Nodes = lib.BoundedArray(Node, max_search_depth + 2);
+const PV = lib.BoundedArray(Move, max_search_depth + 2); // just to be safe.
 
-/// This is to become the "thread" manager.
+pub const Use = packed struct {
+    aspiration_window: bool,
+    tt: bool,
+    null_move_pruning: bool,
+    beta_pruning: bool,
+    alpha_pruning: bool,
+    reversed_futility_pruning: bool,
+    futility_pruning: bool,
+    late_move_reduction: bool,
+    search_extensions: bool,
+};
+
+pub const use: Use = .{
+    .aspiration_window = true,
+    .tt = true,
+    .null_move_pruning = true,
+    .beta_pruning = true,
+    .alpha_pruning = true,
+    .reversed_futility_pruning = true,
+    .futility_pruning = true,
+    .late_move_reduction = true,
+    .search_extensions = true,
+};
+
 pub const Engine = struct {
     /// Shared tt for all threads.
     transpositiontable: tt.TranspositionTable,
     /// Threading.
-    cancelled: std.atomic.Value(bool),
+    busy: std.atomic.Value(bool),
     /// The number of threads we use.
     num_threads: usize,
     /// The controller thread, managing the search threads.
@@ -59,24 +85,25 @@ pub const Engine = struct {
     /// The working thread. Later this will be more threads. We start with one.
     search_thread: ?std.Thread,
     /// The global state list for our position.
-    history: [types.max_game_length]StateInfo,
+    history: [max_game_length]StateInfo,
     /// Our source position.
     pos: Position,
-    /// UCI options.
+    /// UCI Engine options like hashsize etc.
     options: Options,
     /// Settings like timeout etc.
-    searchparams: SearchParams,
+    time_params: TimeParams,
     /// The actual worker.
     searcher: Searcher,
     /// No output if true.
     muted: bool,
-    //tracker: Tracker,
+    /// Increments with each go command. Resets after 7.
+    cycle: u3,
 
     /// Engine is created on the heap.
     pub fn create() !*Engine {
         var engine: *Engine = try ctx.galloc.create(Engine);
         engine.transpositiontable = try .init(Options.default_hash_size);
-        engine.cancelled = std.atomic.Value(bool).init(false);
+        engine.busy = std.atomic.Value(bool).init(false);
         engine.num_threads = 1;
         engine.controller_thread = null;
         engine.search_thread = null;
@@ -84,72 +111,67 @@ pub const Engine = struct {
         engine.pos = .empty;
         engine.pos.set_startpos(&engine.history[0]);
         engine.options = Options.default;
-        engine.searchparams = SearchParams.default;
+        engine.time_params = TimeParams.default;
         engine.searcher = Searcher.init();
-        //engine.tracker = try .init();
+        engine.muted = false;
+        engine.cycle = 0;
         return engine;
     }
 
     pub fn destroy(self: *Engine) void {
         self.transpositiontable.deinit();
-        //self.tracker.deinit();
         ctx.galloc.destroy(self);
     }
 
     pub fn ucinewgame(self: *Engine) !void {
+        if (self.is_busy()) return;
         self.set_startpos();
-        self.clear_for_new_game();
+        self.transpositiontable.clear();
+        self.cycle = 0;
     }
 
-    pub fn is_running(self: *const Engine) bool {
-        return (self.controller_thread != null);
-    }
-
-    fn is_cancelled(self: *const Engine) bool {
-        return self.cancelled.load(.monotonic); // acquire?
+    pub fn is_busy(self: *const Engine) bool {
+        return self.busy.load(.monotonic); // acquire?
     }
 
     /// Start threaded search.
     pub fn start(self: *Engine, go_params: *const uci.Go) !void {
-        if (self.is_running()) return;
-        //self.transpositiontable.clear();
-        self.searchparams = .init(go_params, self.pos.to_move);
-        // io.debugprint("{any}\n",.{self.searchparams});
-        self.cancelled.store(false, .monotonic); // release?
-        self.transpositiontable.inc_age();
-        self.controller_thread = try std.Thread.spawn(.{}, run_controller, .{ self });
+        if (self.is_busy()) return;
+        self.time_params = .init(go_params, self.pos.to_move);
+        self.busy.store(true, .monotonic); // release?
+        self.controller_thread = try std.Thread.spawn(.{}, run_controller_thread, .{ self });
     }
 
     /// Stop threaded search.
     pub fn stop(self: *Engine) !void {
-        if (!self.is_running()) return;
-        // Force the searcher to stop. Only the engine may do a atomic store to the searchers.
-        @atomicStore(bool, &self.searcher.stopped, true, .monotonic); // release?
-        self.cancelled.store(true, .monotonic); // release?
+        if (!self.is_busy()) return;
+        // Force the searcher to stop. Only the engine may do this atomic store to the searchers. He is the boss.
+        @atomicStore(bool, &self.searcher.stopped, true, .monotonic);
+        self.busy.store(false, .monotonic);
     }
 
-    fn run_controller(self: *Engine) !void {
-        defer self.controller_thread = null;
-        self.search_thread = try std.Thread.spawn(.{}, Searcher.start, .{ &self.searcher, self });
+    fn run_controller_thread(self: *Engine) !void {
+        defer {
+            self.controller_thread = null;
+            self.cycle +|= 1;
+        }
+        self.transpositiontable.age();
+        self.search_thread = try std.Thread.spawn(.{}, Searcher.start, .{ &self.searcher, self, self.cycle });
         if (self.search_thread) |th| {
             th.join();
             self.search_thread = null;
         }
-    }
-
-    pub fn clear_for_new_game(self: *Engine) void {
-        if (self.is_running()) return;
-        self.transpositiontable.clear();
+        self.busy.store(false, .monotonic);
     }
 
     pub fn set_startpos(self: *Engine) void {
-        if (self.is_running()) return;
+        if (self.is_busy()) return;
         self.pos.set_startpos(&self.history[0]);
     }
 
     /// After an illegal move we stop without crashing.
     pub fn set_startpos_with_optional_moves(self: *Engine, moves: ?[]const u8) !void {
-        if (self.is_running()) return;
+        if (self.is_busy()) return;
         self.set_startpos();
         if (moves) |str| {
             self.parse_moves(str);
@@ -161,7 +183,7 @@ pub const Engine = struct {
     /// * If fen is null the startpostiion will be set.
     /// * After an illegal move we stop without crashing.
     pub fn set_position(self: *Engine, fen: ?[]const u8, moves: ?[]const u8) !void {
-        if (self.is_running()) return;
+        if (self.is_busy()) return;
         const f = fen orelse {
             self.set_startpos();
             return;
@@ -183,28 +205,35 @@ pub const Engine = struct {
         }
     }
 
-    // /// Engine test function.
-    // pub fn give_best_move(self: *Engine, movetime: u32) Move {
-    //     self.searchparams = .infinite_search_params;
-    //     self.searchparams.termination = .movetime;
-    //     self.searchparams.max_movetime = movetime;
-    //     self.muted = true;
-    //     self.searcher.start(self);
-    //     return self.searcher.best_node.first_move();
-    // }
+    /// Engine test function.
+    pub fn give_best_move(self: *Engine, fen: []const u8, moves: []const u8, movetime: u32) !Move {
+        if (self.is_busy()) return .empty;
+        //lib.io.debugprint("START\n", .{});
+        try self.ucinewgame();
+        self.muted = true;
+        try self.set_position(fen, moves);
+        var go: uci.Go = .empty;
+        go.movetime = movetime;
+        try self.start(&go);
+        while (self.is_busy()) {
+            // run thread.
+        }
+        return self.searcher.nodes[0].first_move();
+    }
 };
 
 pub const Stats = struct {
     /// /// The total amount of nodes.
     nodes: u64 = 0,
     /// The total amount of nodes done in quiescence_search.
-    quiescence_nodes : u64 = 0,
+    qnodes : u64 = 0,
     /// Iteration reached.
     depth: u16 = 0,
-    /// The max reached depth, including quiet depth and possible extensions.
+    /// The max reached depth, including quiescence depth and possible extensions.
     seldepth: u16 = 0,
     /// Used for move ordering statistic.
     beta_cutoffs: u64 = 0,
+
     const empty: Stats = .{};
 };
 
@@ -217,32 +246,24 @@ pub const Searcher = struct {
     termination: Termination,
     /// A private copy of the engine pos.
     pos: Position,
-    /// Our node stack.
-    nodes: Nodes,
-    /// Our best node. Updated after each iteration.
-    best_node: Node,
+
+    // Our rootmoves for the pos.
+    rootmoves: MovePicker,
+
+    /// The first state.
+    rootstate: *const StateInfo,
+    /// Our node stack. Index #0 is our main pv. Indexing [ply + 1] for the current ply.
+    nodes: [max_search_depth + 2]Node,
     /// For scoring quiet moves on alpha cutoffs. Indexing [Piece][Square].
     alpha_history: [16][64]Value,
     /// For scoring quiet moves on beta cutoffs. Indexing [Piece][Square].
     beta_history: [16][64]Value,
-
-    // The max reached depth, including quiet depth and possible extensions.
-    //seldepth: u16,
-
     /// The current iteration.
     iteration: u8,
-
-    /// Timeout
+    /// Timeout. Any (0) value returned when stopped should be ignored.
     stopped: bool,
     /// Tracking search time.
     timer: utils.Timer,
-
-    // The total amount of nodes.
-    //processed_nodes: u64,
-    // The total amount of nodes done in quiescence_search.
-    //processed_quiescence_nodes: u64,
-
-
     /// Statistics.
     stats: Stats,
 
@@ -252,167 +273,210 @@ pub const Searcher = struct {
             .transpositiontable = undefined,
             .termination = .infinite,
             .pos = .empty,
-            .nodes = .empty,
-            .best_node = .empty,
+            .rootmoves = .empty,
+            .rootstate = undefined,
+            .nodes = @splat(.empty),
             .alpha_history = std.mem.zeroes([16][64]Value),
             .beta_history = std.mem.zeroes([16][64]Value),
-            //.seldepth = 0,
             .iteration = 0,
             .stopped = false,
             .timer = .empty,
-            //.processed_nodes = 0,
-            //.processed_quiescence_nodes = 0,
             .stats = .empty,
         };
     }
 
-    fn start(self: *Searcher, engine: *Engine) void {
-        // Shared stuff.
-        self.engine = engine;
-        self.termination = engine.searchparams.termination;
-        self.transpositiontable = &engine.transpositiontable;
-        //self.transpositiontable.increase_age();
-
-        // Reset stuff.
-        self.timer.reset();
-        self.nodes = .empty;
-        self.best_node = .empty;
-        self.stopped = false;
-        self.iteration = 0;
-        //self.processed_nodes = 0;
-        //self.seldepth = 0;
-        self.alpha_history = std.mem.zeroes([16][64]Value);
-        self.beta_history = std.mem.zeroes([16][64]Value);
-        //self.processed_nodes = 0;
-        //self.processed_quiescence_nodes = 0;
-        self.stats = .empty;
-
-        // Create our private copy of the position.
-        var rootstate: StateInfo = undefined;
-        self.pos.copy_from(&engine.pos, &rootstate);
-
-        // Append our rootstate to the history of the source position. TODO: needed?
-        rootstate.prev = engine.pos.state;
-
-        // If there is only one move in a tournament situation move immediately.
-        if (self.termination == .clock) {
-            var store: position.MoveStorage = .init();
-            self.pos.lazy_generate_moves(&store);
-            if (store.count == 1) {
-                lib.io.print("bestmove {f}\n", .{ store.moves[0] }) catch wtf();
-                return;
-            }
-        }
-
-        switch (self.pos.to_move.e) {
-            .white => self.iterative_deepening(Color.WHITE),
-            .black => self.iterative_deepening(Color.BLACK),
-        }
-
-        //print_san_pv(&engine.pos, &self.best_node) catch wtf();
-        lib.io.print("bestmove {f}\n", .{ self.best_node.first_move() }) catch wtf();
-    }
-
-    fn stop(self: *Searcher) void {
-        _ = self;
-    }
-
-    fn print_pv(self: *const Searcher, elapsed_nanos: u64) void {
+    fn print_pv(self: *Searcher, elapsed_nanos: u64) void {
         const ms = elapsed_nanos / 1_000_000;
         const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
 
-        const score: Value = self.best_node.score;
-        var mate_output: ?Value = null;
-        if (score <= -types.mate_threshold) {
-            mate_output = -(@divTrunc(score + mate, 2) - 1);
-        }
-        else if (score >= types.mate_threshold) {
-            mate_output = @divTrunc(mate - score, 2) + 1;
-        }
+        const rootnode: *const Node = &self.nodes[0];
 
-        // I hate the mate in X uci output so I add ctp (raw score)
-        if (mate_output != null) {
-            io.print (
-                "info depth {} seldepth {} score mate {} ctp {} nodes {} qnodes {}% nps {} hashfull {} tthits {}% order {}% time {} pv {f}\n",
-                .{
-                    self.stats.depth,
-                    self.stats.seldepth,
-                    mate_output.?,
-                    self.best_node.score,
-                    self.stats.nodes,
-                    funcs.percent(self.stats.nodes, self.stats.quiescence_nodes),
-                    nps,
-                    self.transpositiontable.permille(),
-                    funcs.percent(self.transpositiontable.probes, self.transpositiontable.hits),
-                    funcs.percent(self.stats.nodes, self.stats.beta_cutoffs),
-                    ms,
-                    &self.best_node
-                }
-            ) catch wtf();
-        }
-        // No mate score.
-        else {
-            io.print (
-                "info depth {} seldepth {} score cp {} nodes {} qnodes {}% nps {} hashfull {} tthits {}% order {}% time {} pv {f}\n",
-                .{
-                    self.stats.depth,
-                    self.stats.seldepth,
-                    self.best_node.score,
-                    self.stats.nodes,
-                    funcs.percent(self.stats.nodes, self.stats.quiescence_nodes),
-                    nps,
-                    self.transpositiontable.permille(),
-                    funcs.percent(self.transpositiontable.probes, self.transpositiontable.hits),
-                    funcs.percent(self.stats.nodes, self.stats.beta_cutoffs),
-                    ms,
-                    &self.best_node
-                }
-            ) catch wtf();
-        }
+        //const score: Value = rootnode.score;
+
+        // var mate_output: ?Value = null;
+        // if (score <= -mate_threshold) {
+        //     mate_output = -(@divTrunc(score + mate, 2) - 1);
+        // }
+        // else if (score >= mate_threshold) {
+        //     mate_output = @divTrunc(mate - score, 2) + 1;
+        // }
+
+        // // I hate the mate in X uci output so I add ctp (raw score)
+        // if (mate_output != null) {
+        //     io.print (
+        //         "info depth {} seldepth {} score mate {} ctp {} nodes {} qnodes {}% nps {} ttprobes {} tthits {} order {}% time {} pv {f}\n",
+        //         .{
+        //             self.stats.depth,
+        //             self.stats.seldepth,
+        //             mate_output.?,
+        //             rootnode.score,
+        //             self.stats.nodes,
+        //             funcs.percent(self.stats.nodes, self.stats.qnodes),
+        //             nps,
+        //             self.transpositiontable.probes,
+        //             self.transpositiontable.hits,
+        //             funcs.percent(self.stats.nodes, self.stats.beta_cutoffs),
+        //             ms,
+        //             rootnode
+        //         }
+        //     ) catch wtf();
+        // }
+        // // No mate score.
+        // else
+
+        io.print (
+            "info depth {} seldepth {} score cp {} nodes {} qnodes {}% nps {} ttprobes {} tthits {} order {}% time {} pv {f}\n",
+            .{
+                self.stats.depth,
+                self.stats.seldepth,
+                rootnode.score,
+                self.stats.nodes,
+                funcs.percent(self.stats.nodes, self.stats.qnodes),
+                nps,
+                self.transpositiontable.probes,
+                self.transpositiontable.hits,
+                funcs.percent(self.stats.nodes, self.stats.beta_cutoffs),
+                ms,
+                rootnode
+            }
+        ) catch wtf();
+
     }
 
-    /// EXPERIMENTAL debug
-    fn update_best_pv_from_tt(self: *Searcher, score: Value) void {
-        const sk: u64 = self.pos.state.key;
-        var hist: [128]StateInfo = undefined;
-        const pv: *PV = &self.best_node.pv;
-        self.best_node.clear();
-        self.best_node.score = score;
+    fn try_set_pv_from_tt(self: *Searcher, node: *Node) void {
 
+        const debug_key: u64 = if (lib.is_paranoid) self.pos.state.key else 0;
+
+        // TODO: we can probably do some more optimizations here. Build in pondering etc. anyway. We are not there yet...
+        var hist: [128]StateInfo = undefined;
         var i: u8 = 0;
         while (true) {
             const entry = self.transpositiontable.get(self.pos.state.key);
-            if (entry.key != self.pos.state.key or entry.bound != .Exact or entry.age != self.transpositiontable.age) break;
+            if (entry.key != self.pos.state.key or entry.bound != .Exact) break;
             const move = entry.move;
             var any: position.MoveFinder = .init(move);
             self.pos.lazy_generate_moves(&any);
             if (!any.found) break;
-            //if (i == 0)
-            //self.best_node.score = entry.score;
             self.pos.lazy_do_move(&hist[i], move);
-            pv.append_assume_capacity(move);
+            node.pv.append_assume_capacity(move);
+            //if (i == 0) node.score = entry.score;
             i += 1;
             if (i > 127) break;
         }
-        for (pv.slice()) |_| {
+
+        for (node.pv.slice()) |_| {
             self.pos.lazy_undo_move();
         }
-        assert(self.pos.state.key == sk); // don't mess up!!
+
+        // Check if we did not mess up.
+        if (lib.is_paranoid) {
+            assert(self.pos.state.key == debug_key);
+        }
     }
 
-    /// Still using a very simple aspiration window.
-    fn iterative_deepening(self: *Searcher, comptime us: Color) void {
+    fn start(self: *Searcher, engine: *Engine, cycle: u3) void {
+        // Shared stuff.
+        self.engine = engine;
+        self.termination = engine.time_params.termination;
+        self.transpositiontable = &engine.transpositiontable;
+
+        // Reset stuff.
+        self.timer.reset();
+        self.nodes = @splat(.empty);
+        self.rootmoves = .empty;
+        self.stopped = false;
+        self.iteration = 0;
+        self.stats = .empty;
+
+        // Clear stuff. This is a new game.
+        if (cycle == 0) {
+            self.alpha_history = std.mem.zeroes([16][64]Value);
+            self.beta_history = std.mem.zeroes([16][64]Value);
+        }
+        // Preserve stuff during a game. Aging heuristics and prevent overflowing.
+        else {
+            for (0..16) |p| {
+                for (0..64) |q| {
+                    self.alpha_history[p][q] = @divTrunc(self.alpha_history[p][q], 2);
+                }
+            }
+            for (0..16) |p| {
+                for (0..64) |q| {
+                    self.beta_history[p][q] = @divTrunc(self.beta_history[p][q], 2);
+                }
+            }
+        }
+
+        // Create our private copy of the position.
+        // Append our rootstate to the history of the source position.
+        // This is quite a dirty trick: this st state 'skips' the last global pos state.
+        // It has (for now) be that way.
+        var st: StateInfo = undefined;
+        self.pos.copy_from(&engine.pos, &st);
+        st.prev = engine.pos.state.prev;
+        self.rootstate = &st;
+        //self.pos.ply_from_root = engine.pos.ply_from_root;
+
+        //io.debugprint("game_ply {} ply {} ply_from_root {}\n", .{ self.pos.game_ply, self.pos.ply, self.pos.ply_from_root});
+
+        const rootnode: *Node = &self.nodes[0];
+
+        // io.debugprint("{any}\n\n", .{ r});
+        // if (r.prev) |pr|
+        // io.debugprint("{any}\n\n", .{ pr }) else io.debugprint("NOPREV\n\n", .{});
+
+        // If there is only one move in a tournament situation move immediately. TODO: move to search -> exit early.
+        //const rootnode: *Node = &self.nodes[0];
+
+
+
+        //var store: position.MoveStorage = .init(); //TODO: make rootmoves.?
+        //self.pos.lazy_generate_moves(&self.rootmoves);
+
+        switch (self.pos.to_move.e) {
+            .white => self.rootmoves.generate_moves(&self.pos, Color.WHITE),
+            .black => self.rootmoves.generate_moves(&self.pos, Color.BLACK),
+        }
+
+        if (self.rootmoves.count == 1 and self.termination == .clock) {
+            const bm: Move = self.rootmoves.extmoves[0].move;
+            rootnode.score = 0;
+            rootnode.pv.append_assume_capacity(bm);
+            if (!engine.muted)
+                lib.io.print("bestmove {f}\n", .{ bm } ) catch wtf();
+            return;
+        }
+
+        switch (self.pos.to_move.e) {
+            .white => self.iterate(Color.WHITE),
+            .black => self.iterate(Color.BLACK),
+        }
+
+        if (!engine.muted) {
+            //if (rootnode.pv.len > 0) {
+                lib.io.print("bestmove {f}\n", .{ rootnode.first_move() }) catch wtf();
+            //}
+            //else if (self.rootmoves.count > 0) {
+              //  lib.io.print("bestmove {f}\n", .{ self.rootmoves.extmoves[0].move }) catch wtf();
+            //}
+        }
+    }
+
+    fn iterate_ORIGINAL(self: *Searcher, comptime us: Color) void {
+        var delta: Value = 25;
         var debug_key: u64 = 0;
         var depth: u8 = 1;
-        var best_score: Value = -infinity;
         var score: Value = 0;
+        var alpha: Value = -infinity;
+        var beta: Value = infinity;
 
-        //const ss: SearchState = comptime .new(us);
+        const rootnode: *Node = &self.nodes[0];
+        const iteration_node: *Node = &self.nodes[1];
 
-        //self.update_best_pv_from_tt(0);
-
-        var alpha: Value = -infinity; alpha += 0;
-        var beta: Value = infinity; beta += 0;
+        self.try_set_pv_from_tt(rootnode);
+        if (rootnode.pv.len > 0) {
+            self.print_pv(0);
+        }
 
         // Search with increasing depth.
         iterationloop: while (true) {
@@ -421,271 +485,390 @@ pub const Searcher = struct {
             self.stats.depth = depth;
             self.stats.seldepth = 0;
 
+            // Paranoid check.
             if (lib.is_paranoid) {
                 debug_key = self.pos.state.key;
             }
-            //io.print("itear {} window {} {}\n", .{ depth, alpha, beta }) catch wtf();
 
-            score = self.search(us, depth, alpha, beta); //-infinity, infinity);
+            io.debugprint("    #{} {} {}\n", .{ depth, alpha, beta});
+            score = self.search(depth, alpha, beta, us, true);
 
+            // Paranoid check.
             if (lib.is_paranoid) {
                 assert(debug_key == self.pos.state.key);
             }
 
             // Discard result if timeout.
-            if (self.stopped) break :iterationloop;
-
-            if (score <= alpha or score >= beta) {
-                alpha = -infinity;
-                beta = infinity;
-                continue :iterationloop;
+            if (self.stopped) {
+                break :iterationloop;
             }
 
-            // We found a better move.
-            if (score > best_score) {
+            if (comptime use.aspiration_window) {
+                // Aspiration Window fail low.
+                if (score <= alpha) {
+                    alpha -= delta;
+                    if (alpha < -infinity) alpha = -infinity;
+                    delta *= 2;
+                    continue :iterationloop;
+                }
+                // Aspiration Window fail high.
+                else if (score >= beta) {
+                    beta += delta;
+                    if (beta > infinity) beta = infinity;
+                    delta *= 2;
+                    continue :iterationloop;
+                }
+                // Aspiration Window succes.
+                else {
+                    alpha = score - delta;
+                    beta = score + delta;
+                    delta = 25;
+                }
+            }
+
+            // Copy the last finished pv.
+            rootnode.copy_from(iteration_node);
+
+            if (!self.engine.muted) {
+                self.print_pv(self.timer.read());
+            }
+
+            depth += 1;
+            if (depth >= max_search_depth or self.check_stop()) break :iterationloop;
+        }
+            // if (!self.engine.muted) {
+            //     self.print_pv(self.timer.read());
+            // }
+            // for (0..16) |p| {
+            //     for (0..64) |q| {
+            //         const b = self.beta_history[p][q];
+            //         if (b > 0)
+            //             io.debugprint("beta {t} {t} {}\n", .{ Piece.from_usize(p).e, Square.from_usize(q).e, b });
+            //     }
+            // }
+
+    }
+
+    fn iterate(self: *Searcher, comptime us: Color) void {
+        var debug_key: u64 = 0;
+
+        const rootnode: *Node = &self.nodes[0];
+        const iteration_node: *Node = &self.nodes[1];
+
+        self.try_set_pv_from_tt(rootnode);
+        if (rootnode.pv.len > 0) {
+            self.print_pv(0);
+        }
+
+        var depth: u8 = 1;
+        var score: Value = 0;
+        var best_score: Value = -infinity;
+
+        // Search with increasing depth.
+        iterationloop: while(true) {
+            self.iteration = depth;
+            self.stats.depth = depth;
+            self.stats.seldepth = 0;
+
+            var alpha: Value = -infinity;
+            var beta: Value = infinity;
+            var delta: Value = 20;
+
+            // The first few iterations no aspiration search.
+            if (comptime use.aspiration_window) {
+                if (depth >= 4) {
+                    alpha = score - delta;
+                    beta = score + delta;
+                }
+            }
+
+            aspiration_loop: while (true) {
+                if (lib.is_paranoid) {
+                    debug_key = self.pos.state.key;
+                }
+
+                // io.debugprint("    #{} {} {}\n", .{ depth, alpha, beta});
+                score = self.search(depth, alpha, beta, us, true);
+
+                if (lib.is_paranoid) {
+                    assert(debug_key == self.pos.state.key);
+                }
+
+                // Discard result if timeout.
+                if (self.stopped) {
+                    break :iterationloop;
+                }
+
+                if (comptime use.aspiration_window) {
+                    // Alpha.
+                    if (score <= alpha) {
+                        alpha = score - delta;
+                    }
+                    // Beta.
+                    else if (score >= beta) {
+                        beta = score + delta;
+                    }
+                    // Success.
+                    else {
+                        break :aspiration_loop;
+                    }
+                }
+                delta += delta;
+            }
+
+            // Copy the last finished pv.
+            rootnode.copy_from(iteration_node);
+
+            if (!self.engine.muted) {
+                self.print_pv(self.timer.read());
+            }
+
+            // if we found the same matescore as the previous iteration then stop.
+            if (score >= best_score) {
+                if (self.termination == .clock and score >= mate_threshold and best_score >= mate_threshold and score == best_score) {
+                    break: iterationloop;
+                }
                 best_score = score;
             }
 
-            alpha = score - 50;
-            beta = score + 50;
-
-            // TODO: if obbiously winning stop.
-
-            // Copy the last finished pv.
-            self.best_node.copy_from(self.get_node(1));
-            self.get_node(0).copy_from(&self.best_node); // this is parentnode... not sure if needed :)
-
-
-            self.print_pv(self.timer.read());
-
             depth += 1;
-            if (self.check_stop()) break :iterationloop;
-            if (depth >= max_search_depth) break :iterationloop;
-//            self.print_pv(self.timer.read());
-
+            if (depth >= max_search_depth or self.check_stop()) break :iterationloop;
         }
-
-        //self.print_pv(self.timer.read());
-        // if (!self.engine.muted) {
-        //     print_pv(&self.best_node, self.stats.depth, self.stats.seldepth, self.stats.nodes, self.timer.read(), self.transpositiontable.permille(), self.transpositiontable.hits);
-        // }
     }
 
-    fn search(self: *Searcher, comptime us: Color, depth: u8, input_alpha: Value, input_beta: Value) Value {
+    fn search(self: *Searcher, depth: u8, input_alpha: Value, input_beta: Value, comptime us: Color, comptime is_root: bool) Value {
 
+        // Paranoid checks.
         if (comptime lib.is_paranoid) {
             assert(input_beta > input_alpha);
+            assert(!is_root or depth > 0);
         }
 
-        //const us: Color = comptime ss.us;
-        //const is_root = comptime ss.is_root;
-        const them: Color = comptime us.opp();
-        const is_pvs: bool = input_alpha != input_beta - 1;
-        const iter: u8 = self.iteration;
-        const allow_prune: bool = iter >= 3;
         const pos: *Position = &self.pos;
-        const is_root: bool = pos.ply == 0;
-        const key: u64 = pos.state.key;
-        const is_check: bool = pos.state.checkers > 0;
         const ply: u16 = pos.ply;
-        //const is_pv_node: bool = input_beta - input_alpha > 1; I don't get this.
-        var alpha: Value = input_alpha;
-        var beta: Value = input_beta;
-
-        //if (key == 0xbbf58b9c762b4269) io.debugprint("yes,", .{}); // rnbq1rk1/pp1n1pp1/2p5/4P1NQ/1b1P4/2N5/1P3PPP/R1B2RK1 b - - 3 9
-
-        // The rootnode is always at index 1.
-        const node: *Node = self.get_node(ply + 1);
-        node.clear();
-        //if (is_root) node.copy_from(&self.best_node);
 
         // Update counters.
         self.stats.nodes += 1;
         self.stats.seldepth = @max(self.stats.seldepth, ply);
 
-        // if (depth > 0) {
-        //     if (pos.state.rule50 >= 100) return 0;
-
-        //     // This trick works but needs finetuning.
-        //     alpha = @max(alpha, -mate + ply);
-		//     beta = @min(beta, mate - ply);
-        //     if (alpha >= beta) {
-        //         return alpha;
-        //     }
-        // }
-
-        // Timeout?
-        if (self.check_stop()) return eval.evaluate(pos, false);
-
-        // if (pos.is_repetition()) {
-        // //     //io.debugprint("THREE\n", .{});
-        //      return 0;
-        // }
-
-        // if (depth == 0 and pos.is_repetition()) {
-        //     return 0;
-        // }
-
-        // Too deep. TODO: handle.
-
-
-        //if (pos.is_repetition()) return 0;
+        // Timeout.
+        if (self.check_stop()) {
+            return 0;
+        }
 
         if (!is_root) {
-
             // Too deep.
-            if (ply >= max_search_depth) return eval.evaluate(pos, false);
-
-            // TODO: not sure
-            if (pos.is_upcoming_repetition() and alpha < 0) {
-                alpha = 1 - (@as(Value, @intCast(self.stats.nodes & 2)));
-                if (alpha >= beta) return alpha;
+            if (ply >= max_search_depth) {
+                return eval.evaluate(pos);
             }
 
-            // TODO: not sure
-            if (pos.state.rule50 >= 100 or pos.is_threefold_repetition()) {
-                return @as(Value, 1) - (@as(i32, @intCast(self.stats.nodes & 2)));
+            // Draw. TODO: optimize and check if correct.
+            if (pos.state.rule50 >= 100 or eval.is_draw_by_insufficient_material(pos) or pos.is_threefold_repetition()) {
+                return 0;
             }
 
+            // // Repetition. TODO: optimize and check if correct.
+            if (pos.is_upcoming_repetition()) {
+                 return 0;
+            }
+        }
+
+        const them: Color = comptime us.opp();
+        const is_pvs: bool = input_beta - input_alpha != 1;
+        const key: u64 = pos.state.key;
+        const is_check: bool = pos.state.checkers > 0;
+        var alpha: Value = input_alpha;
+        var beta: Value = input_beta;
+        var e: u8 = 0; // extension
+        var r: u8 = 0; // reduction
+
+        const node: *Node = &self.nodes[ply + 1];
+        const childnode: *const Node = &self.nodes[ply + 2];
+        const parentnode: *const Node = &self.nodes[ply];
+        node.clear();
+
+        // TT Probe. Keeping the stored tt_move for move ordering.
+        var tt_move: Move = .empty;
+        if (self.tt_probe(key, depth, ply, alpha, beta, &tt_move)) |tt_score| {
+            if (!is_pvs) return tt_score;
+        }
+
+        // TODO: already better.... but not at all clear how and what and why. maybe it is complete crap and i should really test if we are following the best line here.
+        var pv_move: Move = .empty;
+        if (parentnode.pv.len > ply) {
+             pv_move = parentnode.pv.buffer[ply];
+        }
+
+        // Evaluation.
+        const ev: Value = eval.evaluate(pos);
+        const improvement: Value = if (ply < 2) 0 else if (ev > self.nodes[ply - 1].score and ev > self.nodes[ply - 2].score) 1 else 0;
+
+        if (!is_root) {
             alpha = @max(alpha, -mate + ply);
 			beta = @min(beta, mate - ply);
             if (alpha >= beta) return alpha;
         }
 
-        // TT Probe. Keeping the stored tt_move for move ordering.
-        var tt_move: Move = .empty;
-        if (!is_root)
-        {
-            if (self.tt_probe(key, depth, ply, alpha, beta, &tt_move)) |tt_score| {
-                //if (!is_pv_node)
-                //_ = is_pv_node;
-                return tt_score;
+        // // Beta pruning.
+        // if (use.beta_pruning) {
+        //     if (!is_pvs and !is_check and depth <= 8 and (ev - @as(i32, depth) * 100) >= (beta - improvement * 50)) {
+        //         return ev;
+        //     }
+        // }
+
+        // Reversed Futility Pruning.
+        if (comptime use.reversed_futility_pruning) {
+            if (!is_pvs and !is_check and depth == 1 and ev + 300 <= alpha) {
+                return self.qsearch(0, alpha, beta, us);
             }
-        }
-
-        // We need this twice.
-        const simple_eval: Value = eval.simple_eval(pos, us);
-
-        // RFP (Reversed Futility Pruning).
-        if (allow_prune and !is_check and depth == 1 and ply > 0 and simple_eval + 300 <= alpha) {
-            return self.quiescence_search(us, alpha, beta);
         }
 
         // Requested depth reached: plunge into quiescence.
-        if (depth == 0) {
-            return self.quiescence_search(us, alpha, beta);
+        if (!is_root and depth == 0 and !is_check) {
+            return self.qsearch(0, alpha, beta, us);
+        }
+
+        // Beta pruning. (MOVED HERE)
+        if (use.beta_pruning) {
+            if (!is_pvs and !is_check and depth <= 8 and (ev - @as(i32, depth) * 100) >= (beta - improvement * 50)) {
+                return ev;
+            }
         }
 
         // Null move pruning.
-        if (!is_check and !pos.nullmove_state and depth >= 4) {
-            var st: StateInfo = undefined;
-            pos.do_nullmove(us, &st);
-            defer pos.undo_nullmove(us);
-            const score: Value = -self.search(them, depth - 4, -beta, -beta + 1);
-            if (score >= beta) return beta;
-            if (self.stopped) return score;
+        if (comptime use.null_move_pruning) {
+            if (!is_pvs and !is_check and !pos.nullmove_state and depth > 2 and ev > beta and pos.non_pawn_material() > 0) {
+                r = 3;
+                var st: StateInfo = undefined;
+                pos.do_nullmove(us, &st);
+                defer pos.undo_nullmove(us);
+                if (depth <= 3) r = depth - 1;
+                const score: Value = -self.search(depth - 1 - r, -beta, -beta + 1, them, false);
+                if (self.stopped) {
+                    return 0;
+                }
+                if (score >= beta) {
+                    return if (score > mate_threshold) beta else score;
+                }
+            }
         }
 
-        const childnode: *const Node = self.get_node(ply + 2);
-        const parentnode: *const Node = self.get_node(ply);
-
-        //const pv_move: Move = if (parentnode.pv.len > 1) parentnode.pv.buffer[1] else .empty;
+        // Alpha pruning.
+        if (use.alpha_pruning) {
+            if (!is_root and !is_check and depth <= 4 and alpha > -mate_threshold and ev + 500 * @as(i32, depth) <= alpha) {
+                const score: Value = self.qsearch(1, alpha, alpha + 1, us);
+                if (self.stopped) {
+                    return 0;
+                }
+                if (score <= alpha) {
+                    return score;
+                }
+            }
+        }
 
         // Gen moves.
         var movepicker: MovePicker = .empty;
-        movepicker.generate_moves(pos, us);
-        movepicker.process_and_score_moves(self, tt_move, node.killers);
+        if (is_root) {
+            movepicker.copy_from(&self.rootmoves);
+        }
+        else {
+            movepicker.generate_moves(pos, us);
+        }
+        movepicker.process_and_score_moves(self, pv_move, tt_move, node.killers);
 
-        // if (is_root) {
-        //     movepicker.sort();
-        //     movepicker.debugprint(iter);
-        // }
-
-        // Is this checkmate or stalemate?
+        // Checkmate or stalemate.
         if (movepicker.count == 0) {
-            const score = if (is_check) -mate + ply else stalemate;
+            const score: Value = if (is_check) -mate + ply else 0;
             return score;
         }
 
-        // Have at least a move ready when we have a ridiculous timecontrol.
-        if (is_root and depth == 1) {
-            self.best_node.pv.append_assume_capacity(movepicker.extract_next(0).move);
-        }
-
         var bound: Bound = .Alpha;
-        var best_score: Value = -infinity; // We still want to store something in the TT
+        var best_score: Value = -infinity; // We still want to store something in the TT?
         var best_move: Move = .empty;
-        var score: Value = 0;
 
+        ////////////////////////////////////////////////////////////////
         // Move loop
-        for (0..movepicker.count) |move_idx| {
-            const e: ExtMove = movepicker.extract_next(move_idx);
-
+        ////////////////////////////////////////////////////////////////
+        moveloop: for (0..movepicker.count) |move_idx| {
+            const em: ExtMove = movepicker.extract_next(move_idx);
             var st: StateInfo = undefined;
 
-            // Do the move
-            pos.do_move(us, &st, e.move);
-
-            // const is_draw: bool =  e.is_quiet and pos.is_threefold_repetition();
-            // if (is_draw) {
-            //     score = 0;
+            // if (!is_pvs and !is_check and alpha > -mate_threshold and lut(lut_prune, move)) {
+            //     if (num_legal_moves > depth and (ev + depth * depth * 50 + 100) < alpha) {
+            //         continue;
+            //     }
             // }
-            //const is_repetition: bool = e.is_quiet and pos.is_repetition();
 
             // Futility Pruning.
-            const futile: bool = !is_root and !is_pvs and allow_prune and !is_check and depth < 3 and e.is_quiet and move_idx > 5 and simple_eval + (depth * 24) < alpha;
-
-            if (!futile) {
-                // Interesting extension.
-                var extension: u8 = 0;
-                node.extension = parentnode.extension;
-                if (parentnode.extension < 5) {
-                    if ((is_check or movepicker.count < 3) and depth <= 8) extension = 1;
-                    if (e.move.type == .promotion) extension = 1;
-                }
-                var need_full_search: bool = true;
-                // Reduced depth. Depends on good move ordering. Never on early move or at early iterations.
-                if (extension == 0 and !is_check and !e.is_capture and depth > 2 and move_idx > 1) {
-                    const reduction = 1;
-                    score = -self.search(them, depth - 1 - reduction, -alpha - 1, -alpha);
-                    need_full_search = score > alpha;// and score < beta;
-                }
-                // Full search.
-                if (need_full_search) {
-                    score = -self.search(them, depth - 1 + extension, -beta, -alpha);
+            if (comptime use.futility_pruning) {
+                if (!is_root and !is_pvs and !is_check and depth < 3 and em.is_quiet and move_idx > 3 and ev + (depth * 24) < alpha) {
+                    continue :moveloop;
                 }
             }
 
-            // And undo the move.
+            // Do move
+            pos.do_move(us, &st, em.move);
+
+            var need_full_search: bool = true;
+            e = 0;
+            r = 0;
+            var score: Value = -infinity;
+
+            // Extension.
+            if (comptime use.search_extensions) {
+                if (is_check or em.move.type == .promotion)
+                    e = 1;
+            }
+
+            // Reduction.
+            if (comptime use.late_move_reduction) {
+                if (!is_check and e == 0 and !em.is_capture and depth >= 3 and move_idx > 0) {
+                    r = 1;
+                    score = -self.search(depth - 1 - r, -alpha - 1, -alpha, them, false);
+                    need_full_search = score > alpha and score < beta;
+                }
+            }
+
+            if (self.stopped) {
+                pos.undo_move(us);
+                return 0;
+            }
+
+            if (need_full_search) {
+                score = -self.search(depth + e - 1, -beta, -alpha, them, false);
+            }
+
             pos.undo_move(us);
 
-            // if (is_repetition) score = @divTrunc(score, 2);
+            if (self.stopped) {
+                return 0;
+            }
 
             // Better move found.
             if (score > best_score) {
                 best_score = score;
-                best_move = e.move;
-                // alpha
+                best_move = em.move;
+                // Alpha.
                 if (score > alpha) {
-                    if (e.is_quiet) {
-                        self.record_alpha_improvement(depth, e);
+                    if (is_pvs){
+                        node.update_pv(best_move, best_score, childnode);
                     }
-                    // beta
+                    if (em.is_quiet) {
+                        self.record_alpha_improvement(depth, em, score - alpha);
+                    }
+                    // Beta.
                     if (score >= beta) {
                         self.stats.beta_cutoffs += 1;
-                        if (e.is_quiet) {
-                            self.record_beta_cutoff(node, depth, e);
+                        if (em.is_quiet) {
+                            self.record_beta_cutoff(node, depth, em);
                         }
-                        self.tt_store(.Beta, key, depth, ply, e.move, beta);
+                        self.tt_store(.Beta, key, depth, ply, em.move, beta);
                         return beta;
                     }
                     alpha = score;
                     bound = .Exact;
-                    node.update_pv(best_move, best_score, childnode);
                 }
             }
-
-            if (self.stopped) break;
         } // (moveloop)
 
         if (lib.is_paranoid) {
@@ -693,130 +876,127 @@ pub const Searcher = struct {
             assert(!best_move.is_empty());
         }
 
-        if (self.stopped) return alpha; // ???
-
-        if(alpha != input_alpha) {
+        if(alpha > input_alpha) {
             self.tt_store(.Exact, key, depth, ply, best_move, best_score);
         } else {
-            self.tt_store(.Alpha, key, depth, ply, best_move, alpha);
+            self.tt_store(.Alpha, key, depth, ply, best_move, best_score); // alpha or best_score?
         }
 
-        return alpha;
+        return best_score;
     }
 
-    fn quiescence_search(self: *Searcher, comptime us: Color, input_alpha: Value, beta: Value) Value {
+    fn qsearch(self: *Searcher, qdepth: u8, input_alpha: Value, input_beta: Value, comptime us: Color) Value {
         if (comptime lib.is_paranoid) {
-            assert(beta > input_alpha);
+            assert(self.pos.to_move.e == us.e);
             assert(self.pos.ply > 0);
+           // assert(input_beta > input_alpha); // TODO: goes wrong with mating scores. no clue why.
         }
 
-        const them = comptime us.opp();
+
         const pos: *Position = &self.pos;
-        const key: u64 = pos.state.key;
         const ply: u16 = pos.ply;
-        const is_check : bool = pos.state.checkers > 0;
-        var alpha = input_alpha;
-        var score: Value = 0;
 
-        // The rootnode is always at index 1.
-        const node: *Node = self.get_node(ply + 1);
-        node.clear();
-
-        // Update counters.
+        // Update stats.
         self.stats.nodes += 1;
-        self.stats.quiescence_nodes += 1;
+        self.stats.qnodes += 1;
         self.stats.seldepth = @max(self.stats.seldepth, pos.ply);
 
-        // Static eval.
-        score = eval.evaluate(pos, false);
-
-        // Fail high.
-        if (score >= beta) return beta;
-
-        // Raise alpha.
-        if (score > alpha) alpha = score;
-
-        // Too deep.
-        if (ply >= max_search_depth) return score;
-
-        // Timeout: prevent calling timeout twice.
-        if (self.check_stop()) return score;
-
-        var tt_move: Move = .empty;
-        // TT probe quiet
-        if (ply > 0) {
-            if (self.tt_probe(key, 0, ply, alpha, beta, &tt_move)) |tt_score| {
-                return tt_score;
-            }
+        if (self.check_stop()) {
+            return 0;
         }
-        //const childnode: *const Node = self.get_node(ply + 2);
-        //const parentnode: *const Node = self.get_node(ply);
 
-        // const node: *Node = self.get_node(ply + 1);
-        // const childnode: *const Node = self.get_node(ply + 2);
+        const node: *Node = &self.nodes[pos.ply + 1];
+        node.clear();
+
+        if (ply >= max_search_depth) {
+            return eval.evaluate(pos);
+        }
+
+
+        const them = comptime us.opp();
+        const key: u64 = pos.state.key;
+        const is_check : bool = pos.state.checkers > 0;
+        var alpha = input_alpha;
+        var beta = input_beta;
+        var score: Value = 0;
+
+        alpha = @max(alpha, -mate + ply);
+        beta = @min(beta, mate - ply);
+
+        if (!is_check) {
+            // Static eval.
+            score = eval.evaluate(pos);
+
+            // Fail high.
+            if (score >= beta) return score;
+
+            // Raise alpha.
+            if (score > alpha) alpha = score;
+        }
+
+        // TT probe quiet
+        var tt_move: Move = .empty;
+        if (self.tt_probe(key, 0, ply, alpha, beta, &tt_move)) |tt_score| {
+            return tt_score;
+        }
 
         var movepicker: MovePicker = .empty;
         movepicker.generate_captures(pos, us);
-        movepicker.process_and_score_moves(self, tt_move, .{ Move.empty, Move.empty});
+        movepicker.process_and_score_moves(self, .empty, tt_move, .{ Move.empty, Move.empty});
 
         // Mate or stalemate?
         if (movepicker.count == 0) {
             if (is_check) {
-                return -types.mate + ply;
+                return -mate + ply;
             }
             return alpha;
         }
 
-        var best_move: Move = .empty;
-        var bound: Bound = .Alpha;
-
         // Move loop.
-        moveloop: for (0.. movepicker.count) |move_idx| {
+        for (0.. movepicker.count) |move_idx| {
             const e: ExtMove = movepicker.extract_next(move_idx);
 
-            // Do we skip bad captures?
-            //if (e.score <= -500_000) continue;
+            if (!is_check and e.is_bad_capture) {
+                continue; // pre-move
+            }
 
+            // Do move
             var st: StateInfo = undefined;
             pos.do_move(us, &st, e.move);
-            score = -self.quiescence_search(them, -beta, -alpha);
+
+            // if (!is_check and e.is_bad_capture) {
+            //     pos.undo_move(us);
+            //     continue; // post-move
+            // }
+
+            score = -self.qsearch(qdepth + 1, -beta, -alpha, them);
+
             pos.undo_move(us);
 
-            // Beta cutoff.
-            if (score >= beta) {
-                self.stats.beta_cutoffs += 1;
-                //self.tt_store(.Beta, key, 0, ply, e.move, beta);
-                return beta;
+            if (self.stopped) {
+                return 0;
             }
 
             // Better move.
             if (score > alpha) {
                 alpha = score;
-                best_move = e.move;
-                //node.update_pv(best_move, alpha, childnode);
-                bound = .Exact;
+                if (score >= beta) {
+                    self.stats.beta_cutoffs += 1;
+                    return score;
+                }
             }
-
-            if (self.stopped) break :moveloop;
         }
-
-        // if (!best_move.is_empty()) {
-        //     self.tt_store(bound, key, 0, ply, best_move, alpha);
-        // }
-
         return alpha;
     }
 
-    fn record_alpha_improvement(self: *Searcher, depth: Value, e: ExtMove) void {
-        const m: Move = e.move;
-        self.alpha_history[e.moved_piece.u][m.to.u] += depth * depth;
+    fn record_alpha_improvement(self: *Searcher, depth: Value, e: ExtMove, improvement: Value) void {
+        _ = self; _ = depth; _ = e; _ = improvement;
+       // self.alpha_history[e.moved_piece.u][e.move.to.u] += @min(improvement, 1000) + improvement + ((depth * depth) * 2);
     }
 
     fn record_beta_cutoff(self: *Searcher, node: *Node, depth: Value, e: ExtMove) void {
         const m: Move = e.move;
-        // Update piece square history.
-        self.beta_history[e.moved_piece.u][m.to.u] += (depth * depth) * 2;
-        // Update killers.
+        self.beta_history[e.moved_piece.u][m.to.u] += ((depth * depth) * 3);
         if (node.killers[0] != m) {
             node.killers[1] = node.killers[0];
             node.killers[0] = m;
@@ -824,11 +1004,16 @@ pub const Searcher = struct {
     }
 
     fn tt_store(self: *Searcher, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
+        if (!comptime use.tt) return;
+        if (lib.is_paranoid) {
+            assert(!self.stopped);
+        }
         self.transpositiontable.store(bound, key, depth, ply, move, score);
     }
 
     /// Hashmove can be used for move ordering when not empty.
     fn tt_probe(self: *Searcher, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value, tt_move: *Move) ?Value {
+        if (!comptime use.tt) return null;
         if (lib.is_paranoid) assert(tt_move.* == Move.empty);
         return self.transpositiontable.probe(key, depth, ply, alpha, beta, tt_move);
     }
@@ -839,29 +1024,26 @@ pub const Searcher = struct {
         const node_interval: bool = self.stats.nodes & 2047 == 0;
 
         if (node_interval) {
-            if (self.engine.is_cancelled()) {
+            if (!self.engine.is_busy()) {
                 self.stopped = true;
                 return true;
             }
-            // if (self.termination == .depth and self.iteration >= self.engine.searchparams.max_depth) {
-            //     self.stopped = true;
-            //     return true;
-            // }
         }
 
         switch (self.termination) {
             .nodes => {
-                if (self.stats.nodes >= self.engine.searchparams.max_nodes) {
+                if (self.stats.nodes >= self.engine.time_params.max_nodes) {
                     self.stopped = true;
                 }
             },
             .depth => {
-                if (self.iteration > self.engine.searchparams.max_depth) {
+                if (self.iteration > self.engine.time_params.max_depth) {
                     self.stopped = true;
                 }
             },
             .movetime, .clock => {
-                if (node_interval and self.timer.elapsed_ms() + 10 >= self.engine.searchparams.max_movetime) {
+                if (node_interval and self.timer.elapsed_ms() + 5 >= self.engine.time_params.max_movetime) {
+                    //io.debugprint("STOP nodes {} time {} used {}\n", .{ self.stats.nodes, self.engine.time_params.max_movetime, self.timer.elapsed_ms() });
                     self.stopped = true;
                 }
             },
@@ -871,19 +1053,14 @@ pub const Searcher = struct {
         }
         return self.stopped;
     }
-
-    /// NOTE: The pvnode at ply 0 is stored at nodes[1] NOTE: nope it is not (yet).
-    fn get_node(self: *Searcher, index: u16) *Node {
-        return &self.nodes.buffer[index];
-    }
 };
 
 pub const Node = struct {
     /// Local PV during search.
     pv: PV = .{},
-    /// Current eval.
+    /// Current result.
     score: Value = 0,
-    /// Extensions done (sum of chain).
+    /// Extensions done (sum of chain). TODO: not used anymore.
     extension: u8 = 0,
     /// Killer move heuristic.
     killers: [2]Move = .{ .empty, .empty },
@@ -894,9 +1071,9 @@ pub const Node = struct {
         return .{};
     }
 
+    /// Clear PV. Does not clear the killers.
     fn clear(self: *Node) void {
         self.pv.len = 0;
-        //self.pv.buffer[0] = Move.Empty; // debug safety.
         self.score = 0;
         self.extension = 0;
     }
@@ -920,7 +1097,7 @@ pub const Node = struct {
         self.score = other.score;
     }
 
-    /// Zig-format for UCI output the PV.
+    /// Zig-format for UCI pv output.
     pub fn format(self: Node, writer: *std.io.Writer) std.io.Writer.Error!void {
         const len: usize = self.pv.len;
         if (len == 0) return;
@@ -947,6 +1124,8 @@ pub const ExtMove = packed struct {
     is_quiet: bool,
     /// Set during processing.
     is_capture: bool,
+    /// Set during processing.
+    is_bad_capture: bool,
 
     pub const empty: ExtMove = .{
         .move = .empty,
@@ -959,20 +1138,20 @@ pub const ExtMove = packed struct {
 };
 
 const MovePicker = struct {
-    extmoves: [types.max_move_count]ExtMove,
+    extmoves: [max_move_count]ExtMove,
     count: u8,
 
     const empty: MovePicker = .{ .extmoves = undefined, .count = 0 };
 
     /// Required function.
     pub fn reset(self: *MovePicker) void {
-        //self.count = 0;
-        assert(self.count == 0);
+        // We only are allowed to use this one once.
+        if (comptime lib.is_paranoid) assert(self.count == 0);
     }
 
     /// Required function.
     pub fn store(self: *MovePicker, move: Move) ?void {
-        self.extmoves[self.count] = ExtMove{ .move = move, .score = 0, .moved_piece = Piece.NO_PIECE, .captured_piece = Piece.NO_PIECE, .is_quiet = false, .is_capture = false };
+        self.extmoves[self.count] = ExtMove{ .move = move, .score = 0, .moved_piece = Piece.NO_PIECE, .captured_piece = Piece.NO_PIECE, .is_quiet = false, .is_capture = false, .is_bad_capture = false };
         self.count += 1;
     }
 
@@ -986,21 +1165,22 @@ const MovePicker = struct {
         pos.generate_moves(us, self);
     }
 
-    /// Generate captures only, but if in check generate all.
+    /// For quiescence search. Generate captures only, but if in check generate all evasions.
     fn generate_captures(self: *MovePicker, pos: *const Position, comptime us: Color) void {
         pos.generate_captures(us, self);
     }
 
     /// Fill ExtMove info and give each generated move an initial heuristic score. Crucial for the search algorithm.
-    fn process_and_score_moves(self: *MovePicker, searcher: *const Searcher, tt_move: Move, killers: [2]Move) void {
+    fn process_and_score_moves(self: *MovePicker, searcher: *const Searcher, pv_move: Move, tt_move: Move, killers: [2]Move) void {
         const pos: *const Position = &searcher.pos;
 
+        const pv           : Value = 3_000_000;
         const hash         : Value = 2_000_000;
         const promotion    : Value = 1_000_000;
         const capture      : Value = 500_000;
         const killer1      : Value = 400_000;
         const killer2      : Value = 300_000;
-        const bad_capture  : Value = -500_000;
+        //const bad_capture  : Value = -500_000;
 
         for (self.slice()) |*e| {
             const m: Move = e.move;
@@ -1012,10 +1192,12 @@ const MovePicker = struct {
                     if (e.captured_piece.is_piece()) {
                         e.is_capture = true;
                         const see = eval.see_score(pos, m);
+                        e.is_bad_capture = see < 0;
+                        //e.score = capture + see;
                         if (see >= 0)
                             e.score = capture + see
                         else
-                            e.score = bad_capture + see; // TODO: how what...
+                            e.score = capture + see; // bad_capture + see; // bad_capture
                     }
                     else {
                         e.is_quiet = true;
@@ -1037,16 +1219,20 @@ const MovePicker = struct {
                 },
                 .castle => {
                     e.is_quiet = true;
-                    e.score = 0;//castle;
+                    e.score = 0; // TODO: not sure;
                 },
             }
 
+            // PV move
+            if (m == pv_move)
+                e.score += pv;
+
             // Hash move.
-            if (m == tt_move) {
+            if (m == tt_move)
                 e.score += hash;
-            }
-            // Killers only affect quiet moves
-            else if (e.is_quiet) {
+
+            // Killers only for quiet moves
+            if (e.is_quiet) {
                 if (m == killers[0]) {
                     e.score += killer1;
                 }
@@ -1069,6 +1255,7 @@ const MovePicker = struct {
             }
         }
         if (best_idx != current_idx) {
+            //io.debugprint("[swap {} {}]", .{ best_idx, current_idx});
             std.mem.swap(ExtMove, &ptr[best_idx], &ptr[current_idx]);
         }
         return ptr[current_idx];
@@ -1114,8 +1301,7 @@ pub const Options = struct {
     }
 };
 
-/// TODO: rename to settings?
-pub const SearchParams = struct {
+pub const TimeParams = struct {
     termination: Termination,
     max_depth: u8,
     max_nodes: u64,
@@ -1128,9 +1314,8 @@ pub const SearchParams = struct {
     increment: [2]u32,
     movestogo: u32,
 
-    //go wtime 600000 btime 600000 winc 30000 binc 30000 movestogo 40
 
-    const default: SearchParams = .{
+    const default: TimeParams = .{
         .termination = .infinite,
         .max_depth = 0,
         .max_nodes = 0,
@@ -1141,8 +1326,8 @@ pub const SearchParams = struct {
     };
 
     /// Convert the UCI go params to something usable for our search.
-    pub fn init(go_params: *const uci.Go, to_move: Color) SearchParams {
-        var result: SearchParams = .default;
+    pub fn init(go_params: *const uci.Go, to_move: Color) TimeParams {
+        var result: TimeParams = .default;
 
         // Infinite.
         if (go_params.infinite != null) {
@@ -1162,14 +1347,16 @@ pub const SearchParams = struct {
             const time: u32 = if (to_move.e == .white) result.time_left[Color.WHITE.u] else result.time_left[Color.BLACK.u];
             const inc: u32 = if (to_move.e == .white) result.increment[Color.WHITE.u] else result.increment[Color.BLACK.u];
 
-            result.max_movetime = (time / moves) + (inc / 2);
+            result.max_movetime = (time / moves) + if (moves > 1 and inc > 0) (inc / 2) else 0;
+            //if (result.movestogo == 1 and inc > 0) result.max_movetime -= (inc / 2);
+            //io.debugprint("moves {} time {} inc {} -> max_movetime {}\n", .{ moves, time, inc, result.max_movetime});
             return result;
         }
 
         // Depth.
         if (go_params.depth) |depth| {
             result.termination = .depth;
-            result.max_depth = @truncate(@min(depth, types.max_search_depth));
+            result.max_depth = @truncate(@min(depth, max_search_depth));
             return result;
         }
 
@@ -1199,19 +1386,8 @@ pub const Termination = enum {
     depth,
     clock,
 };
-const CallSite = enum { iterate, search, quiescence };
 
-fn print_san_pv(input_pos: *const Position, pv_node: *const Node) !void {
-    if (pv_node.pv.len == 0 ) return;
-    const san = @import("san.zig");
-    const ev = if (input_pos.to_move.e == .white) pv_node.score else -pv_node.score;
-    try lib.io.print("info string score cp {} line: ", .{ ev });
-    try san.write_san_line(input_pos, pv_node.pv.slice(), lib.io.out);
-    lib.io.print("\n", .{}) catch wtf();
-}
-
-const TimeOut = error { Occurred };
-
+/// Not used (yet).
 const Error = error {
     EngineIsStillRunning,
 };

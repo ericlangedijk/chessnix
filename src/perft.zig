@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const data = @import("data.zig");
+const attacks = @import("attacks.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");

@@ -3,7 +3,6 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
-const masks = @import("masks.zig");
 const funcs = @import("funcs.zig");
 const bounded_array = @import("bounded_array.zig");
 const types = @import("types.zig");
@@ -29,7 +28,8 @@ var engine: *Engine = undefined;
 pub fn run() void {
     // TODO: what to do in non-terminal mode? Just crash?
     uci_loop() catch |err| {
-        io.debugprint("error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
+        //io.debugprint("error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
+        io.print("info error: {s}", .{ @errorName(err) }) catch wtf();
         //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
     };
 }
@@ -45,8 +45,8 @@ fn uci_loop() !void {
     }
 
     command_loop: while (true) {
-        const input = try io.readline() orelse break :command_loop; // continue?
-        if (input.len == 0) break :command_loop; // continue?
+        const input = try io.readline() orelse continue :command_loop; // continue, break?
+        if (input.len == 0) continue :command_loop; // continue, break?
         var tokenizer: Tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :command_loop;
 
@@ -67,6 +67,7 @@ fn uci_loop() !void {
             try UCI.stop();
         }
         else if (eql(cmd, "quit")) {
+            try UCI.stop(); // TODO: engine still outputs bestmove.
             return;
         }
         else if (eql(cmd, "setoption")) {
@@ -260,26 +261,33 @@ const TTY = struct {
     }
 
     fn do_static_eval() void {
-        const e = eval.evaluate_abs(&engine.pos, true);
+        const e = eval.evaluate_with_tracking_absolute(&engine.pos);
         io.debugprint("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
+
+        //const v = eval.tuned_eval(&engine.pos);
+        //io.debugprint("e {} t {}\n", .{e, v});
+        //eval.bench(&engine.pos, &engine.pawntranspositiontable);
     }
 
     fn print_state() void {
-        const t: *const tt.TranspositionTable = &engine.transpositiontable;
+        //const t: *const tt.TranspositionTable = &engine.transpositiontable;
 
 // position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8
 
         //io.debugprint("upcoming rep {}\n", .{engine.pos.is_repetition()});
-        io.debugprint("threefold rep {}\n", .{engine.pos.is_threefold_repetition()});
+        //io.debugprint("threefold rep {}\n", .{engine.pos.is_threefold_repetition()});
 
-        io.debugprint("engine thinking {}\n", .{engine.is_running()});
-        io.debugprint("engine controller thread active {}\n", .{engine.controller_thread != null});
-        io.debugprint("engine search thread active {}\n", .{engine.search_thread != null});
+        //io.debugprint("engine thinking {}\n", .{engine.is_busy()});
+        io.debugprint("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
+        io.debugprint("3 rep {}\n", .{ engine.pos.is_threefold_repetition() });
+        io.debugprint("1 rep {}\n", .{ engine.pos.is_upcoming_repetition() });
+        //io.debugprint("engine controller thread active {}\n", .{engine.controller_thread != null});
+        //io.debugprint("engine search thread active {}\n", .{engine.search_thread != null});
 
-        io.debugprint("tt MB {}\n", .{t.mb});
-        io.debugprint("tt slots {}\n", .{t.len});
+        //io.debugprint("tt MB {}\n", .{t.mb});
+        //io.debugprint("tt slots {}\n", .{t.len});
         //io.debugprint("tt filled {}\n", .{t.filled});
-        io.debugprint("tt permille {}\n", .{t.permille()});
+        //io.debugprint("tt permille {}\n", .{t.permille()});
         //io.debugprint("tt age {}\n", .{t.age});
 
 //        const s = &engine.searcher;
@@ -289,6 +297,7 @@ const TTY = struct {
         // io.debugprint("tt hits   {}\n", .{ s.transpositiontable.hits });
         // io.debugprint("nodes     {}\n", .{ s.processed_nodes });
         // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
+       // engine.pos.print_history();
     }
 };
 
@@ -314,7 +323,7 @@ pub const Go = struct {
     /// Infinite search. Overwrites the other limiting fields.
     infinite: ?bool = null,
 
-    const empty: Go = .{};
+    pub const empty: Go = .{};
 };
 
 /// Error parsing UCI string.

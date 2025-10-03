@@ -12,7 +12,6 @@ pub fn main() !void
     //  Debug tests.
     if (comptime lib.is_debug) {
        try @import("tests.zig").run_silent_debugmode_tests();
-       //tests.print_struct_sizes();
     }
 
     uci.run();
