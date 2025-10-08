@@ -1,7 +1,6 @@
 // zig fmt: off
 
 //! All bitboards + magics + functions for move generation.
-//! NOTE: initialize *before* bitboards.zig.
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -17,12 +16,28 @@ const Square = types.Square;
 
 const assert = std.debug.assert;
 
-pub fn initialize() void
-{
-    // First determine byte-based local sliding attack masks, used for the big sliding attack tables.
+const sliding_attacks: [8][64]u8 = compute_sliding_attackmasks();
+const file_magics: [64]MagicEntry = compute_file_magics();
+const main_magics: [64]MagicEntry = compute_diagmain_magics();
+const anti_magics: [64]MagicEntry = compute_diaganti_magics();
+const pawn_attacks_white: [64]u64 = compute_pawn_hits_white();
+const pawn_attacks_black: [64]u64 = compute_pawn_hits_black();
+const knight_attacks: [64]u64 = compute_knight_attacks();
+const king_attacks: [64]u64 = compute_king_attacks();
+const rank_attacks: [64 * 64]u64 = compute_rank_attacks();
+const file_attacks: [64 * 64]u64 = compute_file_attacks();
+const diag_main_attacks: [64 * 64]u64 = compute_diagmain_attacks();
+const diag_anti_attacks: [64 * 64]u64 = compute_diaganti_attacks();
+
+/// This mask is used internally for compressed index. The borders are not needed in the story.
+const occ_index_mask: u8 = 0b01111110;
+
+fn compute_sliding_attackmasks() [8][64]u8 {
+    @setEvalBranchQuota(8000);
+    // Determine byte-based local sliding attack masks, used for the big sliding attack tables.
     // Determine for each bit-position the 8-bit attackmask for each occuption. The from-bitpos is never included.
     // We use a compressed index becuase borders are excluded.
-    var sliding_attacks: [8][64]u8 = std.mem.zeroes([8][64]u8);
+    var sa: [8][64]u8 = std.mem.zeroes([8][64]u8);
 
     for (0..8) |b| {
         const one: u8 = 1;
@@ -53,84 +68,144 @@ pub fn initialize() void
             }
             // compress the index
             const index : u8 = (occ & occ_index_mask) >> 1;
-            sliding_attacks[bitpos][index] = attackmask;
+            sa[bitpos][index] = attackmask;
         }
     }
+    return sa;
+}
 
+fn compute_file_magics() [64]MagicEntry {
+    @setEvalBranchQuota(8000);
+    const bb = @import("bitboards.zig");
+    var fm: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
     for (Square.all) |sq| {
-        const idx: usize = sq.u;
+        fm[sq.u].mask = sq.rays_bitboard(&.{.north, .south}) & ~(bb.bb_rank_1 | bb.bb_rank_8);
+        fm[sq.u].magic = PrecomputedMagics.file_magics[sq.coord.file];
+    }
+    return fm;
+}
+
+fn compute_diagmain_magics() [64]MagicEntry {
+    @setEvalBranchQuota(8000);
+    const bb = @import("bitboards.zig");
+    var dm: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
+    for (Square.all) |sq| {
         const file: u3 = sq.file();
         const rank: u3 = sq.rank();
+        dm[sq.u].mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bb.bb_border;
+        dm[sq.u].magic = PrecomputedMagics.diag_main_magics[@as(u8, file) + rank];
+    }
+    return dm;
+}
 
+fn compute_diaganti_magics() [64]MagicEntry {
+    @setEvalBranchQuota(8000);
+    const bb = @import("bitboards.zig");
+    var am: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
+    inline for (Square.all) |sq| {
+        const file: u3 = sq.file();
+        const rank: u3 = sq.rank();
+        am[sq.u].mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bb.bb_border;
+        am[sq.u].magic = PrecomputedMagics.diag_anti_magics[@as(u8, file) + (7 - rank)];
+    }
+    return am;
+}
+
+fn compute_pawn_hits_white() [64]u64 {
+    @setEvalBranchQuota(8000);
+    var phw: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
         // Pawn hits. Fake pawnhits are generated for the first and last rank (for pawn tricks).
-        if (sq.next(.north_east))|n| pawn_attacks_white[sq.u] |= n.to_bitboard();
-        if (sq.next(.north_west))|n| pawn_attacks_white[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_east))|n| pawn_attacks_black[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_west))|n| pawn_attacks_black[sq.u] |= n.to_bitboard();
+        if (sq.next(.north_east))|n| phw[sq.u] |= n.to_bitboard();
+        if (sq.next(.north_west))|n| phw[sq.u] |= n.to_bitboard();
+    }
+    return phw;
+}
 
-        // Knight.
-        if (sq.next_twice(.north_west, .west))  |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.north_west, .north)) |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.north_east, .north)) |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.north_east, .east))  |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.south_east, .east))  |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.south_east, .south)) |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.south_west, .south)) |n| knight_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next_twice(.south_west, .west))  |n| knight_attacks[sq.u] |= n.to_bitboard();
+fn compute_pawn_hits_black() [64]u64 {
+    @setEvalBranchQuota(8000);
+    var phb: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        // Pawn hits. Fake pawnhits are generated for the first and last rank (for pawn tricks).
+        if (sq.next(.south_east))|n| phb[sq.u] |= n.to_bitboard();
+        if (sq.next(.south_west))|n| phb[sq.u] |= n.to_bitboard();
+    }
+    return phb;
+}
 
-        // king
-        if (sq.next(.north))|n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.east)) |n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.south))|n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.west)) |n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.north_west))|n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.north_east))|n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_east))|n| king_attacks[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_west))|n| king_attacks[sq.u] |= n.to_bitboard();
+fn compute_knight_attacks() [64]u64 {
+    @setEvalBranchQuota(8000);
+    var na: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        if (sq.next_twice(.north_west, .west))  |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.north_west, .north)) |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.north_east, .north)) |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.north_east, .east))  |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.south_east, .east))  |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.south_east, .south)) |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.south_west, .south)) |n| na[sq.u] |= n.to_bitboard();
+        if (sq.next_twice(.south_west, .west))  |n| na[sq.u] |= n.to_bitboard();
+    }
+    return na;
+}
 
-        const entry_file: *MagicEntry = &file_magics[sq.u];
-        const entry_main: *MagicEntry = &main_magics[sq.u];
-        const entry_anti: *MagicEntry = &anti_magics[sq.u];
+fn compute_king_attacks() [64]u64 {
+    @setEvalBranchQuota(8000);
+    var ka: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        if (sq.next(.north))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.east)) |n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.south))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.west)) |n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.north_west))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.north_east))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
+    }
+    return ka;
+}
 
-        const bb_rank_1: u64 = 0x00000000000000ff;
-        const bb_rank_8: u64 = 0xff00000000000000;
-        const bb_file_a: u64 = 0x0101010101010101;
-        const bb_file_h: u64 = 0x8080808080808080;
-        const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
-
-        // Masks without borders and without square itself.
-        entry_file.mask = sq.rays_bitboard(&.{.north, .south}) & ~(bb_rank_1 | bb_rank_8);
-        entry_main.mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bb_border;
-        entry_anti.mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bb_border;
-
-        // Magics for each square, deduced from the precalculated ones.
-        entry_file.magic = PrecomputedMagics.file_magics[file];
-        entry_main.magic = PrecomputedMagics.diag_main_magics[@as(u8, file) + rank];
-        entry_anti.magic = PrecomputedMagics.diag_anti_magics[@as(u8, file) + (7 - rank)];
-
-        // Rank attacks.
+fn compute_rank_attacks() [64 * 64]u64 {
+    @setEvalBranchQuota(8000);
+    var ra: [64 * 64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        const idx: u64 = sq.u;
         for (0..64) |occ| {
-            const attack: u8 = sliding_attacks[file][occ];
-            rank_attacks[idx * 64 + occ] = @as(u64, attack) << (@as(u6, rank) * 8); // shift into the correct rank
+            const attack: u8 = sliding_attacks[sq.coord.file][occ];
+            ra[idx * 64 + occ] = @as(u64, attack) << (@as(u6, sq.coord.rank) * 8); // shift into the correct rank
         }
+    }
+    return ra;
+}
 
-        // File attacks.
+fn compute_file_attacks() [64 * 64]u64 {
+    @setEvalBranchQuota(132000);
+    var fa: [64 * 64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        const idx: u64 = sq.u;
         for (0..64) |occ| {
-            const attackmask: u8 = sliding_attacks[7 - rank][occ];
+            const attackmask: u8 = sliding_attacks[7 - sq.coord.rank][occ];
             var bitboard: u64 = 0;
             for (0..8) |i| {
                 const bitpos: u3 = @truncate(i);
                 if (funcs.test_bit_u8(attackmask, bitpos)) {
-                    const square: Square = .from_rank_file(7 - bitpos, file);
+                    const square: Square = .from_rank_file(7 - bitpos, sq.coord.file);
                     bitboard |= square.to_bitboard();
                 }
             }
-            file_attacks[idx * 64 + occ] = bitboard;
+            fa[idx * 64 + occ] = bitboard;
         }
+    }
+    return fa;
+}
 
-        // Diagonal main attacks.
+fn compute_diagmain_attacks()[64 * 64]u64 {
+    @setEvalBranchQuota(264000);
+    var dma: [64 * 64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        const idx: u64 = sq.u;
         for (0..64) |occ| {
-            const offset: u3 = @min(7 - rank, file);
+            const offset: u3 = @min(7 - sq.coord.rank, sq.coord.file);
             const attackmask: u8 = sliding_attacks[offset][occ];
             var bitboard: u64 = 0;
             // Scan northwest (backwards from offset).
@@ -151,12 +226,19 @@ pub fn initialize() void
                 if (comptime lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
             }
-            diag_main_attacks[sq.idx() * 64 + occ] = bitboard;
+            dma[idx * 64 + occ] = bitboard;
         }
+    }
+    return dma;
+}
 
-        // Diagonal anti attacks.
+fn compute_diaganti_attacks()[64 * 64]u64 {
+    @setEvalBranchQuota(264000);
+    var daa: [64 * 64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        const idx: u64 = sq.u;
         for (0..64) |occ| {
-            const offset: u3 = @min(rank, file);
+            const offset: u3 = @min(sq.coord.rank, sq.coord.file);
             const attackmask: u8 = sliding_attacks[offset][occ];
             var bitboard: u64 = 0;
             // Scan southwest (backwards from offset).
@@ -177,13 +259,11 @@ pub fn initialize() void
                 if (comptime lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
             }
-            diag_anti_attacks[sq.idx() * 64 + occ] = bitboard;
+            daa[idx * 64 + occ] = bitboard;
         }
     }
+    return daa;
 }
-
-/// This mask is used internally for compressed index. The borders are not needed in the story.
-const occ_index_mask: u8 = 0b01111110;
 
 /// Precomputed magics.
 const PrecomputedMagics = struct {
@@ -247,53 +327,25 @@ const MagicEntry = struct {
     }
 };
 
-// Movgen.
-var file_magics: [64]MagicEntry = @splat(.empty);
-var main_magics: [64]MagicEntry = @splat(.empty);
-var anti_magics: [64]MagicEntry = @splat(.empty);
-
-var pawn_attacks_white: [64]u64 = @splat(0);
-var pawn_attacks_black: [64]u64 = @splat(0);
-var knight_attacks: [64]u64 =  @splat(0);
-var king_attacks: [64]u64 = @splat(0);
-var rank_attacks: [64 * 64]u64 = @splat(0);
-var file_attacks: [64 * 64]u64 = @splat(0);
-var diag_main_attacks: [64 * 64]u64 = @splat(0);
-var diag_anti_attacks: [64 * 64]u64 = @splat(0);
-
-// Movgen. (Pointers are faster than array access. Danger of @memcpy calls).
-pub const ptr_file_magics: [*]const MagicEntry = &file_magics;
-pub const ptr_main_magics: [*]const MagicEntry = &main_magics;
-pub const ptr_anti_magics: [*]const MagicEntry = &anti_magics;
-
-pub const ptr_pawn_attacks_white: [*]const u64 = &pawn_attacks_white;
-pub const ptr_pawn_attacks_black: [*]const u64 = &pawn_attacks_black;
-pub const ptr_knight_attacks: [*]const u64 = & knight_attacks;
-pub const ptr_king_attacks: [*]const u64 = &king_attacks;
-pub const ptr_rank_attacks: [*]const u64 = &rank_attacks;
-pub const ptr_file_attacks: [*]const u64 = &file_attacks;
-pub const ptr_diag_main_attacks: [*]const u64 = &diag_main_attacks;
-pub const ptr_diag_anti_attacks: [*]const u64 = &diag_anti_attacks;
-
 fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     return switch(ori) {
         .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1,
-        .vertical   => ptr_file_magics[sq.u].attack_index(occ),
-        .diagmain   => ptr_main_magics[sq.u].attack_index(occ),
-        .diaganti   => ptr_anti_magics[sq.u].attack_index(occ),
+        .vertical   => file_magics[sq.u].attack_index(occ),
+        .diagmain   => main_magics[sq.u].attack_index(occ),
+        .diaganti   => anti_magics[sq.u].attack_index(occ),
     };
 }
 
 /// Returns attacks for one direction.
-pub fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
+fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     const offset: u64 = sq.idx() * 64;
     const raw: u64 = attack_index_of(ori, sq, occ);
 
     return switch (ori) {
-        .horizontal => ptr_rank_attacks[offset + raw],
-        .vertical   => ptr_file_attacks[offset + raw],
-        .diagmain   => ptr_diag_main_attacks[offset + raw],
-        .diaganti   => ptr_diag_anti_attacks[offset + raw],
+        .horizontal => rank_attacks[offset + raw],
+        .vertical   => file_attacks[offset + raw],
+        .diagmain   => diag_main_attacks[offset + raw],
+        .diaganti   => diag_anti_attacks[offset + raw],
     };
 }
 
@@ -306,19 +358,19 @@ fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, o
         switch (ori) {
             .horizontal => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= ptr_rank_attacks[offset + raw];
+                result |= rank_attacks[offset + raw];
             },
             .vertical => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= ptr_file_attacks[offset + raw];
+                result |= file_attacks[offset + raw];
             },
             .diagmain => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= ptr_diag_main_attacks[offset + raw];
+                result |= diag_main_attacks[offset + raw];
             },
             .diaganti => {
                 const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= ptr_diag_anti_attacks[offset + raw];
+                result |= diag_anti_attacks[offset + raw];
             },
         }
     }
@@ -343,13 +395,13 @@ pub fn get_diaganti_attacks(sq: Square, occ: u64) u64 {
 
 pub fn get_pawn_attacks(sq: Square, comptime us: Color) u64 {
     return switch(us.e) {
-        .white => ptr_pawn_attacks_white[sq.u],
-        .black => ptr_pawn_attacks_black[sq.u]
+        .white => pawn_attacks_white[sq.u],
+        .black => pawn_attacks_black[sq.u]
     };
 }
 
 pub fn get_knight_attacks(sq: Square) u64 {
-    return ptr_knight_attacks[sq.u];
+    return knight_attacks[sq.u];
 }
 
 pub fn get_bishop_attacks(sq: Square, occ: u64) u64 {
@@ -365,5 +417,15 @@ pub fn get_queen_attacks(sq: Square, occ: u64) u64 {
 }
 
 pub fn get_king_attacks(sq: Square) u64 {
-    return ptr_king_attacks[sq.u];
+    return king_attacks[sq.u];
+}
+
+pub fn get_piece_attacks(sq: Square, occ: u64, comptime pc: PieceType, comptime us: Color) u64 {
+    return switch (pc.e) {
+        .pawn => get_pawn_attacks(sq, us),
+        .knight => get_knight_attacks(sq),
+        .bishop => get_bishop_attacks(sq, occ),
+        .rook => get_rook_attacks(sq, occ),
+        else => get_queen_attacks(sq, occ),
+    };
 }

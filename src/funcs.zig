@@ -135,20 +135,20 @@ pub fn first_square_or_null(bitboard: u64) ?Square {
 
 /// Unsafe lsb
 pub fn first_square(bitboard: u64) Square {
-    assert(bitboard != 0);
+    if (comptime lib.is_paranoid) assert(bitboard != 0);
     const lsb: u6 = @truncate(@ctz(bitboard));
     return Square.from(lsb);
 }
 
 /// Unsafe pop lsb and clears that lsb from the bitboard.
 pub fn pop_square(bitboard: *u64) Square {
-    assert(bitboard.* != 0);
+    if (comptime lib.is_paranoid) assert(bitboard.* != 0);
     defer bitboard.* &= (bitboard.* - 1);
     return first_square(bitboard.*);
 }
 
 /// I cannot make this function as fast as a manual loop.
-pub fn pop(bitboard: *u64) ?Square {
+pub fn bit_loop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
     defer bitboard.* &= (bitboard.* - 1);
     return Square.from(@truncate(@ctz(bitboard.*)));
@@ -160,7 +160,7 @@ pub fn clear_square(bitboard: *u64, sq: Square) void {
 
 /// Unsafe
 pub fn lsb_u64(u: u64) u6 {
-    assert(u != 0);
+    if (comptime lib.is_paranoid) assert(u != 0);
     return @truncate(@ctz(u));
 }
 
@@ -174,8 +174,8 @@ pub fn test_bit_64(u: u64, bit: u6) bool {
     return u & one != 0;
 }
 
-pub fn movenumber_to_ply(movenr: u16, to_move: Color) u16 {
-    return @max(2 * (movenr - 1), 0) + (to_move.u);
+pub fn movenumber_to_ply(movenr: u16, stm: Color) u16 {
+    return @max(2 * (movenr - 1), 0) + (stm.u); // TODO: make safe for underflow.
 }
 
 pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
@@ -184,10 +184,10 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
 
 /// Convert "mate in X moves" to an absolute "distance to mate".
 /// * `mv` is always the matevalue from the perspective of white: negative -> white loses, positive -> white wins.
-pub fn mate_to_dtm(mv: Value, to_move: Color) Value {
+pub fn mate_to_dtm(mv: Value, stm: Color) Value {
     if (mv == 0) return 0;
     const white_wins: bool = mv > 0;
-    const white_to_move: bool = to_move.e == .white;
+    const white_to_move: bool = stm.e == .white;
     return (if (white_wins) mv * 2 else -mv * 2) - @intFromBool(white_wins == white_to_move);
 }
 
@@ -226,7 +226,7 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
     return s;
 }
 
-// /// Calculates something per second.
+//
 // pub fn percentage(done: u64, total: u64) u64 {
 //     if (total == 0) return 0;
 //     const a: f64 = @floatFromInt(done);

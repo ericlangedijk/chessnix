@@ -10,12 +10,24 @@ const funcs = @import("funcs.zig");
 
 const assert = std.debug.assert;
 const ctx = lib.ctx;
-const wtf = lib.wtf();
+const wtf = lib.wtf;
 
 const Value = types.Value;
 const Move = types.Move;
 
 pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
+
+
+// typedef struct {
+
+//   uint64_t hash;
+//   move_t move;
+//   uint8_t flags;
+//   uint8_t depth;
+//   int16_t score;
+//   int16_t ev;
+
+// } TT;
 
 /// Must be 16 bytes.
 pub const Entry = packed struct {
@@ -225,11 +237,107 @@ pub fn get_adjusted_score_for_tt_probe(score: Value, ply: u16) Value {
 }
 
 
+/// Must be 16 bytes.
+pub const EvalEntry = packed struct {
+    /// The position pawn key.
+    key: u64,
+    /// The evaluation according to search.
+    score: i16,
+    const empty: EvalEntry = .{ .key = 0, .score = 0, };
+};
+
+/// ### Deprecated for now.
+/// A simple cache for pawn evaluation speedup.
+pub const EvalTranspositionTable = struct {
+    /// Array on heap.
+    data: []EvalEntry,
+    /// The number of entries.
+    len: u64,
+    /// Used megabytes.
+    mb: u64,
+    /// Mask for indexing.
+    mask: u64,
+    /// Filled at this age.
+    filled: u64,
+    /// Probes.
+    probes: u64,
+    /// Hits
+    hits: u64,
+
+    pub fn init(size_in_megabytes: u64) !EvalTranspositionTable {
+        comptime if (@sizeOf(EvalEntry) != 16) @compileError("TT EvalEntry must be 16 bytes");
+        if (!std.math.isPowerOfTwo(size_in_megabytes)) return Error.TTSizeMustBeAPowerOfTwo;
+        const len: u64 = (size_in_megabytes * 1024 * 1024) / 16;
+        const data: []EvalEntry = try ctx.galloc.alloc(EvalEntry, len);
+        @memset(data, EvalEntry.empty);
+        return .{ .data = data, .len = len, .mb = size_in_megabytes, .mask = len - 1, .filled = 0, .probes = 0, .hits = 0, };
+    }
+
+    pub fn deinit(self: *EvalTranspositionTable) void {
+        ctx.galloc.free(self.data);
+    }
+
+    pub fn clear(self: *EvalTranspositionTable) void {
+        @memset(self.data, EvalEntry.empty);
+        self.filled = 0;
+        self.probes = 0;
+        self.hits = 0;
+    }
+
+    /// TODO: atomic store when multiple threads.
+    pub fn store(self: *EvalTranspositionTable, key: u64, score: Value) void {
+        assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+        const entry: *EvalEntry = self.get_mut(key);
+        const was_empty: bool = entry.key == 0;
+        entry.* = .{
+            .key = key,
+            .score = @truncate(score),
+        };
+        if (was_empty) self.filled += 1;
+    }
+
+    pub fn probe(self: *EvalTranspositionTable, key: u64) ?Value {
+        self.probes += 1;
+        const entry: EvalEntry = self.get(key);
+        if (entry.key != key) return null;
+        self.hits += 1;
+        return entry.score;
+    }
+
+    fn index_of(self: *const EvalTranspositionTable, key: u64) u64 {
+        // return key & (self.len - 1);
+        return key & self.mask;
+    }
+
+    fn get_mut(self: *EvalTranspositionTable, key: u64) *EvalEntry {
+        const idx = self.index_of(key);
+        return &self.data[idx];
+    }
+
+    pub fn get(self: *EvalTranspositionTable, key: u64) EvalEntry {
+        const idx = self.index_of(key);
+        return self.data[idx];
+    }
+};
+
+
+
+
 
 
 const Error = error {
     TTSizeMustBeAPowerOfTwo,
 };
+
+
+
+
+
+
+
+
+
+
 
 test "transpositiontable" {
     const position = @import("position.zig");

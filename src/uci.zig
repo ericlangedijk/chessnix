@@ -29,7 +29,7 @@ pub fn run() void {
     // TODO: what to do in non-terminal mode? Just crash?
     uci_loop() catch |err| {
         //io.debugprint("error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
-        io.print("info error: {s}", .{ @errorName(err) }) catch wtf();
+        io.print("info error: {s}", .{ @errorName(err) });
         //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
     };
 }
@@ -41,7 +41,7 @@ fn uci_loop() !void {
     const is_tty = lib.is_tty();
 
     if (is_tty) {
-        io.debugprint("chessnix {s} by eric\n", .{ lib.version });
+        io.print("chessnix {s} by eric\n", .{ lib.version });
     }
 
     command_loop: while (true) {
@@ -52,10 +52,10 @@ fn uci_loop() !void {
 
         // Uci commands.
         if (eql(cmd, "uci")) {
-            try UCI.respond_uciok();
+            UCI.respond_uciok();
         }
         else if (eql(cmd, "isready")) {
-            try UCI.respond_readyok();
+            UCI.respond_readyok();
         }
         else if (eql(cmd, "ucinewgame")) {
             try UCI.ucinewgame();
@@ -83,7 +83,7 @@ fn uci_loop() !void {
                 TTY.draw_position();
             }
             else if (eql(cmd, "bench")) {
-                TTY.run_bench();
+                try TTY.run_bench();
             }
             else if (eql(cmd, "perft")) {
                 TTY.run_perft(&tokenizer, false);
@@ -104,7 +104,7 @@ fn uci_loop() !void {
 /// Just a simple wrapper.
 const UCI = struct {
 
-    fn respond_uciok() !void {
+    fn respond_uciok() void {
         // try io.print
         // (
         //     \\id chessnix {s}
@@ -118,7 +118,7 @@ const UCI = struct {
         //         search.Options.default_hash_size, search.Options.min_hash_size, search.Options.max_hash_size,
         //     }
         // );
-        try io.print
+        io.print
         (
             \\id chessnix {s}
             \\id author eric
@@ -131,8 +131,8 @@ const UCI = struct {
         );
     }
 
-    fn respond_readyok() !void {
-        try io.print("readyok\n", .{});
+    fn respond_readyok() void {
+        io.print("readyok\n", .{});
     }
 
     fn ucinewgame() !void {
@@ -240,11 +240,11 @@ const UCI = struct {
 const TTY = struct {
 
     fn draw_position() void {
-        engine.pos.draw() catch wtf();
+        engine.pos.draw();
     }
 
-    fn run_bench() void {
-        perft.bench() catch wtf();
+    fn run_bench() !void {
+        try perft.bench();
     }
 
     fn run_perft(tokenizer: *Tokenizer, fast: bool) void {
@@ -266,7 +266,7 @@ const TTY = struct {
 
         //const v = eval.tuned_eval(&engine.pos);
         //io.debugprint("e {} t {}\n", .{e, v});
-        //eval.bench(&engine.pos, &engine.pawntranspositiontable);
+        eval.bench(&engine.pos);
     }
 
     fn print_state() void {
@@ -277,7 +277,10 @@ const TTY = struct {
         //io.debugprint("upcoming rep {}\n", .{engine.pos.is_repetition()});
         //io.debugprint("threefold rep {}\n", .{engine.pos.is_threefold_repetition()});
 
+        //_ = eval.eval2(&engine.pos, .Endgame);
+
         //io.debugprint("engine thinking {}\n", .{engine.is_busy()});
+        //io.debugprint("flags {}\n", .{ engine.pos.gen_flags });
         io.debugprint("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
         io.debugprint("3 rep {}\n", .{ engine.pos.is_threefold_repetition() });
         io.debugprint("1 rep {}\n", .{ engine.pos.is_upcoming_repetition() });
@@ -332,11 +335,11 @@ const Error = error {
 };
 
 
-////////////////////////////////
-// TEMP STUFF.
-////////////////////////////////
+// ////////////////////////////////
+// // TEMP STUFF.
+// ////////////////////////////////
 
-/// TODO: Not sure yet how and what handling errors in ucimode / terminal mode.
-pub fn print_error(err: anyerror) void {
-    lib.io.print("info string error: {t}\n", .{ err }) catch lib.wtf();
-}
+// /// TODO: Not sure yet how and what handling errors in ucimode / terminal mode.
+// pub fn print_error(err: anyerror) void {
+//     lib.io.print("info string error: {t}\n", .{ err }) catch lib.wtf();
+// }

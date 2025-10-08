@@ -37,7 +37,7 @@ pub fn decode(number: usize) [8]PieceType {
     };
 
     const nr: usize = number % 960;
-    var backrow: [8]PieceType = @splat(PieceType.NONE);
+    var backrow: [8]PieceType = @splat(PieceType.NO_PIECETYPE);
     var divider: usize = nr;
 
     // bishop 1
@@ -71,7 +71,6 @@ pub fn decode(number: usize) [8]PieceType {
 fn div_rem(n: *usize, div: usize) usize {
     const remainder = n.* % div;
     n.* /= div;
-    //n.* = std.math.divFloor(usize, n.*, div) catch lib.wtf();
     return remainder;
 }
 

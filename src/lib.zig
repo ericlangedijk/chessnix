@@ -14,8 +14,6 @@ pub fn initialize() !void {
     io_context = .init();
 
     // Then initialize chess.
-    @import("attacks.zig").initialize();
-    @import("bitboards.zig").initialize();
     @import("zobrist.zig").initialize();
 
     startup_time = timer.read();
@@ -31,7 +29,7 @@ pub fn finalize() void {
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 
 // Globals.
-pub const version = "0.1";
+pub const version = "0.2";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_paranoid: bool = if (is_debug) true else false; // Set paranoid to false to speedup debugging.
@@ -90,19 +88,19 @@ const IoContext = struct {
     }
 
     /// uci only. By default print and flush.
-    pub fn print(self: *const IoContext, comptime str: []const u8, args: anytype) !void {
-        try self.out.print(str, args);
-        try self.out.flush();
+    pub fn print(self: *const IoContext, comptime str: []const u8, args: anytype) void {
+        self.out.print(str, args) catch io_error();
+        self.out.flush() catch io_error();
     }
 
     /// uci only.
-    pub fn print_buffered(self: *const IoContext, comptime str: []const u8, args: anytype) !void {
-        try self.out.print(str, args);
+    pub fn print_buffered(self: *const IoContext, comptime str: []const u8, args: anytype) void {
+        self.out.print(str, args) catch io_error();
     }
 
     /// If `print_buffered` was used.
-    pub fn flush(self: *const IoContext) !void {
-        try self.out.flush();
+    pub fn flush(self: *const IoContext) void {
+        self.out.flush() catch io_error();
     }
 
     /// Anything non-uci has to go here.
@@ -120,6 +118,11 @@ pub fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }
 
+/// TODO: add comptime code.
 pub fn wtf() noreturn {
-    unreachable;
+    @panic("wtf");
+}
+
+fn io_error() noreturn {
+    @panic("io error");
 }

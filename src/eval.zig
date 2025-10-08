@@ -43,21 +43,23 @@ const K: PieceType = types.K;
 
 /// Returns the evaluation from white perspective, with detailed debug info.
 pub fn evaluate_with_tracking_absolute(pos: *const Position) Value {
-    const phase: GamePhase = pos.phase();
+    const non_pawn_material = pos.non_pawn_material();
+    const phase: GamePhase = Position.phase_of(non_pawn_material);
     const v: Value = switch (phase) {
-        .Opening => eval(pos, .Opening, true),
-        .Midgame => eval(pos, .Midgame, true),
-        .Endgame => eval(pos, .Endgame, true),
+        .Opening => eval(pos, non_pawn_material, .Opening, true),
+        .Midgame => eval(pos, non_pawn_material, .Midgame, true),
+        .Endgame => eval(pos, non_pawn_material, .Endgame, true),
     };
-    return if (pos.to_move.e == .white) v else -v;
+    return if (pos.stm.e == .white) v else -v;
 }
 
 pub fn evaluate(pos: *const Position) Value {
-    const phase: GamePhase = pos.phase();
+    const non_pawn_material = pos.non_pawn_material();
+    const phase: GamePhase = Position.phase_of(non_pawn_material);
     switch (phase) {
-        .Opening => return eval(pos, .Opening, false),
-        .Midgame => return eval(pos, .Midgame, false),
-        .Endgame => return eval(pos, .Endgame, false),
+        .Opening => return eval(pos, non_pawn_material, .Opening, false),
+        .Midgame => return eval(pos, non_pawn_material, .Midgame, false),
+        .Endgame => return eval(pos, non_pawn_material, .Endgame, false),
     }
 }
 
@@ -76,32 +78,15 @@ fn add(mg: *Value, eg: *Value, delta: Value) void
 }
 
 /// Evaluation from the perspective of the side to move. Very bad it is.
-fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool) Value {
+fn eval(pos: *const Position, non_pawn_material: Value, comptime phase: GamePhase, comptime tracking: bool) Value {
 
-    // ? pawn_majority_q_side
-    // ? pawn_majority_k_side
-    // ? bishop_pair
-    // ? bad_bishop
-    // ? strong_square
-    // ? outpost
-    // ? can_castle
-
-    //const check: bool = pos.state.checkers != 0;
-    //const st: *const StateInfo = pos.state;
-    const non_pawn_material: Value = pos.non_pawn_material();
     const bb_all = pos.all();
-    const negate: bool = pos.to_move.e == .black;
+    const negate: bool = pos.stm.e == .black;
     const is_queenless: bool = pos.all_queens() == 0;
 
     // EXPERIMENTAL: pawn up in pawn endgame is often desastrous.
     // const pawns_add: Value = if (non_pawn_material == 0) 30 else 0;
     const material_scores: [2]Value = .{ pos.values[Color.WHITE.u], pos.values[Color.BLACK.u]};
-
-    // var covered: [2]u64 = undefined; // us - them
-    // switch (pos.to_move.e) {
-    //     .white => covered = .{ pos.attacks_by(Color.WHITE), pos.attacks_by(Color.BLACK) },
-    //     .black => covered = .{ pos.attacks_by(Color.BLACK), pos.attacks_by(Color.WHITE) },
-    // }
 
     // Sliding values of the Pesto tables, which we taper at the end.
     // var pesto_phase: Value = 0;
@@ -121,21 +106,25 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
         const bb_us = pos.by_color(us);
         const our_king_sq = pos.king_square(us);
         const their_king_sq = pos.king_square(them);
-        const our_king_area = bitboards.get_king_area(our_king_sq);
-        const their_king_area = bitboards.get_king_area(their_king_sq);
+        const our_king_area = bitboards.king_areas[our_king_sq.u];
+        const their_king_area = bitboards.king_areas[their_king_sq.u];
 
         const mg: *Value = &pesto_scores_mg[us.u];
         const eg: *Value = &pesto_scores_eg[us.u];
         const bonus: *Value = &bonus_scores[us.u];
         const king_attackers: *Value = &king_attacker_count[us.u];
-        //const covered_by_them: u64 = covered[us.u];
-        //const covered_by_us: u64 = covered[us.u];
+
+        // if (phase == .Opening) {
+        //     const pawnrow: u64 = funcs.relative_rank(us, bitboards.rank_2) & pos.pawns(us);
+        //     const cnt: Value = popcnt_v(pawnrow);
+        //     if (cnt > 5)
+        //         bonus.* -= 10;
+        // }
 
         ////////////////////////////////////////////////////////////////
         // Piece loop.
         ////////////////////////////////////////////////////////////////
         inline for (PieceType.all) |piecetype| {
-            //const piece: Piece = comptime Piece.make(piecetype, us);
             var is_first_piece: bool = true;
             const bb_current = pos.pieces(piecetype, us);
             var bb_running = bb_current;
@@ -148,33 +137,28 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                 const bb_this_piece = bb_current & sq.to_bitboard();
                 const file: u3 = sq.file();
                 const rank: u3 = sq.rank();
-                //const relative_rank: u3 = funcs.relative_rank(us, rank);
 
-                // Keep track of Pesto table scores.
-                const pair = Tables.get_scorepair(us, piecetype, sq);
+                // Bonus per square.
                 var ps: Value = 0;
-
-                // NOTE: Keep this int-based pesto around for comparison
-                //pesto_phase += Tables.pesto_game_phase[piecetype.u];
 
                 switch (piecetype.e) {
                     .pawn => {
                         const our_pawns: u64 = bb_current;
-                        const their_pawns: u64 = pos.pawns(them); _ = their_pawns;
+                        //const their_pawns: u64 = pos.pawns(them); _ = their_pawns;
                         const pawn_attacks: u64 = attacks.get_pawn_attacks(sq, us);
                         const pawn_moves: u64 = funcs.pawns_shift(bb_this_piece, us, funcs.PawnShift.up);
 
                         // King area threat.
                         const att_king_area: u64 = (pawn_attacks | pawn_moves) & their_king_area;
                         if (att_king_area != 0) {
-                            king_attackers.* += 1;
+                            //king_attackers.* += 1;
                             ps += 2;
                         }
 
                         // Passed pawn.
                         const is_passed: bool = is_passed_pawn(pos, us, sq);
                         if (is_passed) {
-                            ps += 4;
+                            ps += funcs.relative_rank(us, sq.rank());
                         }
 
                         // Doubled pawn.
@@ -185,7 +169,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         }
 
                         // Isolated pawn.
-                        const bb_isolated = bitboards.get_isolated_pawn_mask(sq) & our_pawns;
+                        const bb_isolated = bitboards.adjacent_file_masks[sq.u] & our_pawns;
                         const is_isolated: bool = bb_isolated == 0;
                         if (is_isolated) {
                             ps -= 2;
@@ -321,7 +305,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         const king_moves: u64 = attacks.get_king_attacks(our_king_sq) & ~bb_us;
 
                         // Check.
-                        // if (check and us.e == pos.to_move.e) {
+                        // if (check and us.e == pos.stm.e) {
                         //     add(k_score, Tables.in_check, us, piecetype, .in_check, tracking, sq);
                         // }
 
@@ -329,7 +313,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                         // if (phase == .Endgame) {
                         //     const att_king_area: u64 = attacks.get_king_attacks(our_king_sq) & their_king_area;
                         //     // EXPERIMENTAL
-                        //     if (att_king_area != 0 and pos.to_move.e == us.e) {
+                        //     if (att_king_area != 0 and pos.stm.e == us.e) {
                         //         king_attackers.* += 1;
                         //         ps += 1;
                         //     }
@@ -377,15 +361,19 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
                 }
 
                 // pesto + ps bonus.
+                const pair = Tables.get_scorepair(us, piecetype, sq);
                 mg.* += (pair.mg + ps);
                 eg.* += (pair.eg + ps);
 
             }
         }
 
-        if (king_attackers.* > 2) {
-            bonus.* += 20;
-        }
+        if (king_attackers.* > 3)
+            bonus.* += 60
+        else if (king_attackers.* > 2)
+            bonus.* += 30
+        else if (king_attackers.* > 1)
+            bonus.* += 12;
     }
 
     // Taper sliding values.
@@ -395,7 +383,10 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
     const w_score: Value =  material_scores[0] + w_pesto + bonus_scores[0];
     const b_score: Value = material_scores[1] + b_pesto + bonus_scores[1];
 
-    var result = (w_score - b_score) + 20; // stm
+    // const w_score: Value =  w_pesto + bonus_scores[0];
+    // const b_score: Value = b_pesto + bonus_scores[1];
+
+    var result = (w_score - b_score) + 12; // stm
     if (negate) {
          result = -result;
     }
@@ -404,8 +395,8 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
     //result = scale_towards_draw(result, pos.state.rule50);
 
     if (tracking) {
-        //const tm: Value = if (pos.to_move.e == .white) 20 else -20;
-        lib.io.debugprint(
+        //const tm: Value = if (pos.stm.e == .white) 20 else -20;
+        lib.io.print(
             \\perspective : {t}
             \\material    : {} {}
             \\pestos      : {} {}
@@ -415,7 +406,7 @@ fn eval(pos: *const Position, comptime phase: GamePhase, comptime tracking: bool
             \\
             ,
             .{
-                pos.to_move.e,
+                pos.stm.e,
                 material_scores[0], material_scores[1],
                 w_pesto, b_pesto,
                 bonus_scores[0], bonus_scores[1],
@@ -458,7 +449,7 @@ pub fn is_draw_by_insufficient_material(pos: *const Position) bool
 /// TODO: threshold.
 pub fn see_score(pos: *const Position, m: Move) Value
 {
-    const st: *const StateInfo = pos.state;
+    //const st: *const StateInfo = pos.state;
     const from: Square = m.from;
     const to: Square = m.to;
     const value_them = pos.get(to).value();
@@ -474,7 +465,7 @@ pub fn see_score(pos: *const Position, m: Move) Value
     var occupation = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
     var attackers: u64 = pos.get_all_attacks_to_for_occupation(occupation, to);
     var bb: u64 = 0;
-    var side: Color = pos.to_move;
+    var side: Color = pos.stm;
 
     attackloop: while (true) {
         attackers &= occupation;
@@ -492,7 +483,7 @@ pub fn see_score(pos: *const Position, m: Move) Value
         }
 
         // Knight.
-        bb = attackers & pos.knights(side) & ~st.pins[side.u];
+        bb = attackers & pos.knights(side); // & ~st.pins;
         if (bb != 0) {
             depth += 1;
             gain[depth] = N.value() - gain[depth - 1];
@@ -501,7 +492,7 @@ pub fn see_score(pos: *const Position, m: Move) Value
         }
 
         // Bishop.
-        bb = attackers & pos.bishops(side) & ~st.pins_orthogonal[side.u];
+        bb = attackers & pos.bishops(side);// & ~st.pins_orthogonal;
         if (bb != 0) {
             depth += 1;
             gain[depth] = B.value() - gain[depth - 1];
@@ -511,7 +502,7 @@ pub fn see_score(pos: *const Position, m: Move) Value
         }
 
         // Rook.
-        bb = attackers & pos.rooks(side) & ~st.pins_diagonal[side.u];
+        bb = attackers & pos.rooks(side);// & ~st.pins_diagonal[side.u];
         if (bb != 0) {
             depth += 1;
             gain[depth] = R.value() - gain[depth - 1];
@@ -577,7 +568,7 @@ pub fn see(pos: *const Position, m: Move) bool {
     const qb = pos.all_queens_bishops();
     const qr = pos.all_queens_rooks();
 
-    var side: Color = pos.to_move;
+    var side: Color = pos.stm;
     var bb: u64 = 0;
 
     // balance = margin we must preserve to stay >= 0 (threshold = 0)
@@ -592,7 +583,7 @@ pub fn see(pos: *const Position, m: Move) bool {
         bb = atks & pos.pawns(side);
         if (bb != 0) {
             balance = -balance - P.value();
-            if (balance < 0) return (side.e != pos.to_move.e);
+            if (balance < 0) return (side.e != pos.stm.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
             atks |= attacks.get_bishop_attacks(to, occ) & qb;
             continue;
@@ -602,7 +593,7 @@ pub fn see(pos: *const Position, m: Move) bool {
         bb = atks & pos.knights(side);
         if (bb != 0) {
             balance = -balance - N.value();
-            if (balance < 0) return (side.e != pos.to_move.e);
+            if (balance < 0) return (side.e != pos.stm.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
             continue;
         }
@@ -611,7 +602,7 @@ pub fn see(pos: *const Position, m: Move) bool {
         bb = atks & pos.bishops(side);
         if (bb != 0) {
             balance = -balance - B.value();
-            if (balance < 0) return (side.e != pos.to_move.e);
+            if (balance < 0) return (side.e != pos.stm.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
             atks |= attacks.get_bishop_attacks(to, occ) & qb;
             continue;
@@ -621,7 +612,7 @@ pub fn see(pos: *const Position, m: Move) bool {
         bb = atks & pos.rooks(side);
         if (bb != 0) {
             balance = -balance - R.value();
-            if (balance < 0) return (side.e != pos.to_move.e);
+            if (balance < 0) return (side.e != pos.stm.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
             atks |= attacks.get_rook_attacks(to, occ) & qr;
             continue;
@@ -631,7 +622,7 @@ pub fn see(pos: *const Position, m: Move) bool {
         bb = atks & pos.queens(side);
         if (bb != 0) {
             balance = -balance - Q.value();
-            if (balance < 0) return (side.e != pos.to_move.e);
+            if (balance < 0) return (side.e != pos.stm.e);
             funcs.clear_square(&occ, funcs.first_square(bb));
             atks |= (attacks.get_bishop_attacks(to, occ) & qb);
             atks |= (attacks.get_rook_attacks(to, occ) & qr);
@@ -644,7 +635,7 @@ pub fn see(pos: *const Position, m: Move) bool {
     }
 
     // No early fail: if the last side to *have the move* is the opponent, our capture stands.
-    return (side.e != pos.to_move.e);
+    return (side.e != pos.stm.e);
 }
 
 pub fn is_protected_by_pawn(pos: *const Position, comptime us: Color, sq: Square) bool {
@@ -871,12 +862,12 @@ pub const Tables = struct {
 };
 
 /// A little 1 second time eval bench.
-pub fn bench(pos: *const Position, pawn_tt: *tt.PawnTranspositionTable) void {
+pub fn bench(pos: *const Position) void {
     var v: i64 = 0;
     var cnt: u64 = 0;
     var timer = utils.Timer.start();
     while (timer.elapsed_ms() < 1000) {
-        v += evaluate(pos, pawn_tt, false);
+        v += evaluate(pos);
         cnt += 1;
     }
     const t = timer.read();

@@ -14,7 +14,6 @@ const position = @import("position.zig");
 const perft = @import("perft.zig");
 const tt = @import("tt.zig");
 
-const StateInfo = position.StateInfo;
 const Position = position.Position;
 const Storage = position.MoveStorage;
 
@@ -23,34 +22,6 @@ const search = @import("search.zig");
 const ctx = lib.ctx;
 const io = lib.io;
 
-pub fn print_struct_sizes() void
-{
-    const ExtMove = @import("search.zig").ExtMove;
-    const Entry = @import("tt.zig").Entry;
-    // const array: [5]type =
-    // .{
-    //     position.StateInfo,
-    //     types.ExtMove,
-    //     search.Node,
-    //     search.Search,
-    //     tt.Entry,
-    // };
-
-    // for (array) |t|
-    // {
-    //     lib.io.debugprint("{s} {}\n", .{ @typeName(t),  @sizeOf(t)});
-    // }
-
-    lib.io.debugprint("Position {}\n", .{ @sizeOf(position.Position)});
-    lib.io.debugprint("Layout {}\n", .{ @sizeOf(position.Layout)});
-    lib.io.debugprint("StateInfo {}\n", .{ @sizeOf(position.StateInfo)});
-    lib.io.debugprint("ExtMove {} {}\n", .{ @sizeOf(ExtMove), @bitSizeOf(ExtMove)});
-    lib.io.debugprint("Entry {} {}\n", .{ @sizeOf(Entry), @bitSizeOf(Entry)});
-    // lib.io.debugprint("Node {}\n", .{ @sizeOf(search.Node)});
-    // lib.io.debugprint("Search {}\n", .{ @sizeOf(search.Search)});
-    // lib.io.debugprint("tt.Entr {}\n", .{ @sizeOf(tt.Entry)});
-}
-
 pub fn run_silent_debugmode_tests() !void
 {
     lib.not_in_release();
@@ -58,7 +29,6 @@ pub fn run_silent_debugmode_tests() !void
     var timer = utils.Timer.start();
 
     try run_tests(3);
-    try run_testfile(1);
     try test_flip();
 
     const time = timer.read();
@@ -86,12 +56,11 @@ pub fn run_tests(max_depth: usize) !void
     const max: u64 = std.math.clamp(max_depth, 1, 6);
     var total: u64 = 0;
     var totaltime: u64 = 0;
-    var st: StateInfo = undefined;
     var pos: Position = .empty;
     var timer = utils.Timer.start();
 
     for (testpositions, 0..) |str, index| {
-        try pos.set(&st, str);
+        try pos.set(str);
 
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
@@ -116,48 +85,6 @@ pub fn run_tests(max_depth: usize) !void
     }
 }
 
-// Run our 6000+ testpositions from file.
-fn run_testfile(max_depth: usize) !void {
-    lib.not_in_release();
-
-    const max: u64 = std.math.clamp(max_depth, 1, 6);
-
-    // Load text file in memory.
-    const file: std.fs.File = try std.fs.openFileAbsolute("C:/Data/zig/chessnix/notes/testpositions.txt", .{});
-    defer file.close();
-    const stat = try file.stat();
-    const file_size = stat.size;
-    const file_buffer = try file.readToEndAlloc(ctx.galloc, file_size);
-    defer ctx.galloc.free(file_buffer);
-
-    var st: StateInfo = undefined;
-    var pos: Position = .empty; //.create();
-
-    // Read line by line
-    var index: usize = 0;
-    var iter = std.mem.tokenizeAny(u8, file_buffer, &.{13, 10});
-    while (iter.next()) |str| {
-        index += 1;
-        try pos.set(&st, str);
-        const depths: FenDepths = try decode_depths(str);
-        const end: usize = @min(max + 1, depths.len);
-        for (depths.slice()[1..end], 1..) |expected_nodes, d| {
-            const perft_nodes: u64 = perft.run_quick(&pos, @truncate(d));
-            const ok: bool = expected_nodes == perft_nodes;
-            if (!ok) {
-                return catch_error (
-                    Error.PerftError,
-                    \\linenr #{}
-                    \\fen: {s}
-                    \\Error for depth {} expected {} found {}"
-                    \\
-                    , .{ index, str, d, expected_nodes, perft_nodes }
-                );
-            }
-        }
-    }
-}
-
 // Test flip board.
 pub fn test_flip() !void {
     lib.not_in_release();
@@ -166,12 +93,10 @@ pub fn test_flip() !void {
     var mirrored: Position = .empty;
 
     for (testpositions, 0..) |str, index| {
-        var st: StateInfo = undefined;
-        try pos.set(&st, str);
-        var t1: StateInfo = undefined;
-        mirrored.copy_from(&pos, &t1);
-        mirrored.flip(&t1);
-        mirrored.flip(&t1);
+        try pos.set(str);
+        mirrored = pos;
+        mirrored.flip();
+        mirrored.flip();
         if (!mirrored.equals(&pos, true)) {
             return catch_error (
                 Error.FlipError,

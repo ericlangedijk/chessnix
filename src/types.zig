@@ -23,22 +23,16 @@ pub const Value = i32;//16;
 /// Used for evaluation.
 pub const Float = f32;
 
+pub const Axis = enum(u2) {
+    none, orth, diag,
+};
+
 pub const Orientation = enum(u2) {
-    horizontal,
-    vertical,
-    diagmain,
-    diaganti,
+    horizontal, vertical, diagmain, diaganti,
 };
 
 pub const Direction = enum(u3) {
-    north,
-    east,
-    south,
-    west,
-    north_west,
-    north_east,
-    south_east,
-    south_west,
+    north, east, south, west, north_west, north_east, south_east, south_west,
 
     pub const all: [8]Direction = .{ .north, .east, .south, .west, .north_west, .north_east, .south_east, .south_west };
 
@@ -240,7 +234,8 @@ pub const Square = packed union {
     }
 
     pub fn to_bitboard(self: Square) u64 {
-        return bitboards.bb_a1 << self.u;
+        //return @as(u64, 1) << self.u;//bitboards.bb_a1 << self.u;
+        return bitboards.square_bitboards[self.u]; // It seems this is a bit faster.
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -284,9 +279,8 @@ pub const Square = packed union {
         return null;
     }
 
-    /// Only used during initialization.\
-    /// Returns a ray of squares in the direction `dir`.
-    /// * not including self.
+    /// Only used during initialization.
+    /// * Returns a ray of squares in the direction `dir`, not including self.
     pub fn ray(self: Square, dir: Direction) lib.BoundedArray(Square, 8) {
         var result: lib.BoundedArray(Square, 8) = .{};
         var run: Square = self;
@@ -300,9 +294,8 @@ pub const Square = packed union {
         return result;
     }
 
-    /// Only used during initialization.\
-    /// Returns all rays for a range of directions.
-    /// * not including self.
+    /// Only used during initialization.
+    /// * Returns all rays for a range of directions, not including self.
     pub fn rays(self: Square, comptime dirs: []const Direction) lib.BoundedArray(Square, 32) {
         var result: lib.BoundedArray(Square, 32) = .{};
         for (dirs) |d| {
@@ -406,16 +399,16 @@ pub const PieceType = packed union {
         };
     }
 
-    pub fn from_san_char(char: u8) PieceType {
-        return switch(char) {
-            'N' => KNIGHT,
-            'B' => BISHOP,
-            'R' => ROOK,
-            'Q' => QUEEN,
-            'K' => KING,
-            else => unreachable,
-        };
-    }
+    // pub fn from_san_char(char: u8) PieceType {
+    //     return switch(char) {
+    //         'N' => KNIGHT,
+    //         'B' => BISHOP,
+    //         'R' => ROOK,
+    //         'Q' => QUEEN,
+    //         'K' => KING,
+    //         else => unreachable,
+    //     };
+    // }
 };
 
 pub const Piece = packed union {
@@ -439,7 +432,7 @@ pub const Piece = packed union {
     e: Enum,
     /// The numeric value.
     u: u4,
-    /// The piece type nicely matches the bits. Probably this trick will not be possible anymore in Zig 0.15+
+    /// The piece type nicely matches the bits. Probably this trick will not be possible anymore in future Zig.
     piecetype: PieceType,
 
     /// All valid pieces.
@@ -465,22 +458,22 @@ pub const Piece = packed union {
     pub const B_QUEEN  : Piece = .{ .e = .b_queen };
     pub const B_KING   : Piece = .{ .e = .b_king };
 
-    pub fn make(pt: PieceType, side: Color) Piece {
+    pub fn create(pt: PieceType, side: Color) Piece {
         const p: u4 = pt.u;
         const c: u4 = side.u;
         return .{ .u = p | c << 3 };
     }
 
     pub fn create_pawn(us: Color) Piece {
-        return make(P, us);
+        return create(P, us); // TODO: remove
     }
 
     pub fn create_rook(us: Color) Piece {
-        return make(R, us);
+        return create(R, us); // TODO: remove
     }
 
     pub fn create_king(us: Color) Piece {
-        return make(K, us);
+        return create(K, us); // TODO: remove
     }
 
     pub fn value(self: Piece) Value {
@@ -547,25 +540,12 @@ pub const Piece = packed union {
         return ch;
     }
 
-    pub fn to_fen_char(self: Piece) u8 {
-        return switch (self.e) {
-            .w_pawn   => 'P' ,
-            .w_knight => 'N',
-            .w_bishop => 'B',
-            .w_rook   => 'R',
-            .w_queen  => 'Q',
-            .w_king   => 'K',
-            .b_pawn   => 'p' ,
-            .b_knight => 'n' ,
-            .b_bishop => 'b' ,
-            .b_rook   => 'r' ,
-            .b_queen  => 'q' ,
-            .b_king   => 'k' ,
-            else => unreachable,
-        };
+    pub fn to_char(self: Piece) u8 {
+        return "?PNBRQK??pnbrqk?"[self.u];
     }
 
-    pub fn from_fen_char(char: u8) ParsingError!Piece {
+    pub fn from_char(char: u8) ParsingError!Piece {
+        // TODO: make ascii lookup table?
         return switch(char) {
             'P' => W_PAWN,
             'N' => W_KNIGHT,
@@ -584,88 +564,35 @@ pub const Piece = packed union {
     }
 };
 
-pub const MoveType = enum(u2) {
-    normal = 0,
-    promotion = 1,
-    enpassant = 2,
-    castle = 3,
-};
-
-/// Quite a struct for 2 bits.
-pub const MoveInfo = packed union {
-    /// In case of a promotion.
-    prom: Prom,
-    /// In case of castling.
-    castletype: CastleType,
-    /// Raw value.
-    u: u2,
-
-    pub const empty: MoveInfo = .{ .u = 0 };
-
-    pub const Prom = enum(u2) {
-        knight,
-        bishop,
-        rook,
-        queen,
-
-        pub fn to_piecetype(self: Prom) PieceType {
-            const v: u3 = @intFromEnum(self);
-            return PieceType{ .u = v + 2};
-        }
-
-        pub fn to_piece(self: Prom, comptime us: Color) Piece {
-            return Piece.make(self.to_piecetype(), us);
-        }
-
-        pub fn from_char(ch: u8) ParsingError!Prom {
-            return switch (ch) {
-                'n' => .knight,
-                'b' => .bishop,
-                'r' => .rook,
-                'q' => .queen,
-                else => ParsingError.InvalidPromotionChar
-            };
-        }
-
-        /// Returns the lower case promotion char for UCI move notations.
-        pub fn to_uci_char(self: Prom) u8 {
-            return "nbrq"[@intFromEnum(self)];
-        }
-
-        /// Returns the upper case promotion char for SAN move notations.
-        pub fn to_san_char(self: Prom) u8 {
-            return "NBRQ"[@intFromEnum(self)];
-        }
-    };
-};
-
 pub const Move = packed struct(u16) {
+    // bit 2 = promotion, bit 3 = capture.
+    pub const silent                   : u4 = 0b0000; // 0
+    pub const double_push              : u4 = 0b0001; // 1
+    pub const castle_short             : u4 = 0b0010; // 2
+    pub const castle_long              : u4 = 0b0011; // 3
+    pub const knight_promotion         : u4 = 0b0100; // 4
+    pub const bishop_promotion         : u4 = 0b0101; // 5
+    pub const rook_promotion           : u4 = 0b0110; // 6
+    pub const queen_promotion          : u4 = 0b0111; // 7
+    pub const capture                  : u4 = 0b1000; // 8
+    pub const ep                       : u4 = 0b1001; // 9
+    pub const knight_promotion_capture : u4 = 0b1100; // 12
+    pub const bishop_promotion_capture : u4 = 0b1101; // 13
+    pub const rook_promotion_capture   : u4 = 0b1110; // 14
+    pub const queen_promotion_capture  : u4 = 0b1111; // 15
+
     /// 6 bits.
     from: Square = .zero,
     /// 6 bits.
     to: Square = .zero,
-    /// 2 bits.
-    type: MoveType = .normal,
-    /// 2 bits.
-    info: MoveInfo = .{ .u = 0 },
+    /// Experimental detailed flags.
+    flags: u4 = 0,
 
     pub const empty: Move = .{};
     pub const nullmove: Move = @bitCast(@as(u16, 0xffff));
 
-    pub fn create(from: Square, to: Square) Move {
-        return .{ .from = from, .to = to };
-    }
-
-    pub fn create_promotion(from: Square, to: Square, comptime prom: MoveInfo.Prom) Move {
-        return .{ .from = from, .to = to, .type = .promotion, .info = .{ .prom = prom } };
-    }
-
-    pub fn create_enpassant(from: Square, to: Square) Move {
-        return .{ .from = from, .to = to, .type = .enpassant };
-    }
-
-    pub fn create_castle(from: Square, to: Square, comptime castletype: CastleType) Move {
-        return .{ .from = from, .to = to, .type = .castle, .info = .{ .castletype = castletype } };
+    pub fn create(from: Square, to: Square, flags: u4) Move {
+        return .{ .from = from, .to = to, .flags = flags };
     }
 
     pub fn bitcast(self: Move) u16 {
@@ -680,38 +607,63 @@ pub const Move = packed struct(u16) {
         return self.bitcast() == 0xffff;
     }
 
+    pub fn is_capture(self: Move) bool {
+        return self.flags & 0b1000 != 0;
+    }
+
+    pub fn is_quiet(self: Move) bool {
+        return self.flags & 0b1100 == 0; // no capture, no promotion.
+    }
+
+    pub fn is_promotion(self: Move) bool {
+        return self.flags & 0b0100 != 0;
+    }
+
+    pub fn is_promotion_capture(self: Move) bool {
+        return self.flags & 0b1100 != 0;
+    }
+
+    pub fn is_ep(self: Move) bool {
+        return self.flags == ep;
+    }
+
+    pub fn is_castle(self: Move) bool {
+        return self.flags == castle_short or self.flags == castle_long;
+    }
+
     pub fn flipped(self: Move) Move {
         if (self.is_empty()) return self;
-        return. { .from = self.from.flipped(), .to = self.to.flipped(), .type = self.type, .info = self.info };
+        return. { .from = self.from.flipped(), .to = self.to.flipped(), .flags = self.flags };
     }
 
     /// Only valid when we are a promotion.
-    pub fn promoted(self: Move) PieceType {
-        return self.info.prom.to_piecetype();
+    pub fn promoted_to(self: Move) PieceType {
+        //return self.info.prom.to_piecetype();
+        return .{ .u = @truncate((self.flags & 0b0111) - 2) };
     }
 
-    /// UCI string
-    pub fn to_string(self: Move) lib.BoundedArray(u8, 5) {
-        var result: lib.BoundedArray(u8, 5) = .{};
-        const from: Square = self.from;
-        var to: Square = self.to;
+    // /// UCI string
+    // pub fn to_string(self: Move) lib.BoundedArray(u8, 5) {
+    //     var result: lib.BoundedArray(u8, 5) = .{};
+    //     const from: Square = self.from;
+    //     var to: Square = self.to;
 
-        if (self.type == .castle) {
-            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
-            const castletype: CastleType = self.info.castletype;
-            // Change target square. We decode castling as "king takes rook".
-            to = position.king_castle_destination_squares[color.u][castletype.u];
-        }
+    //     if (self.type == .castle) {
+    //         const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+    //         const castletype: CastleType = self.info.castletype;
+    //         // Change target square. We decode castling as "king takes rook".
+    //         to = position.king_castle_destination_squares[color.u][castletype.u];
+    //     }
 
-        result.print_assume_capacity("{t}", .{ from.e});
-        result.print_assume_capacity("{t}", .{ to.e});
+    //     result.print_assume_capacity("{t}", .{ from.e});
+    //     result.print_assume_capacity("{t}", .{ to.e});
 
-        if (self.type == .promotion) {
-            const ch: u8 = self.info.prom.to_uci_char();
-            result.print_assume_capacity("{u}", .{ ch });
-        }
-        return result;
-    }
+    //     if (self.type == .promotion) {
+    //         const ch: u8 = self.info.prom.to_uci_char();
+    //         result.print_assume_capacity("{u}", .{ ch });
+    //     }
+    //     return result;
+    // }
 
     // Zig-format for UCI move output (e2e4).
     pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void {
@@ -719,20 +671,23 @@ pub const Move = packed struct(u16) {
             try writer.print("0000", .{});
             return;
         }
-
         const from: Square = self.from;
         var to: Square = self.to;
 
-        if (self.type == .castle) {
+        if (self.flags == Move.castle_short) {
             const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
-            const castletype: CastleType = self.info.castletype;
-            // Change target square. Castlling is "king takes rook".
-            to = position.king_castle_destination_squares[color.u][castletype.u];
+            to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u];
         }
+        else if (self.flags == Move.castle_long) {
+            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+            to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
+        }
+
         try writer.print("{t}{t}", .{ from.e, to.e });
 
-        if (self.type == .promotion) {
-            const ch: u8 = self.info.prom.to_uci_char();
+        if (self.is_promotion()) {
+            const prom: PieceType = self.promoted_to();
+            const ch: u8 = "??nbrq"[prom.u];
             try writer.print("{u}", .{ ch });
         }
     }
@@ -764,11 +719,11 @@ pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
-const value_pawn: Value = 100;
-const value_knight: Value = 317; // 305;
-const value_bishop: Value = 333;
-const value_rook: Value = 510; // 474;//// 463; // was: 563
-const value_queen: Value = 950;
+pub const value_pawn: Value = 100;
+pub const value_knight: Value = 317; // 305;
+pub const value_bishop: Value = 333;
+pub const value_rook: Value = 510; // 474;//// 463; // was: 563
+pub const value_queen: Value = 950;
 
 // Values used in Position stolen from Stockfish.
 pub const material_pawn: Value = 126;

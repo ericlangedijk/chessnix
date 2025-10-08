@@ -19,8 +19,7 @@ pub const Timer = struct
     /// NOTE: at program startup we check once if timer is available, otherwise quit.
     /// From then on we assume it is there.
     pub fn start() Timer {
-        return
-        .{
+        return .{
             .std_timer = std.time.Timer.start() catch wtf()
         };
     }

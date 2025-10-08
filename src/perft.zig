@@ -19,53 +19,39 @@ const Storage = position.MoveStorage;
 const JustCount = position.JustCount;
 
 /// With output.
-pub fn run(pos: *Position, depth: u8) void
+pub fn run(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
-    const nodes: u64 = switch (pos.to_move.e) {
+    const nodes: u64 = switch (pos.stm.e) {
         .white => do_run(true, true, Color.WHITE, depth, pos),
         .black => do_run(true, true, Color.BLACK, depth, pos),
     };
     const time = t.lap();
-    io.debugprint("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
 }
 
 /// Only show output when ready.
-pub fn qrun(pos: *Position, depth: u8) void
+pub fn qrun(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
-    const nodes: u64 = switch (pos.to_move.e) {
+    const nodes: u64 = switch (pos.stm.e) {
         .white => do_run(false, true, Color.WHITE, depth, pos),
         .black => do_run(false, true, Color.BLACK, depth, pos),
     };
     const time = t.lap();
-    io.debugprint("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
 }
 
 /// No output. Just return node count.
-pub fn run_quick(pos: *Position, depth: u8) u64
+pub fn run_quick(pos: *const Position, depth: u8) u64
 {
-    switch (pos.to_move.e) {
+    switch (pos.stm.e) {
         .white => return do_run(false, true, Color.WHITE, depth, pos),
         .black => return do_run(false, true, Color.BLACK, depth, pos),
     }
 }
 
-/// ### Debug only.
-/// Run captures.
-pub fn run_captures(pos: *Position, depth: u8) void
-{
-    var t = utils.Timer.start();
-    const nodes: u64 = switch (pos.to_move.e) {
-        .white => do_run_captures(true, true, Color.WHITE, depth, pos),
-        .black => do_run_captures(true, true, Color.BLACK, depth, pos),
-    };
-    const time = t.lap();
-    io.debugprint("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
-}
-
-
-fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, depth: u8, pos: *Position) u64 {
+fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, depth: u8, pos: *const Position) u64 {
     const is_leaf: bool = depth == 2;
     const them: Color = comptime us.opp();
     var count: usize = 0;
@@ -81,23 +67,24 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
             nodes += 1;
         }
         else {
-            var st: position.StateInfo = undefined;
-            pos.do_move(us, &st, m);
+            var next_pos: Position = pos.*;
+            next_pos.do_move(us, m);
             if (is_leaf) {
                 var counter: JustCount = .init();
-                pos.generate_moves(them, &counter); // just count
+                next_pos.generate_moves(them, &counter); // just count
                 count = counter.moves;
                 nodes += count;
             }
             else {
-                count = do_run(output, false, them, depth - 1, pos); // go recursive
+                count = do_run(output, false, them, depth - 1, &next_pos); // go recursive
                 nodes += count;
             }
-            pos.undo_move(us);
+            //pos.undo_move(us);
         }
 
         if (output and is_root) {
-            io.debugprint("{s}: {}\n", .{ m.to_string().slice(), count });
+            io.print("{f}: {}\n", .{ m, count });
+            //io.debugprint("{f}: {} {}\n", .{ m, count, m.is_capture() });
         }
     }
     return nodes;
@@ -163,24 +150,29 @@ pub fn bench() !void {
     var totalnodes: u64 = 0;
     var totaltime: u64 = 0;
 
-    var st: position.StateInfo = undefined;
     var pos: Position = .empty;
 
-    inline for (&testruns) |*testrun| {
+    main_loop: inline for (&testruns) |*testrun| {
         for (1..testrun.end_depth + 1) |depth| {
-            try pos.set(&st, testrun.fen);
+            try pos.set(testrun.fen);
             var timer = utils.Timer.start();
             const nodes: u64 = run_quick(&pos, @truncate(depth));
             const time = timer.read();
-            io.debugprint("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
+            io.print("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
 
             if (depth == testrun.end_depth) {
                 totalnodes += nodes;
                 totaltime += time;
-                if (nodes == testrun.end_depth_nodes) try io.print("OK\n\n", .{}) else try io.print("ERROR\n\n", .{});
+                if (nodes == testrun.end_depth_nodes) {
+                    io.print("OK\n\n", .{});
+                }
+                else {
+                    io.print("ERROR\n\n", .{});
+                    break :main_loop;
+                }
             }
         }
     }
 
-    io.debugprint("Total nodes: {} {D} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
+    io.print("Total nodes: {} {D} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
 }
