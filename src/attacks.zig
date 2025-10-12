@@ -22,6 +22,7 @@ const main_magics: [64]MagicEntry = compute_diagmain_magics();
 const anti_magics: [64]MagicEntry = compute_diaganti_magics();
 const pawn_attacks_white: [64]u64 = compute_pawn_hits_white();
 const pawn_attacks_black: [64]u64 = compute_pawn_hits_black();
+const pawn_attack_white_and_black_combined: [64]u64 = compute_pawn_hits_white_and_black_combined();
 const knight_attacks: [64]u64 = compute_knight_attacks();
 const king_attacks: [64]u64 = compute_king_attacks();
 const rank_attacks: [64 * 64]u64 = compute_rank_attacks();
@@ -131,6 +132,14 @@ fn compute_pawn_hits_black() [64]u64 {
         if (sq.next(.south_west))|n| phb[sq.u] |= n.to_bitboard();
     }
     return phb;
+}
+
+fn compute_pawn_hits_white_and_black_combined() [64]u64 {
+    var pac: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        pac[sq.u] = pawn_attacks_white[sq.u] | pawn_attacks_black[sq.u];
+    }
+    return pac;
 }
 
 fn compute_knight_attacks() [64]u64 {
@@ -400,6 +409,10 @@ pub fn get_pawn_attacks(sq: Square, comptime us: Color) u64 {
     };
 }
 
+pub fn get_pawn_attacks_combined(sq: Square) u64 {
+    return pawn_attack_white_and_black_combined[sq.u];
+}
+
 pub fn get_knight_attacks(sq: Square) u64 {
     return knight_attacks[sq.u];
 }
@@ -426,6 +439,8 @@ pub fn get_piece_attacks(sq: Square, occ: u64, comptime pc: PieceType, comptime 
         .knight => get_knight_attacks(sq),
         .bishop => get_bishop_attacks(sq, occ),
         .rook => get_rook_attacks(sq, occ),
-        else => get_queen_attacks(sq, occ),
+        .queen => get_queen_attacks(sq, occ),
+        .king => get_king_attacks(sq),
+        else => unreachable,
     };
 }

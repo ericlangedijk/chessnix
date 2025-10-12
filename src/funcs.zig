@@ -24,6 +24,17 @@ const wtf = lib.wtf;
 /// Enum for shifting pawn moves.
 pub const PawnShift = enum(u2) { up, northwest, northeast };
 
+pub fn square_distance(a: Square, b: Square) u3 {
+    const ar: i32 = a.rank();
+    const br: i32 = b.rank();
+
+    const af: i32 = a.file();
+    const bf: i32 = b.file();
+
+    const d: u32 = @max(@abs(ar - br), @abs(af - bf));
+    return @truncate(@abs(d));
+}
+
 pub fn relative_rank_7_bitboard(us: Color) u64 {
     return if (us.e == .white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
 }
@@ -40,12 +51,32 @@ pub fn relative_rank(us: Color, rank: u3) u3 {
     return if (us.e == .white) rank else 7 - rank;
 }
 
+pub fn is_relative_rank_456(us: Color, rank: u3) bool {
+    return if (us.e == .white)
+        rank >= bitboards.rank_4 and rank <= bitboards.rank_6
+    else
+        rank >= bitboards.rank_3 and rank <= bitboards.rank_5;
+}
+
+/// Relative rank 4,5,6
+pub fn outpost(comptime us: Color) u64 {
+    return if (us.e == .white) bitboards.bb_rank_4 | bitboards.bb_rank_5 | bitboards.bb_rank_6 else bitboards.bb_rank_3 | bitboards.bb_rank_4 | bitboards.bb_rank_5;
+}
+
+pub fn relative_side_bitboard(comptime us: Color) u64 {
+    return if (us.e == .white) bitboards.bb_white_side else bitboards.bb_black_side;
+}
+
 pub fn relative_rank_bb(us: Color, rank: u3) u64 {
     return if (us.e == .white) bitboards.rank_bitboards[rank] else bitboards.rank_bitboards[7 - rank];
 }
 
 pub fn relative_rank_7(us: Color) u3 {
     return if (us.e == .white) bitboards.rank_7 else bitboards.rank_2;
+}
+
+pub fn forward_file(comptime us: Color, sq: Square) u64 {
+    return if (us.e == .white) bitboards.bb_north[sq.u] else bitboards.bb_south[sq.u];
 }
 
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64 {
@@ -87,32 +118,24 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
     }
 }
 
-// pub fn all_pawns_attacks(pawns: u64, comptime us: Color) u64 {
-//     return switch(us.e) {
-//         .white => ((pawns & ~bitboards.bb_file_a) << 7) | ((pawns & ~bitboards.bb_file_h) << 9),
-//         .black => ((pawns & ~bitboards.bb_file_h) >> 7) | ((pawns & ~bitboards.bb_file_a) >> 9),
-//     };
-// }
-
-// fn mirrorHorizontally(bits: u64) u64 {
-//     var x = bits;
-//     x = ((x & 0x5555555555555555) << 1) | ((x >> 1) & 0x5555555555555555);
-//     x = ((x & 0x3333333333333333) << 2) | ((x >> 2) & 0x3333333333333333);
-//     x = ((x & 0x0F0F0F0F0F0F0F0F) << 4) | ((x >> 4) & 0x0F0F0F0F0F0F0F0F);
-//     return x;
-// }
-
 pub fn mirror_vertically(u: u64) u64 {
-    var x = u;
-    x = ( (x << 56)) |
-        ( (x & 0x000000000000ff00) << 40) |
-        ( (x & 0x0000000000ff0000) << 24) |
-        ( (x & 0x00000000ff000000) << 8 ) |
-        ( (x & 0x000000ff00000000) >> 8 ) |
-        ( (x & 0x0000ff0000000000) >> 24) |
-        ( (x & 0x00ff000000000000) >> 40) |
-        ( (x >> 56));
-    return x;
+    return
+        ( (u << 56)) |
+        ( (u & 0x000000000000ff00) << 40) |
+        ( (u & 0x0000000000ff0000) << 24) |
+        ( (u & 0x00000000ff000000) << 8 ) |
+        ( (u & 0x000000ff00000000) >> 8 ) |
+        ( (u & 0x0000ff0000000000) >> 24) |
+        ( (u & 0x00ff000000000000) >> 40) |
+        ( (u >> 56));
+}
+
+pub fn mirror_u16_vertically(u: u16) u16 {
+    return
+        ( (u << 4)) |
+        ( (u & 0xff00) << 8 ) |
+        ( (u & 0x00ff) >> 8 ) |
+        ( (u >> 4));
 }
 
 pub fn popcnt(bitboard: u64) u7 {
@@ -137,7 +160,7 @@ pub fn first_square_or_null(bitboard: u64) ?Square {
 pub fn first_square(bitboard: u64) Square {
     if (comptime lib.is_paranoid) assert(bitboard != 0);
     const lsb: u6 = @truncate(@ctz(bitboard));
-    return Square.from(lsb);
+    return .{ .u = lsb}; //Square.from(lsb);
 }
 
 /// Unsafe pop lsb and clears that lsb from the bitboard.
@@ -190,6 +213,7 @@ pub fn mate_to_dtm(mv: Value, stm: Color) Value {
     const white_to_move: bool = stm.e == .white;
     return (if (white_wins) mv * 2 else -mv * 2) - @intFromBool(white_wins == white_to_move);
 }
+
 
 pub fn eql(input: []const u8, comptime line: []const u8) bool {
     return std.mem.eql(u8, input, line);
@@ -304,6 +328,26 @@ pub fn print_bitboard(bb: u64) void {
             const b: u64 = square.to_bitboard();
             if (bb & b == 0) std.debug.print(". ", .{}) else std.debug.print("1 ", .{});
             if (x == 7) break;
+            x += 1;
+        }
+        std.debug.print("\n", .{});
+        if (y == 0) break;
+        y -= 1;
+    }
+    std.debug.print("\n", .{});
+}
+
+pub fn print_u16_bitboard(bb: u16) void {
+    var y: u16 = 3;
+    while (true) {
+        var x: u16 = 0;
+        while (true) {
+            const index: u16 = y * 4 + x;
+            //const square: Square = .from_rank_file(y, x);
+            const shift: u4 = @truncate(index);
+            const b: u64 = @as(u16, 1) << shift;//square.to_bitboard();
+            if (bb & b == 0) std.debug.print(". ", .{}) else std.debug.print("1 ", .{});
+            if (x == 3) break;
             x += 1;
         }
         std.debug.print("\n", .{});

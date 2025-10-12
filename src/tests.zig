@@ -2,8 +2,6 @@
 
 //! Collection of debug tests.
 
-// TODO: make the tests Zig-tests.
-
 const std = @import("std");
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");
@@ -85,7 +83,7 @@ pub fn run_tests(max_depth: usize) !void
     }
 }
 
-// Test flip board.
+/// Test flip position.
 pub fn test_flip() !void {
     lib.not_in_release();
 
@@ -120,6 +118,7 @@ pub const FenDepths = lib.BoundedArray(u64, 16);
 /// "1B6/1r3Bk1/8/Pp6/4KN1p/8/5b1R/8 b - -;23;728;14764;461899;9440955;292742932"
 fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
 {
+    // TODO: simplyfy the depths (remove). it is just for debugging.
     var depths: lib.BoundedArray(u64, 16) = .{};
     depths.append_assume_capacity(0);
 
@@ -165,6 +164,60 @@ fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
 fn index_of(slice: []const u8, value:u8) ?usize {
     return std.mem.indexOfScalar(u8, slice, value);
 }
+
+
+// TODO: remove and move to normal function. tests.zig.
+// test "see"
+// {
+//     try lib.initialize();
+//     var pos: Position = .empty;
+
+//     const GOOD = true;
+//     const BAD = false;
+
+//     // Pawn exchange.
+//     try execute_see_test(&pos, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "d5e6", GOOD);
+//     // Queen takes covered knight.
+//     try execute_see_test(&pos, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "f3f6", BAD);
+//     // Pawn takes knight.
+//     try execute_see_test(&pos, "8/8/5b1k/4n3/K2P4/8/8/8 w - - 0 1", "d4e5", GOOD);
+//     // Losing queen for pawn.
+//     try execute_see_test(&pos, "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1", "e4d5", BAD);
+//     // Losing rook for knight.
+//     try execute_see_test(&pos, "3q3k/8/4p3/3n4/3R4/8/8/K2R4 w - - 0 1", "d4d5", BAD);
+//     // Bishop captures pawn. King involved.
+//     try execute_see_test(&pos, "8/8/2k5/3p4/4B3/5K2/8/8 w - - 0 1", "e4d5", BAD);
+//     // Pawn captures bishop. King involved.
+//     try execute_see_test(&pos, "8/8/2k5/3b4/4P3/5K2/8/8 w - - 0 1", "e4d5", GOOD);
+//     // Pawn exchange. King involved.
+//     try execute_see_test(&pos, "8/8/2k5/3p4/4P3/5K2/8/8 w - - 0 1", "e4d5", GOOD);
+//     // Winning a pawn. King involved.
+//     try execute_see_test(&pos, "8/8/2k5/3p4/4P3/6K1/6B1/8 w - - 0 1", "e4d5", GOOD);
+
+//     // Pinned rook capturing pawn.
+//     try execute_see_test(&pos, "3r4/8/1K1p4/3R4/3R4/8/1k6/6b1 w - - 0 1", "d5d6", BAD);
+//     // Pinned rook capturing knight.
+//     try execute_see_test(&pos, "3r4/8/1K1n4/3R4/3R4/8/1k6/6b1 w - - 0 1", "d5d6", BAD);
+
+//     // TODO: This should - in a perfect situation - reveal more pins after the first move.
+//     try execute_see_test(&pos, "7b/1k6/8/4p3/1r1P1PK1/5R2/5B2/8 w - - 0 1", "f4e5", GOOD);
+
+//     // Mutally pinned rooks.
+//     try execute_see_test(&pos, "4B3/3r4/2k5/K7/3p4/3R4/3R4/4b3 w - - 0 1", "d3d4", GOOD);
+// }
+
+// /// TODO: complete with see->bool and expected value.
+// fn execute_see_test(pos: *Position, fen: []const u8, move: []const u8, expected_good: bool) !void {
+//     var st: StateInfo = undefined;
+//     try pos.set(&st, fen);
+//     const m: Move = try pos.parse_move(move);
+//     const val: Value = see_score(pos, m);
+//     io.debugprint("{}\n", .{ val });
+//     if (expected_good)
+//         try std.testing.expect(val >= 0)
+//     else
+//         try std.testing.expect(val < 0);
+// }
 
 
 

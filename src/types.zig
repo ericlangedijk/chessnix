@@ -19,7 +19,7 @@ pub const Q = PieceType.QUEEN;
 pub const K = PieceType.KING;
 
 /// Used for evaluation.
-pub const Value = i32;//16;
+pub const Value = i32;
 /// Used for evaluation.
 pub const Float = f32;
 
@@ -61,15 +61,15 @@ pub const Direction = enum(u3) {
 };
 
 pub const CastleType = packed union {
-    pub const Enum = enum(u1) { short, long }; // TODO: rename
+    pub const Enum = enum(u1) { short, long };
     /// The enum value
     e: Enum,
     /// The numeric value
     u: u1,
 
     pub const all: [2]CastleType = .{ SHORT, LONG };
-    pub const SHORT: CastleType = .{ .e = .short };  // TODO: rename
-    pub const LONG: CastleType = .{ .e = .long };  // TODO: rename
+    pub const SHORT: CastleType = .{ .e = .short };
+    pub const LONG: CastleType = .{ .e = .long };
 };
 
 pub const Color = packed union {
@@ -90,13 +90,12 @@ pub const Color = packed union {
     pub fn idx(self: Color) usize {
         return self.u;
     }
-
 };
 
 pub const Coord = packed struct {
-    /// file == x. raw bits: Square.u & 7
+    /// file == x. raw bits: Square.u & 7 (0b000111)
     file: u3,
-    /// rank == y. raw bits: Square.u >> 3
+    /// rank == y. raw bits: Square.u >> 3  (0b111000)
     rank: u3,
 };
 
@@ -213,7 +212,9 @@ pub const Square = packed union {
     }
 
     pub fn from_usize(index: usize) Square {
-        assert(index < 64);
+        if (comptime lib.is_paranoid) {
+            assert(index < 64);
+        }
         return .{ .u = @truncate(index) };
     }
 
@@ -234,8 +235,7 @@ pub const Square = packed union {
     }
 
     pub fn to_bitboard(self: Square) u64 {
-        //return @as(u64, 1) << self.u;//bitboards.bb_a1 << self.u;
-        return bitboards.square_bitboards[self.u]; // It seems this is a bit faster.
+        return bitboards.square_bitboards[self.u]; // It seems this is a bit faster than 1 << square.
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -346,23 +346,22 @@ pub const Square = packed union {
 };
 
 pub const PieceType = packed union {
-    pub const Enum = enum(u3) {
-        no_piecetype = 0,
-        pawn = 1,
-        knight = 2,
-        bishop = 3,
-        rook = 4,
-        queen = 5,
-        king = 6,
+    /// Although 3 bits are enough 4 bits is easier for conversions.
+    pub const Enum = enum(u4) {
+        pawn = 0,
+        knight = 1,
+        bishop = 2,
+        rook = 3,
+        queen = 4,
+        king = 5,
     };
     /// The enum value.
     e: Enum,
     /// The numeric value.
-    u: u3,
+    u: u4,
 
     pub const all: [6]PieceType = .{ PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING };
 
-    pub const NO_PIECETYPE: PieceType = .{ .e = .no_piecetype };
     pub const PAWN: PieceType = .{ .e = .pawn };
     pub const KNIGHT: PieceType = .{ .e = .knight };
     pub const BISHOP: PieceType = .{ .e = .bishop };
@@ -378,11 +377,6 @@ pub const PieceType = packed union {
         return piece_values[self.u];
     }
 
-    pub fn bitmask(self: PieceType) u6 {
-        if (comptime lib.is_paranoid) assert(self.u != 0);
-        return @as(u6, 1) << (self.u - 1);
-    }
-
     /// Returns the material code.
     pub fn material(self: PieceType) Value {
         return piece_material_values[self.u];
@@ -390,7 +384,7 @@ pub const PieceType = packed union {
 
     pub fn to_char(self: PieceType) u8 {
         return switch(self.e) {
-            .no_piecetype, .pawn => 0,
+            .pawn => 0,
             .knight => 'N',
             .bishop => 'B',
             .rook => 'R',
@@ -398,52 +392,38 @@ pub const PieceType = packed union {
             .king => 'K',
         };
     }
-
-    // pub fn from_san_char(char: u8) PieceType {
-    //     return switch(char) {
-    //         'N' => KNIGHT,
-    //         'B' => BISHOP,
-    //         'R' => ROOK,
-    //         'Q' => QUEEN,
-    //         'K' => KING,
-    //         else => unreachable,
-    //     };
-    // }
 };
 
 pub const Piece = packed union {
+    /// To have convenient array indexing the values are just sequential.
     pub const Enum = enum(u4) {
-        no_piece = 0,
-        w_pawn = 1,
-        w_knight = 2,
-        w_bishop = 3,
-        w_rook = 4,
-        w_queen = 5,
-        w_king = 6,
+        w_pawn = 0,
+        w_knight = 1,
+        w_bishop = 2,
+        w_rook = 3,
+        w_queen = 4,
+        w_king = 5,
 
-        b_pawn = 9,
-        b_knight = 10,
-        b_bishop = 11,
-        b_rook = 12,
-        b_queen = 13,
-        b_king = 14,
+        b_pawn = 6,
+        b_knight = 7,
+        b_bishop = 8,
+        b_rook = 9,
+        b_queen = 10,
+        b_king = 11,
+
+        no_piece = 12,
     };
     /// The enum value.
     e: Enum,
     /// The numeric value.
     u: u4,
-    /// The piece type nicely matches the bits. Probably this trick will not be possible anymore in future Zig.
-    piecetype: PieceType,
 
     /// All valid pieces.
-    pub const all: [12]Piece =
-    .{
+    pub const all: [12]Piece = .{
         W_PAWN, W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING,
         B_PAWN, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING,
     };
 
-    // Piece values are so that bit 3 indicates black.
-    pub const NO_PIECE : Piece = .{ .e = .no_piece };
     pub const W_PAWN   : Piece = .{ .e = .w_pawn };
     pub const W_KNIGHT : Piece = .{ .e = .w_knight };
     pub const W_BISHOP : Piece = .{ .e = .w_bishop };
@@ -458,22 +438,10 @@ pub const Piece = packed union {
     pub const B_QUEEN  : Piece = .{ .e = .b_queen };
     pub const B_KING   : Piece = .{ .e = .b_king };
 
+    pub const NO_PIECE : Piece = .{ .e = .no_piece };
+
     pub fn create(pt: PieceType, side: Color) Piece {
-        const p: u4 = pt.u;
-        const c: u4 = side.u;
-        return .{ .u = p | c << 3 };
-    }
-
-    pub fn create_pawn(us: Color) Piece {
-        return create(P, us); // TODO: remove
-    }
-
-    pub fn create_rook(us: Color) Piece {
-        return create(R, us); // TODO: remove
-    }
-
-    pub fn create_king(us: Color) Piece {
-        return create(K, us); // TODO: remove
+        return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
     }
 
     pub fn value(self: Piece) Value {
@@ -485,7 +453,9 @@ pub const Piece = packed union {
     }
 
     pub fn from_usize(u: usize) Piece {
-        if (comptime lib.is_paranoid) assert(u <= 14 and u != 7 and u != 8);
+        if (comptime lib.is_paranoid) {
+            assert(u <= 11);
+        }
         return .{ .u = @truncate(u)};
     }
 
@@ -493,55 +463,62 @@ pub const Piece = packed union {
         return self.u;
     }
 
-    pub fn is_empty(self: Piece) bool {
-        return self.u == 0;
-    }
+    // pub fn bitcast(self: Piece) u4 {
+    //     return @bitCast(self);
+    // }
 
-    pub fn bitcast(self: Piece) u4 {
-        return @bitCast(self);
+    pub fn is_empty(self: Piece) bool {
+        return self.e == .no_piece;
     }
 
     pub fn is_piece(self: Piece) bool {
-        return self.u != 0;
+        return self.e != .no_piece;
     }
 
-    /// NOTE: Watch out with empty piece.
+    /// Don't call for no_piece.
     pub fn color(self: Piece) Color {
-        return .{ .u = @truncate(self.u >> 3) };
+        if (comptime lib.is_paranoid) {
+            assert(self.e != .no_piece);
+        }
+        return if (self.u < 6) Color.WHITE else Color.BLACK;
     }
 
-    pub fn is_color(self: Piece, col: Color) bool {
-        return self.u != 0 and self.color().e == col.e;
+    /// Don't call for no_piece.
+    pub fn piecetype(self: Piece) PieceType {
+        if (comptime lib.is_paranoid) {
+            assert(self.e != .no_piece);
+        }
+        return if (self.u < 6) .{ .u = self.u } else .{.u = self. u - 6 };
     }
 
     pub fn opp(self: Piece) Piece {
-        return if (self.u != 0) .{ .u = self.u ^ 8} else Piece.NO_PIECE;
+        if (self.is_empty()) return Piece.NO_PIECE;
+        return if (self.color().e == .white ) .{.u = self.u + 6} else .{ .u = self.u - 6 };
     }
 
     pub fn is_pawn(self: Piece) bool {
-        return self.piecetype.e == .pawn;
+        return self.piecetype().e == .pawn;
     }
 
-    pub fn is_king(self: Piece) bool {
-        return self.piecetype.e == .king;
-    }
+    // pub fn is_king(self: Piece) bool {
+    //     return self.piecetype().e == .king;
+    // }
 
     pub fn to_print_char(self: Piece) u8 {
-        var ch: u8 = switch(self.piecetype.e) {
+        var ch: u8 = switch(self.piecetype().e) {
             .pawn => 'P',
             .knight => 'N',
             .bishop => 'B',
             .rook => 'R',
             .queen => 'Q',
             .king => 'K',
-            else => '?'
         };
         if (self.color().e == .black) ch = std.ascii.toLower(ch);
         return ch;
     }
 
     pub fn to_char(self: Piece) u8 {
-        return "?PNBRQK??pnbrqk?"[self.u];
+        return "PNBRQKpnbrqk?"[self.u];
     }
 
     pub fn from_char(char: u8) ParsingError!Piece {
@@ -585,7 +562,7 @@ pub const Move = packed struct(u16) {
     from: Square = .zero,
     /// 6 bits.
     to: Square = .zero,
-    /// Experimental detailed flags.
+    /// Detail flags.
     flags: u4 = 0,
 
     pub const empty: Move = .{};
@@ -638,8 +615,11 @@ pub const Move = packed struct(u16) {
 
     /// Only valid when we are a promotion.
     pub fn promoted_to(self: Move) PieceType {
-        //return self.info.prom.to_piecetype();
-        return .{ .u = @truncate((self.flags & 0b0111) - 2) };
+        if (comptime lib.is_paranoid) {
+            assert(self.is_promotion());
+        }
+        //return .{ .u = @truncate((self.flags & 0b0111) - 2) };
+        return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
     // /// UCI string
@@ -687,7 +667,7 @@ pub const Move = packed struct(u16) {
 
         if (self.is_promotion()) {
             const prom: PieceType = self.promoted_to();
-            const ch: u8 = "??nbrq"[prom.u];
+            const ch: u8 = "?nbrq?"[prom.u];
             try writer.print("{u}", .{ ch });
         }
     }
@@ -724,6 +704,7 @@ pub const value_knight: Value = 317; // 305;
 pub const value_bishop: Value = 333;
 pub const value_rook: Value = 510; // 474;//// 463; // was: 563
 pub const value_queen: Value = 950;
+pub const value_king: Value = 0;
 
 // Values used in Position stolen from Stockfish.
 pub const material_pawn: Value = 126;
@@ -731,6 +712,7 @@ pub const material_knight: Value = 781;
 pub const material_bishop: Value = 825;
 pub const material_rook: Value = 1276;
 pub const material_queen: Value = 2538;
+pub const material_king: Value = 0;
 
 /// The total material value in the starting position including pawns
 pub const max_material_value: Value = 18620;
@@ -742,35 +724,13 @@ pub const opening_threshold: Value = 16604;
 pub const midgame_threshold: Value = 15258;
 pub const endgame_threshold: Value = 3915;
 
-const piece_values: [15]Value = .{
-    0, // no_piece
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
-    0, 0, // empty
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, 0,
+const piece_values: [12]Value = .{
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
 };
 
-const piece_material_values: [15]Value = .{
-    0, // no_piece
-    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
-    0, 0, // empty
-    material_pawn, material_knight, material_bishop, material_rook, material_queen, 0,
+const piece_material_values: [12]Value = .{
+    material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
+    material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
 };
 
-////////////////////////////////////////////////////////////////
-/// Strings
-////////////////////////////////////////////////////////////////
-
-pub const castle_strings: [2][]const u8 = .{ "O-O", "O-O-O" };
-
-// TODO: centralize stuff
-pub const ChessChars = struct
-{
-    pub const uci_promotion_chars = "nbrq";
-    pub const san_promotion_chars = "NBRQ";
-
-    pub const fen_piece_chars = "PBNRQKpbnrqk";
-    pub const fen_emptysquare_chars = "12345678";
-
-    pub const file_chars = "abcdefgh";
-    pub const rank_chars = "12345678";
-};

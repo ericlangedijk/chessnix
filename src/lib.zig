@@ -8,7 +8,7 @@ pub fn initialize() !void {
     if (lib_is_initialized) return;
 
     // If no timer available, the program is useless.
-    var timer = try std.time.Timer.start();
+    _ = try std.time.Timer.start();
 
     memory_context = .init();
     io_context = .init();
@@ -16,7 +16,6 @@ pub fn initialize() !void {
     // Then initialize chess.
     @import("zobrist.zig").initialize();
 
-    startup_time = timer.read();
     lib_is_initialized = true;
 }
 
@@ -26,10 +25,10 @@ pub fn finalize() void {
 }
 
 /// For now we put it here.
-pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
+pub const BoundedArray = @import("utils.zig").BoundedArray;
 
 // Globals.
-pub const version = "0.2";
+pub const version = "0.20";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_paranoid: bool = if (is_debug) true else false; // Set paranoid to false to speedup debugging.
@@ -38,7 +37,6 @@ pub const io: *IoContext = &io_context;
 var memory_context: MemoryContext = undefined;
 var io_context: IoContext = undefined;
 var lib_is_initialized: bool = false;
-pub var startup_time: u64 = 0;
 
 /// The global memory context of our exe
 pub const MemoryContext = struct {
@@ -59,7 +57,6 @@ pub const MemoryContext = struct {
     }
 };
 
-
 // TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
 var in_buffer: [2048]u8 = undefined;
 var out_buffer: [2048]u8 = undefined;
@@ -71,7 +68,6 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
-        // var tralala = std.fs.File.stderr().writer();
         stdin = std.fs.File.stdin().reader(&in_buffer);
         stdout = std.fs.File.stdout().writer(&out_buffer);
         return .{
@@ -89,22 +85,29 @@ const IoContext = struct {
 
     /// uci only. By default print and flush.
     pub fn print(self: *const IoContext, comptime str: []const u8, args: anytype) void {
-        self.out.print(str, args) catch io_error();
-        self.out.flush() catch io_error();
+        self.out.print(str, args) catch wtf();
+        self.out.flush() catch wtf();
     }
 
     /// uci only.
     pub fn print_buffered(self: *const IoContext, comptime str: []const u8, args: anytype) void {
-        self.out.print(str, args) catch io_error();
+        self.out.print(str, args) catch wtf();
     }
 
     /// If `print_buffered` was used.
     pub fn flush(self: *const IoContext) void {
-        self.out.flush() catch io_error();
+        self.out.flush() catch wtf();
     }
 
-    /// Anything non-uci has to go here.
+    /// Debug only.
     pub fn debugprint(_: *const IoContext, comptime str: []const u8, args: anytype) void {
+        not_in_release();
+        std.debug.print(str, args);
+    }
+
+    /// Allowed during UCI.
+    pub fn errorprint(_: *const IoContext, comptime str: []const u8, args: anytype) void {
+        not_in_release();
         std.debug.print(str, args);
     }
 };
@@ -121,8 +124,4 @@ pub fn not_in_release() void {
 /// TODO: add comptime code.
 pub fn wtf() noreturn {
     @panic("wtf");
-}
-
-fn io_error() noreturn {
-    @panic("io error");
 }

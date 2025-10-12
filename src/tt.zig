@@ -18,16 +18,19 @@ const Move = types.Move;
 pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
 
 
-// typedef struct {
+/// Adjust score for mate in X when storing.
+pub fn get_adjusted_score_for_tt_store(score: Value, ply: u16) Value {
+    if (score >= types.mate_threshold) return score + ply
+    else if (score <= -types.mate_threshold) return score - ply;
+    return score;
+}
 
-//   uint64_t hash;
-//   move_t move;
-//   uint8_t flags;
-//   uint8_t depth;
-//   int16_t score;
-//   int16_t ev;
-
-// } TT;
+/// Adjust score for mate in X when probing.
+pub fn get_adjusted_score_for_tt_probe(score: Value, ply: u16) Value {
+    if (score >= types.mate_threshold) return score - ply
+    else if (score <= -types.mate_threshold) return score + ply;
+    return score;
+}
 
 /// Must be 16 bytes.
 pub const Entry = packed struct {
@@ -82,7 +85,9 @@ pub const TranspositionTable = struct {
 
     /// TODO: atomic store when multiple threads.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
-        assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+        if (comptime lib.is_paranoid) {
+             assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+        }
         const entry: *Entry = self.get_mut(key);
         const adjusted_score = get_adjusted_score_for_tt_store(score, ply);
         if (entry.bound != .None and entry.key == key and entry.depth > depth) {
@@ -137,7 +142,6 @@ pub const TranspositionTable = struct {
     }
 };
 
-
 /// Must be 16 bytes.
 pub const PawnEntry = packed struct {
     /// The position pawn key.
@@ -188,7 +192,9 @@ pub const PawnTranspositionTable = struct {
 
     /// TODO: atomic store when multiple threads.
     pub fn store(self: *PawnTranspositionTable, key: u64, score: Value) void {
-        assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+        if (comptime lib.is_paranoid) {
+            assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+        }
         const entry: *PawnEntry = self.get_mut(key);
         const was_empty: bool = entry.key == 0;
         entry.* = .{
@@ -222,23 +228,8 @@ pub const PawnTranspositionTable = struct {
     }
 };
 
-/// Adjust score for mate in X when storing.
-pub fn get_adjusted_score_for_tt_store(score: Value, ply: u16) Value {
-    if (score >= types.mate_threshold) return score + ply
-    else if (score <= -types.mate_threshold) return score - ply;
-    return score;
-}
-
-/// Adjust score for mate in X when probing.
-pub fn get_adjusted_score_for_tt_probe(score: Value, ply: u16) Value {
-    if (score >= types.mate_threshold) return score - ply
-    else if (score <= -types.mate_threshold) return score + ply;
-    return score;
-}
-
-
 /// Must be 16 bytes.
-pub const EvalEntry = packed struct {
+pub const EvalEntry = struct {
     /// The position pawn key.
     key: u64,
     /// The evaluation according to search.
@@ -247,7 +238,7 @@ pub const EvalEntry = packed struct {
 };
 
 /// ### Deprecated for now.
-/// A simple cache for pawn evaluation speedup.
+/// A simple cache for evaluation cache.
 pub const EvalTranspositionTable = struct {
     /// Array on heap.
     data: []EvalEntry,
@@ -257,8 +248,6 @@ pub const EvalTranspositionTable = struct {
     mb: u64,
     /// Mask for indexing.
     mask: u64,
-    /// Filled at this age.
-    filled: u64,
     /// Probes.
     probes: u64,
     /// Hits
@@ -270,7 +259,7 @@ pub const EvalTranspositionTable = struct {
         const len: u64 = (size_in_megabytes * 1024 * 1024) / 16;
         const data: []EvalEntry = try ctx.galloc.alloc(EvalEntry, len);
         @memset(data, EvalEntry.empty);
-        return .{ .data = data, .len = len, .mb = size_in_megabytes, .mask = len - 1, .filled = 0, .probes = 0, .hits = 0, };
+        return .{ .data = data, .len = len, .mb = size_in_megabytes, .mask = len - 1, .probes = 0, .hits = 0, };
     }
 
     pub fn deinit(self: *EvalTranspositionTable) void {
@@ -279,33 +268,31 @@ pub const EvalTranspositionTable = struct {
 
     pub fn clear(self: *EvalTranspositionTable) void {
         @memset(self.data, EvalEntry.empty);
-        self.filled = 0;
         self.probes = 0;
         self.hits = 0;
     }
 
     /// TODO: atomic store when multiple threads.
     pub fn store(self: *EvalTranspositionTable, key: u64, score: Value) void {
-        assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-        const entry: *EvalEntry = self.get_mut(key);
-        const was_empty: bool = entry.key == 0;
+        if (comptime lib.is_paranoid) {
+            assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+        }
+        const entry: *EvalEntry = &self.data[key & self.mask];
         entry.* = .{
             .key = key,
             .score = @truncate(score),
         };
-        if (was_empty) self.filled += 1;
     }
 
     pub fn probe(self: *EvalTranspositionTable, key: u64) ?Value {
         self.probes += 1;
-        const entry: EvalEntry = self.get(key);
+        const entry: *const EvalEntry = &self.data[key & self.mask];
         if (entry.key != key) return null;
         self.hits += 1;
         return entry.score;
     }
 
     fn index_of(self: *const EvalTranspositionTable, key: u64) u64 {
-        // return key & (self.len - 1);
         return key & self.mask;
     }
 
@@ -319,10 +306,6 @@ pub const EvalTranspositionTable = struct {
         return self.data[idx];
     }
 };
-
-
-
-
 
 
 const Error = error {

@@ -90,46 +90,6 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     return nodes;
 }
 
-/// ### Debug only.
-/// Run captures.
-fn do_run_captures(comptime output: bool, comptime is_root: bool, comptime us: Color, depth: u8, pos: *Position) u64 {
-    const is_leaf: bool = depth == 2;
-    const them: Color = comptime us.opp();
-    var count: usize = 0;
-    var nodes: usize = 0;
-
-    var storage: position.MoveStorage = .init();
-    pos.generate_captures(us, &storage);
-    const moves = storage.slice();
-
-    for (moves) |m| {
-        if (is_root and depth <= 1) {
-            count = 1;
-            nodes += 1;
-        }
-        else {
-            var st: position.StateInfo = undefined;
-            pos.do_move(us, &st, m);
-            if (is_leaf) {
-                var counter: JustCount = .init();
-                pos.generate_captures(them, &counter); // just count
-                count = counter.moves;
-                nodes += count;
-            }
-            else {
-                count = do_run_captures(output, false, them, depth - 1, pos); // go recursive
-                nodes += count;
-            }
-            pos.undo_move(us);
-        }
-
-        if (output and is_root) {
-            io.debugprint("{s}: {}\n", .{ m.to_string().slice(), count });
-        }
-    }
-    return nodes;
-}
-
 /// Doing 4 positions, measuring speed.
 pub fn bench() !void {
     const Test = struct {

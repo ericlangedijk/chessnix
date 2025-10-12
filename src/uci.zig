@@ -4,7 +4,6 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
 const funcs = @import("funcs.zig");
-const bounded_array = @import("bounded_array.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
@@ -261,12 +260,13 @@ const TTY = struct {
     }
 
     fn do_static_eval() void {
-        const e = eval.evaluate_with_tracking_absolute(&engine.pos);
-        io.debugprint("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
+        const e = eval.evaluate_with_tracking_absolute(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
+        io.print("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
 
         //const v = eval.tuned_eval(&engine.pos);
         //io.debugprint("e {} t {}\n", .{e, v});
-        eval.bench(&engine.pos);
+        //eval.bench(&engine.pos, &engine.evaltranspositiontable);
+        //io.debugprint("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
     }
 
     fn print_state() void {
@@ -281,9 +281,9 @@ const TTY = struct {
 
         //io.debugprint("engine thinking {}\n", .{engine.is_busy()});
         //io.debugprint("flags {}\n", .{ engine.pos.gen_flags });
-        io.debugprint("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
-        io.debugprint("3 rep {}\n", .{ engine.pos.is_threefold_repetition() });
-        io.debugprint("1 rep {}\n", .{ engine.pos.is_upcoming_repetition() });
+        io.print("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
+        //io.print("3 rep {}\n", .{ engine.pos.is_threefold_repetition() });
+        //io.print("1 rep {}\n", .{ engine.pos.is_upcoming_repetition() });
         //io.debugprint("engine controller thread active {}\n", .{engine.controller_thread != null});
         //io.debugprint("engine search thread active {}\n", .{engine.search_thread != null});
 
@@ -294,6 +294,8 @@ const TTY = struct {
         //io.debugprint("tt age {}\n", .{t.age});
 
 //        const s = &engine.searcher;
+
+        io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
 
         //io.debugprint("{}\n", .{});
         // io.debugprint("tt probes {}\n", .{ s.transpositiontable.probes });
@@ -333,13 +335,3 @@ pub const Go = struct {
 const Error = error {
     ParsingError,
 };
-
-
-// ////////////////////////////////
-// // TEMP STUFF.
-// ////////////////////////////////
-
-// /// TODO: Not sure yet how and what handling errors in ucimode / terminal mode.
-// pub fn print_error(err: anyerror) void {
-//     lib.io.print("info string error: {t}\n", .{ err }) catch lib.wtf();
-// }

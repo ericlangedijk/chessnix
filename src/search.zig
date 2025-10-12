@@ -10,6 +10,7 @@ const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const uci = @import("uci.zig");
+const hce = @import("hce.zig");
 const eval = @import("eval.zig");
 const tt = @import("tt.zig");
 
@@ -27,6 +28,7 @@ const Move = types.Move;
 const Position = position.Position;
 const Entry = tt.Entry;
 const Bound = tt.Bound;
+const Evaluator = hce.Evaluator;
 
 const P: PieceType = types.P;
 const N: PieceType = types.N;
@@ -75,6 +77,10 @@ pub const use: Use = .{
 pub const Engine = struct {
     /// Shared tt for all threads.
     transpositiontable: tt.TranspositionTable,
+    /// Shared tt for all threads.
+    evaltranspositiontable: tt.EvalTranspositionTable,
+    /// Shared tt for all threads.
+    pawntranspositiontable: tt.PawnTranspositionTable,
     /// Threading.
     busy: std.atomic.Value(bool),
     /// The number of threads we use.
@@ -104,6 +110,8 @@ pub const Engine = struct {
     pub fn create() !*Engine {
         var engine: *Engine = try ctx.galloc.create(Engine);
         engine.transpositiontable = try .init(Options.default_hash_size);
+        engine.evaltranspositiontable = try .init(16);
+        engine.pawntranspositiontable = try .init(2);
         engine.busy = std.atomic.Value(bool).init(false);
         engine.num_threads = 1;
         engine.controller_thread = null;
@@ -123,6 +131,8 @@ pub const Engine = struct {
 
     pub fn destroy(self: *Engine) void {
         self.transpositiontable.deinit();
+        self.evaltranspositiontable.deinit();
+        self.pawntranspositiontable.deinit();
         ctx.galloc.destroy(self);
     }
 
@@ -130,6 +140,7 @@ pub const Engine = struct {
         if (self.is_busy()) return;
         self.set_startpos();
         self.transpositiontable.clear();
+        self.evaltranspositiontable.clear();
         self.cycle = 0;
     }
 
@@ -252,6 +263,10 @@ pub const Searcher = struct {
     /// Copied from mgr, for direct access.
     transpositiontable: *tt.TranspositionTable,
     /// Copied from mgr, for direct access.
+    evaltranspositiontable: *tt.EvalTranspositionTable,
+    /// Copied from mgr, for direct access.
+    pawntranspositiontable: *tt.PawnTranspositionTable,
+    /// Copied from mgr, for direct access.
     termination: Termination,
     /// Position stack during search.
     position_stack: [max_search_depth + 2]Position,
@@ -276,6 +291,8 @@ pub const Searcher = struct {
         return .{
             .engine = undefined,
             .transpositiontable = undefined,
+            .evaltranspositiontable = undefined,
+            .pawntranspositiontable = undefined,
             .termination = .infinite,
             .position_stack = @splat(.empty),
             .repetition_table = @splat(0),
@@ -294,6 +311,8 @@ pub const Searcher = struct {
         self.engine = engine;
         self.termination = engine.time_params.termination;
         self.transpositiontable = &engine.transpositiontable;
+        self.evaltranspositiontable = &engine.evaltranspositiontable;
+        self.pawntranspositiontable = &engine.pawntranspositiontable;
 
         // Copy stuff.
         const len: u16 = self.engine.pos.ply_from_root + 1;
@@ -351,6 +370,13 @@ pub const Searcher = struct {
     }
 
     fn iterate(self: *Searcher, comptime us: Color) void {
+
+        var ev: Evaluator = .init(self, &self.position_stack[0]);
+        _ = ev.evaluate();
+        self.stopped = true;
+
+        if (true) return;
+
         const rootnode: *Node = &self.nodes[0];
         const iteration_node: *Node = &self.nodes[1];
         const pos: *const Position = &self.position_stack[0];
@@ -362,7 +388,7 @@ pub const Searcher = struct {
 
         var depth: u8 = 1;
         var score: Value = 0;
-        var best_score: Value = -infinity;
+        // var best_score: Value = -infinity;
 
         // Search with increasing depth.
         iterationloop: while(true) {
@@ -372,7 +398,7 @@ pub const Searcher = struct {
 
             var alpha: Value = -infinity;
             var beta: Value = infinity;
-            var delta: Value = 20;
+            var delta: Value = 25;
 
             // The first few iterations no aspiration search.
             if (comptime use.aspiration_window) {
@@ -415,13 +441,14 @@ pub const Searcher = struct {
                 self.print_pv(self.timer.read());
             }
 
+            // FUNNY
             // if we found the same matescore as the previous iteration then stop.
-            if (score >= best_score) {
-                if (self.termination == .clock and score >= mate_threshold and best_score >= mate_threshold and score == best_score) {
-                    break: iterationloop;
-                }
-                best_score = score;
-            }
+            // if (score >= best_score) {
+            //     if (self.termination == .clock and score >= mate_threshold and best_score >= mate_threshold and score == best_score) {
+            //         break: iterationloop;
+            //     }
+            //     best_score = score;
+            // }
 
             depth += 1;
             if (depth >= max_search_depth or self.check_stop()) break :iterationloop;
@@ -450,7 +477,7 @@ pub const Searcher = struct {
         if (!is_root) {
             // Too deep.
             if (ply >= max_search_depth) {
-                return eval.evaluate(pos);
+                return eval.evaluate(pos, self.evaltranspositiontable, self.pawntranspositiontable);
             }
 
             // TODO: optimize and check if correct.
@@ -486,7 +513,7 @@ pub const Searcher = struct {
         }
 
         // Evaluation.
-        const ev: Value = eval.evaluate(pos);
+        const ev: Value = eval.evaluate(pos, self.evaltranspositiontable, self.pawntranspositiontable);
         const improvement: Value = if (ply < 2) 0 else if (ev > self.nodes[ply - 1].score and ev > self.nodes[ply - 2].score) 1 else 0;
 
         if (!is_root) {
@@ -674,7 +701,7 @@ pub const Searcher = struct {
         node.clear();
 
         if (ply >= max_search_depth) {
-            return eval.evaluate(pos);
+            return eval.evaluate(pos, self.evaltranspositiontable, self.pawntranspositiontable);
         }
 
         const them = comptime us.opp();
@@ -689,7 +716,7 @@ pub const Searcher = struct {
 
         if (!is_check) {
             // Static eval.
-            score = eval.evaluate(pos);
+            score = eval.evaluate(pos, self.evaltranspositiontable, self.pawntranspositiontable);
 
             // Fail high.
             if (score >= beta) return score;
@@ -720,8 +747,8 @@ pub const Searcher = struct {
         for (0.. movepicker.count) |move_idx| {
             const e: ExtMove = movepicker.extract_next(move_idx);
 
-            if (!is_check and e.move.is_capture()) { // and isbadcapture.
-                if (eval.see_score(pos, e.move) < 0)
+            if (!is_check and e.move.is_capture()) {
+                if (eval.see_score(pos, e.move) < (B.value() - N.value()))
                     continue; // pre-move
             }
 
@@ -873,6 +900,10 @@ pub const Searcher = struct {
         return self.stopped;
     }
 
+    fn mate_in(score: Value) Value {
+        return if (score > 0) @divFloor(mate - score + 1, 2) else @divFloor(-mate - score, 2);
+    }
+
     fn print_pv(self: *Searcher, elapsed_nanos: u64) void {
         const ms = elapsed_nanos / 1_000_000;
         const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
@@ -881,13 +912,20 @@ pub const Searcher = struct {
 
         //const score: Value = rootnode.score;
 
-        // var mate_output: ?Value = null;
-        // if (score <= -mate_threshold) {
-        //     mate_output = -(@divTrunc(score + mate, 2) - 1);
+        // if (@abs(rootnode.score) >= mate_threshold) {
+        //     const m: Value = mate_in(rootnode.score);
+        //     const d: Value = if (rootnode.score > 0) mate - rootnode.score else rootnode.score + mate;
+        //     io.print (
+        //         "info depth {} seldepth {} mate {} dtm {} nodes {} nps {} time {} pv {f}\n",
+        //         .{ self.stats.depth, self.stats.seldepth, m, d, self.stats.nodes, nps, ms,  rootnode }
+        //     );
         // }
-        // else if (score >= mate_threshold) {
-        //     mate_output = @divTrunc(mate - score, 2) + 1;
-        // }
+        // else {
+            io.print (
+                "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {f}\n",
+                .{ self.stats.depth, self.stats.seldepth, rootnode.score, self.stats.nodes, nps, ms,  rootnode }
+            );
+        //}
 
         // // I hate the mate in X uci output so I add ctp (raw score)
         // if (mate_output != null) {
@@ -929,18 +967,20 @@ pub const Searcher = struct {
         //     }
         // );
 
-        io.print (
-            "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {f}\n",
-            .{
-                self.stats.depth,
-                self.stats.seldepth,
-                rootnode.score,
-                self.stats.nodes,
-                nps,
-                ms,
-                rootnode
-            }
-        );
+
+
+        // io.print (
+        //     "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {f}\n",
+        //     .{
+        //         self.stats.depth,
+        //         self.stats.seldepth,
+        //         rootnode.score,
+        //         self.stats.nodes,
+        //         nps,
+        //         ms,
+        //         rootnode
+        //     }
+        // );
     }
 };
 

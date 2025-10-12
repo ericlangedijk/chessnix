@@ -43,6 +43,8 @@ pub const bb_center = bb_full & ~bb_border & ~bb_border_inner;
 pub const bb_mini_center = bb_e4 | bb_d4 | bb_e5 | bb_d5;
 pub const bb_black_squares: u64 = 0b01010101_10101010_10101010_01010101_10101010_01010101_10101010_01010101;
 pub const bb_white_squares: u64 = ~bb_black_squares;
+pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
+pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
 
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
@@ -273,6 +275,7 @@ fn compute_king_areas() [64]u64 {
         if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
         if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
     }
+    // TODO: maybe this is too much. probably can be deleted.
     for (Square.all) |sq| {
         if (sq.coord.rank == 0) ka[sq.u] |= ka[sq.add(8).u];
         if (sq.coord.rank == 7) ka[sq.u] |= ka[sq.sub(8).u];
@@ -287,13 +290,13 @@ fn compute_king_areas() [64]u64 {
 }
 
 fn compute_adjacent_file_masks() [64]u64 {
-    var ip: [64]u64 = @splat(0);
+    var afm: [64]u64 = @splat(0);
     for (Square.all) |sq| {
         const file: u3 = sq.coord.file;
-        if (file > file_a) ip[sq.u] |= file_bitboards[file - 1];
-        if (file < file_h) ip[sq.u] |= file_bitboards[file + 1];
+        if (file > file_a) afm[sq.u] |= file_bitboards[file - 1];
+        if (file < file_h) afm[sq.u] |= file_bitboards[file + 1];
     }
-    return ip;
+    return afm;
 }
 
 /// Information about a pair of squares.
@@ -333,3 +336,28 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
         .black => passed_pawn_masks_black[sq.u],
     };
 }
+
+////////////////////////////////////////////////////////////////
+// EXPERIMENTAL
+////////////////////////////////////////////////////////////////
+pub const BitBoardRanks = packed struct(u64) {
+    a: u8,
+    b: u8,
+    c: u8,
+    d: u8,
+    e: u8,
+    f: u8,
+    g: u8,
+    h: u8,
+};
+
+// TODO: squares.
+
+pub const BitBoard = packed union {
+    u: u64,
+    ranks: BitBoardRanks,
+
+    pub fn init(u: u64) BitBoard {
+        return .{ .u = u };
+    }
+};
