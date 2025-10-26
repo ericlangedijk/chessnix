@@ -12,6 +12,7 @@ const position = @import("position.zig");
 
 const Value = types.Value;
 const Float = types.Float;
+const Direction = types.Direction;
 const Color = types.Color;
 const Piece = types.Piece;
 const Square = types.Square;
@@ -23,6 +24,10 @@ const wtf = lib.wtf;
 
 /// Enum for shifting pawn moves.
 pub const PawnShift = enum(u2) { up, northwest, northeast };
+
+// fn abs_diff(a: usize, b: usize) usize {
+//     return @max(a, b) - @min(a, b);
+// }
 
 pub fn square_distance(a: Square, b: Square) u3 {
     const ar: i32 = a.rank();
@@ -79,6 +84,8 @@ pub fn forward_file(comptime us: Color, sq: Square) u64 {
     return if (us.e == .white) bitboards.bb_north[sq.u] else bitboards.bb_south[sq.u];
 }
 
+
+// TODO: make generic bitboard shift for all directions.
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64 {
     switch(us.e) {
         .white => {
@@ -116,6 +123,20 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
             };
         }
     }
+}
+
+/// TODO: TEST CORRECTNESS
+pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
+    return switch (dir) {
+        .north => (u & ~bitboards.bb_rank_8) << 8,
+        .east => (u & ~bitboards.bb_file_h) << 1,
+        .south => (u & ~bitboards.bb_rank_1) >> 8,
+        .west => (u & ~bitboards.bb_file_a) >> 1,
+        .north_west => (u & ~bitboards.bb_file_a) << 7,
+        .north_east => (u & ~bitboards.bb_file_h) << 9,
+        .south_east => (u & ~bitboards.bb_file_a) >> 7,
+        .south_west =>(u & ~bitboards.bb_file_a) >> 9,
+    };
 }
 
 pub fn mirror_vertically(u: u64) u64 {
@@ -250,15 +271,6 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
     return s;
 }
 
-//
-// pub fn percentage(done: u64, total: u64) u64 {
-//     if (total == 0) return 0;
-//     const a: f64 = @floatFromInt(done);
-//     const b: f64 = @floatFromInt(total);
-//     const s: f64 = (a * 100) / b;
-//     return @intFromFloat(s);
-// }
-
 pub fn float(i: Value) f32 {
     return @floatFromInt(i);
 }
@@ -290,6 +302,7 @@ pub fn permille(max: usize, count: usize) usize {
     return @intFromFloat((c * 1000) / m);
 }
 
+/// Not used
 pub fn compress_board(pos: *const Position) [32]u8 {
     var result: [32]u8 = @splat(0);
     for (pos.board, 0..) |piece, index| {
@@ -304,9 +317,9 @@ pub fn compress_board(pos: *const Position) [32]u8 {
     return result;
 }
 
+/// Not used
 pub fn decompress_board(src: [32]u8) [64]Piece {
     var result: [64]Piece = @splat(Piece.NO_PIECE);
-
     var sq: u8 = 0;
     for (src) |u| {
         const a: u8 = u & 0b1111;
@@ -318,7 +331,7 @@ pub fn decompress_board(src: [32]u8) [64]Piece {
     return result;
 }
 
-/// DEBUG
+/// Debug only
 pub fn print_bitboard(bb: u64) void {
     var y: u3 = 7;
     while (true) {
@@ -326,38 +339,18 @@ pub fn print_bitboard(bb: u64) void {
         while (true) {
             const square: Square = .from_rank_file(y, x);
             const b: u64 = square.to_bitboard();
-            if (bb & b == 0) std.debug.print(". ", .{}) else std.debug.print("1 ", .{});
+            if (bb & b == 0) lib.io.debugprint(". ", .{}) else lib.io.debugprint("1 ", .{});
             if (x == 7) break;
             x += 1;
         }
-        std.debug.print("\n", .{});
+        lib.io.debugprint("\n", .{});
         if (y == 0) break;
         y -= 1;
     }
-    std.debug.print("\n", .{});
+    lib.io.debugprint("\n", .{});
 }
 
-pub fn print_u16_bitboard(bb: u16) void {
-    var y: u16 = 3;
-    while (true) {
-        var x: u16 = 0;
-        while (true) {
-            const index: u16 = y * 4 + x;
-            //const square: Square = .from_rank_file(y, x);
-            const shift: u4 = @truncate(index);
-            const b: u64 = @as(u16, 1) << shift;//square.to_bitboard();
-            if (bb & b == 0) std.debug.print(". ", .{}) else std.debug.print("1 ", .{});
-            if (x == 3) break;
-            x += 1;
-        }
-        std.debug.print("\n", .{});
-        if (y == 0) break;
-        y -= 1;
-    }
-    std.debug.print("\n", .{});
-}
-
-/// DEBUG
+/// Debug only
 pub fn print_bits(u: u8) void {
     const x: std.bit_set.IntegerBitSet(8) = .{.mask = u};
     for (0..8) |bit| {

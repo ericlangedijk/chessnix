@@ -18,6 +18,8 @@ pub const R = PieceType.ROOK;
 pub const Q = PieceType.QUEEN;
 pub const K = PieceType.KING;
 
+/// Used for evaluation and hashtables and scorepair.
+pub const SmallValue = i16;
 /// Used for evaluation.
 pub const Value = i32;
 /// Used for evaluation.
@@ -234,6 +236,14 @@ pub const Square = packed union {
         return self.coord.rank;
     }
 
+    pub fn color(self: Square) Color {
+        return if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
+    }
+
+    // fn same_color(sq1: u8, sq2: u8) bool {
+    //     return (((sq1 ^ sq2) & 1) == 0);
+    // }
+
     pub fn to_bitboard(self: Square) u64 {
         return bitboards.square_bitboards[self.u]; // It seems this is a bit faster than 1 << square.
     }
@@ -373,14 +383,16 @@ pub const PieceType = packed union {
         return self.u;
     }
 
+    //pub fn bitcast(self: PieceType)
+
     pub fn value(self: PieceType) Value {
         return piece_values[self.u];
     }
 
-    /// Returns the material code.
-    pub fn material(self: PieceType) Value {
-        return piece_material_values[self.u];
-    }
+    // /// Returns the material code.
+    // pub fn material(self: PieceType) Value {
+    //     return piece_material_values[self.u];
+    // }
 
     pub fn to_char(self: PieceType) u8 {
         return switch(self.e) {
@@ -448,9 +460,9 @@ pub const Piece = packed union {
         return piece_values[self.u];
     }
 
-    pub fn material(self: Piece) Value {
-        return piece_material_values[self.u];
-    }
+    // pub fn material(self: Piece) Value {
+    //     return piece_material_values[self.u];
+    // }
 
     pub fn from_usize(u: usize) Piece {
         if (comptime lib.is_paranoid) {
@@ -500,6 +512,10 @@ pub const Piece = packed union {
         return self.piecetype().e == .pawn;
     }
 
+    pub fn is_pawn_of_color(self: Piece, comptime us: Color) bool {
+        return if (us.e == .white) self.e == .w_pawn else self.e == .b_pawn;
+    }
+
     // pub fn is_king(self: Piece) bool {
     //     return self.piecetype().e == .king;
     // }
@@ -522,7 +538,6 @@ pub const Piece = packed union {
     }
 
     pub fn from_char(char: u8) ParsingError!Piece {
-        // TODO: make ascii lookup table?
         return switch(char) {
             'P' => W_PAWN,
             'N' => W_KNIGHT,
@@ -622,29 +637,6 @@ pub const Move = packed struct(u16) {
         return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
-    // /// UCI string
-    // pub fn to_string(self: Move) lib.BoundedArray(u8, 5) {
-    //     var result: lib.BoundedArray(u8, 5) = .{};
-    //     const from: Square = self.from;
-    //     var to: Square = self.to;
-
-    //     if (self.type == .castle) {
-    //         const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
-    //         const castletype: CastleType = self.info.castletype;
-    //         // Change target square. We decode castling as "king takes rook".
-    //         to = position.king_castle_destination_squares[color.u][castletype.u];
-    //     }
-
-    //     result.print_assume_capacity("{t}", .{ from.e});
-    //     result.print_assume_capacity("{t}", .{ to.e});
-
-    //     if (self.type == .promotion) {
-    //         const ch: u8 = self.info.prom.to_uci_char();
-    //         result.print_assume_capacity("{u}", .{ ch });
-    //     }
-    //     return result;
-    // }
-
     // Zig-format for UCI move output (e2e4).
     pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void {
         if (self.is_empty()) {
@@ -671,7 +663,71 @@ pub const Move = packed struct(u16) {
             try writer.print("{u}", .{ ch });
         }
     }
+
+    /// UCI string
+    pub fn to_string(self: Move) lib.BoundedArray(u8, 5) {
+        var result: lib.BoundedArray(u8, 5) = .{};
+        const from: Square = self.from;
+        var to: Square = self.to;
+
+        if (self.is_castle()) {
+            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+            if (self.flags == Move.castle_short)
+                to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u]
+            else
+                to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
+        }
+
+        result.print_assume_capacity("{t}", .{ from.e});
+        result.print_assume_capacity("{t}", .{ to.e});
+
+        if (self.is_promotion()) {
+            const prom = self.promoted_to();
+            const ch: u8 = "?nbrq?"[prom.u];
+            result.print_assume_capacity("{u}", .{ ch });
+        }
+        return result;
+    }
+
 };
+
+pub const ScorePair = struct {
+    mg: SmallValue,
+    eg: SmallValue,
+
+    pub const empty: ScorePair = .{ .mg = 0, .eg = 0 };
+
+    pub fn init(mg: SmallValue, eg: SmallValue) ScorePair {
+        return .{ .mg = mg, .eg = eg };
+    }
+
+    pub fn inc(self: *ScorePair, sp: ScorePair) void {
+        self.mg += sp.mg;
+        self.eg += sp.eg;
+    }
+
+    pub fn dec(self: *ScorePair, sp: ScorePair) void {
+        self.mg -= sp.mg;
+        self.eg -= sp.eg;
+    }
+
+    pub fn add(self: ScorePair, other: ScorePair) ScorePair {
+        return .{ .mg = self.mg + other.mg, .eg = self.eg + other.eg };
+    }
+
+    pub fn sub(self: ScorePair, other: ScorePair) ScorePair {
+        return .{ .mg = self.mg - other.mg, .eg = self.eg - other.eg };
+    }
+
+    pub fn mul(self: ScorePair, m: u8) ScorePair {
+        return .{ .mg = self.mg * m, .eg = self.eg * m };
+    }
+};
+
+/// Easy initialization function for eval tables.
+pub fn pair(mg: SmallValue, eg: SmallValue) ScorePair {
+    return .{ .mg = mg, .eg = eg };
+}
 
 pub const GamePhase = enum { Opening, Midgame, Endgame };
 
@@ -707,30 +763,50 @@ pub const value_queen: Value = 950;
 pub const value_king: Value = 0;
 
 // Values used in Position stolen from Stockfish.
-pub const material_pawn: Value = 126;
-pub const material_knight: Value = 781;
-pub const material_bishop: Value = 825;
-pub const material_rook: Value = 1276;
-pub const material_queen: Value = 2538;
-pub const material_king: Value = 0;
+// pub const material_pawn: Value = 126;
+// pub const material_knight: Value = 781;
+// pub const material_bishop: Value = 825;
+// pub const material_rook: Value = 1276;
+// pub const material_queen: Value = 2538;
+// pub const material_king: Value = 0;
 
-/// The total material value in the starting position including pawns
-pub const max_material_value: Value = 18620;
+// /// The total material value in the starting position including pawns
+// pub const max_material_value: Value = 18620;
 
-/// The threshold value for piece square tables.
-pub const max_material_without_pawns: Value = 16604;
+// /// The threshold value for piece square tables.
+// pub const max_material_without_pawns: Value = 16604;
 
-pub const opening_threshold: Value = 16604;
-pub const midgame_threshold: Value = 15258;
-pub const endgame_threshold: Value = 3915;
+// pub const opening_threshold: Value = 16604;
+// pub const midgame_threshold: Value = 15258;
+// pub const endgame_threshold: Value = 3915;
 
 const piece_values: [12]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
 };
 
-const piece_material_values: [12]Value = .{
-    material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
-    material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
-};
+// const piece_material_values: [12]Value = .{
+//     material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
+//     material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
+// };
 
+//const int gamephaseInc[12] = {0,0,1,1,1,1,2,2,4,4,0,0}; // p p n n b b r r q q k k
+
+pub const max_phase: u8 = 24;
+
+/// By [piece]
+pub const phase_table: [12]u8 = .{
+    0, // w_pawn
+    1, // w_knight
+    1, // w_bishop
+    2, // w_rook
+    4, // w_queen
+    0, // w_king
+
+    0, // b_pawn
+    1, // b_knight
+    1, // b_bishop
+    2, // b_rook
+    4, // b_queen
+    0, // b_king
+};

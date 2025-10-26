@@ -8,12 +8,11 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
 const tt = @import("tt.zig");
-const eval = @import("eval.zig");
 const perft = @import("perft.zig");
 const tests = @import("tests.zig");
-
 const Position = position.Position;
 const Engine = search.Engine;
+const hce = @import("hce.zig");
 
 const Tokenizer = std.mem.TokenIterator(u8, .scalar);
 
@@ -260,8 +259,17 @@ const TTY = struct {
     }
 
     fn do_static_eval() void {
-        const e = eval.evaluate_with_tracking_absolute(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
-        io.print("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
+        //const e = eval.evaluate_with_tracking_absolute(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
+        //io.print("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
+
+        //const bb = engine.pos.all_except_pawns_and_kings();
+        //funcs.print_bitboard(bb);
+
+        var ev: hce.Evaluator(true) = .init();
+        const e = ev.evaluate(&engine.pos, null, null);
+        // //_ = ev.evaluate(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
+        // //const e = ev.evaluate(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
+        io.print("do_static_evalcall result eval = {}\n", .{ e });
 
         //const v = eval.tuned_eval(&engine.pos);
         //io.debugprint("e {} t {}\n", .{e, v});
@@ -281,7 +289,7 @@ const TTY = struct {
 
         //io.debugprint("engine thinking {}\n", .{engine.is_busy()});
         //io.debugprint("flags {}\n", .{ engine.pos.gen_flags });
-        io.print("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
+        //io.print("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
         //io.print("3 rep {}\n", .{ engine.pos.is_threefold_repetition() });
         //io.print("1 rep {}\n", .{ engine.pos.is_upcoming_repetition() });
         //io.debugprint("engine controller thread active {}\n", .{engine.controller_thread != null});
@@ -295,7 +303,8 @@ const TTY = struct {
 
 //        const s = &engine.searcher;
 
-        io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
+        //io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
+        io.print("is draw {}\n", .{ engine.pos.is_draw_by_insufficient_material() });
 
         //io.debugprint("{}\n", .{});
         // io.debugprint("tt probes {}\n", .{ s.transpositiontable.probes });

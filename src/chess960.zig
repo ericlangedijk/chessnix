@@ -20,7 +20,8 @@ const PieceType = types.PieceType;
 // Position 518 is the classical position.
 
 /// Returns a chess 960 backrow.
-pub fn decode(number: usize) [8]PieceType {
+//pub fn decode(number: usize) [8]PieceType {
+pub fn decode(number: usize) [8]u4 {
 
     // The permutations for the knight: the indexes of the remaining 5 empty squares after bishops and queen.
     const knight_table: [10][2]usize = .{
@@ -37,7 +38,7 @@ pub fn decode(number: usize) [8]PieceType {
     };
 
     const nr: usize = number % 960;
-    var backrow: [8]PieceType = @splat(PieceType.NO_PIECETYPE);
+    var backrow: [8]?PieceType = @splat(null);//PieceType.NO_PIECETYPE);
     var divider: usize = nr;
 
     // bishop 1
@@ -65,7 +66,12 @@ pub fn decode(number: usize) [8]PieceType {
     backrow[get_empty_index(backrow, 0)] = PieceType.KING;
     backrow[get_empty_index(backrow, 0)] = PieceType.ROOK;
 
-    return backrow;
+    // convert
+    var result: [8]u4 = undefined;
+    inline for (0..8) |i| {
+        result[i] = backrow[i].?.u;
+    }
+    return result;
 }
 
 fn div_rem(n: *usize, div: usize) usize {
@@ -74,13 +80,24 @@ fn div_rem(n: *usize, div: usize) usize {
     return remainder;
 }
 
-fn get_empty_index(backrow: [8]PieceType, empty_index: usize) usize {
+fn get_empty_index(backrow: [8]?PieceType, empty_index: usize) usize {
     var count: usize = 0;
     inline for (0..8) |i| {
-        if (backrow[i].u == 0) {
+        if (backrow[i] == null) {
             if (count == empty_index) return i;
             count += 1;
         }
     }
     unreachable;
 }
+
+// pub const all_backrows: [960][8]u4 = compute_all_backrows();
+
+// fn compute_all_backrows() [960][8]u4 {
+//     @setEvalBranchQuota(64000);
+//     var rows: [960][8]u4 = undefined;
+//     for (0..960) |i| {
+//         rows[i] = decode(i);
+//     }
+//     return rows;
+// }

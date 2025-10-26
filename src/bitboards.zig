@@ -46,6 +46,7 @@ pub const bb_white_squares: u64 = ~bb_black_squares;
 pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
 pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
 
+pub const bb_colored_squares: [2]u64 = .{ bb_white_squares, bb_black_squares };
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
 
@@ -174,6 +175,8 @@ pub const passed_pawn_masks_black: [64]u64 = compute_passed_pawn_masks_black();
 pub const adjacent_file_masks: [64]u64 = compute_adjacent_file_masks();
 pub const king_areas: [64]u64 = compute_king_areas();
 
+// TODO put the eval bitboard stuff here.
+
 /// Using the `Orientation` enum order.
 pub const direction_bitboards: [8][*]const u64 = .{
     &bb_north, &bb_east, &bb_south, &bb_west, &bb_northwest, &bb_northeast, &bb_southeast, &bb_southwest,
@@ -210,15 +213,18 @@ fn compute_squarepairs() [64 * 64]SquarePair {
         }
     }
 
-    // Set in-between bitboards
+    // Set ray bitboards
     for (Square.all) |from| {
         for (Square.all) |to| {
             const idx: usize = from.idx() * 64 + to.idx();
+            // Distance
+            sp[idx].dist = funcs.square_distance(from, to);
+            // Ray.
             if (sp[idx].direction) |dir| {
                 const ray = from.ray(dir);
                 for (ray.slice()) |sq| {
                     sp[idx].ray |= sq.to_bitboard();
-                    if (sq.u == to.u) break; // including the from square
+                    if (sq.u == to.u) break;
                 }
             }
         }
@@ -232,9 +238,9 @@ fn compute_passed_pawn_masks_white() [64]u64 {
         for (files) |file| {
             var bb: u64 = 0;
             const sq: Square = .from_rank_file(rank, file);
-            bb = bb_north[sq.u];
-            if (file > file_a) bb |= bb_north[sq.sub(1).u];
-            if (file < file_h) bb |= bb_north[sq.add(1).u];
+            bb = bb_north[sq.u]; // square file
+            if (file > file_a) bb |= bb_north[sq.sub(1).u]; // file forwards left of square
+            if (file < file_h) bb |= bb_north[sq.add(1).u]; // file forwards right of square
             pp[sq.u] = bb;
         }
     }
@@ -261,11 +267,12 @@ fn compute_ep_masks() [64]u64 {
     return ep;
 }
 
+/// TODO: remove?
 fn compute_king_areas() [64]u64 {
     @setEvalBranchQuota(8000);
     var ka: [64]u64 = @splat(0);
     for (Square.all) |sq| {
-        ka[sq.u] |= sq.to_bitboard();
+        // ka[sq.u] |= sq.to_bitboard();
         if (sq.next(.north))|n| ka[sq.u] |= n.to_bitboard();
         if (sq.next(.east)) |n| ka[sq.u] |= n.to_bitboard();
         if (sq.next(.south))|n| ka[sq.u] |= n.to_bitboard();
@@ -275,17 +282,19 @@ fn compute_king_areas() [64]u64 {
         if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
         if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
     }
+
     // TODO: maybe this is too much. probably can be deleted.
-    for (Square.all) |sq| {
-        if (sq.coord.rank == 0) ka[sq.u] |= ka[sq.add(8).u];
-        if (sq.coord.rank == 7) ka[sq.u] |= ka[sq.sub(8).u];
-        if (sq.coord.file == 0) ka[sq.u] |= ka[sq.add(1).u];
-        if (sq.coord.file == 7) ka[sq.u] |= ka[sq.sub(1).u];
-        if (sq.e == Square.A1.e) ka[sq.u] |= Square.C3.to_bitboard();
-        if (sq.e == Square.A8.e) ka[sq.u] |= Square.C6.to_bitboard();
-        if (sq.e == Square.H1.e) ka[sq.u] |= Square.F3.to_bitboard();
-        if (sq.e == Square.H8.e) ka[sq.u] |= Square.F6.to_bitboard();
-    }
+    //for (Square.all) |sq| {
+        //ka[a]
+        // if (sq.coord.rank == 0) ka[sq.u] |= ka[sq.add(8).u];
+        // if (sq.coord.rank == 7) ka[sq.u] |= ka[sq.sub(8).u];
+        // if (sq.coord.file == 0) ka[sq.u] |= ka[sq.add(1).u];
+        // if (sq.coord.file == 7) ka[sq.u] |= ka[sq.sub(1).u];
+        // if (sq.e == Square.A1.e) ka[sq.u] |= Square.C3.to_bitboard();
+        // if (sq.e == Square.A8.e) ka[sq.u] |= Square.C6.to_bitboard();
+        // if (sq.e == Square.H1.e) ka[sq.u] |= Square.F3.to_bitboard();
+        // if (sq.e == Square.H8.e) ka[sq.u] |= Square.F6.to_bitboard();
+    //}
     return ka;
 }
 
@@ -302,15 +311,16 @@ fn compute_adjacent_file_masks() [64]u64 {
 /// Information about a pair of squares.
 /// * Mainly used for determining pinners and pinned pieces.
 pub const SquarePair = struct {
-    /// The bitboard of the squares in between two squares **including** the from-square and **excluding** the to-square.
+    /// The bitboard of the squares in between two squares **excluded** the from-square and **included** the to-square.
     ray: u64 = 0,
     /// The from-to direction.
     direction: ?Direction = null,
     /// The from-to or to-from orientation.
     orientation: ?Orientation = null,
-    // Diagonal or orthogonal (or none).
+    /// Diagonal or orthogonal (or none).
     axis: Axis = .none,
-
+    /// Distance
+    dist: u3 = 0,
     const empty: SquarePair = .{};
 };
 
@@ -351,13 +361,39 @@ pub const BitBoardRanks = packed struct(u64) {
     h: u8,
 };
 
+pub const BitBoardBits = packed struct (u64) {
+    a1: u1,  b1: u1,  c1: u1,  d1: u1,  e1: u1,  f1: u1,  g1: u1,  h1: u1,
+    a2: u1,  b2: u1,  c2: u1,  d2: u1,  e2: u1,  f2: u1,  g2: u1,  h2: u1,
+    a3: u1,  b3: u1,  c3: u1,  d3: u1,  e3: u1,  f3: u1,  g3: u1,  h3: u1,
+    a4: u1,  b4: u1,  c4: u1,  d4: u1,  e4: u1,  f4: u1,  g4: u1,  h4: u1,
+    a5: u1,  b5: u1,  c5: u1,  d5: u1,  e5: u1,  f5: u1,  g5: u1,  h5: u1,
+    a6: u1,  b6: u1,  c6: u1,  d6: u1,  e6: u1,  f6: u1,  g6: u1,  h6: u1,
+    a7: u1,  b7: u1,  c7: u1,  d7: u1,  e7: u1,  f7: u1,  g7: u1,  h7: u1,
+    a8: u1,  b8: u1,  c8: u1,  d8: u1,  e8: u1,  f8: u1,  g8: u1,  h8: u1,
+};
+
 // TODO: squares.
 
-pub const BitBoard = packed union {
+pub const BitBoard = packed union { // u64
     u: u64,
+    bits: BitBoardBits,
     ranks: BitBoardRanks,
 
     pub fn init(u: u64) BitBoard {
         return .{ .u = u };
     }
+
+    // pub fn pop(self: *BitBoard) Square {
+    //     const
+    // }
+
+    pub fn iter(self: *BitBoard) ?Square {
+        if (self.u == 0) return null;
+        defer self.u &= (self.u - 1);
+        return .{ .u = @truncate(@ctz(self.u)) };
+    }
 };
+
+pub fn bitboard(u: u64) BitBoard {
+    return .{ .u = u };
+}

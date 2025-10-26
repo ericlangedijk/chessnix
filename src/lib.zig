@@ -15,12 +15,15 @@ pub fn initialize() !void {
 
     // Then initialize chess.
     @import("zobrist.zig").initialize();
+    // Init chess960 hash
+    @import("position.zig").Layout.initialize();
 
     lib_is_initialized = true;
 }
 
 pub fn finalize() void {
     lib_is_initialized = false;
+    @import("position.zig").Layout.finalize();
     memory_context.deinit();
 }
 
@@ -28,7 +31,7 @@ pub fn finalize() void {
 pub const BoundedArray = @import("utils.zig").BoundedArray;
 
 // Globals.
-pub const version = "0.20";
+pub const version = "1.0";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_paranoid: bool = if (is_debug) true else false; // Set paranoid to false to speedup debugging.
@@ -58,8 +61,8 @@ pub const MemoryContext = struct {
 };
 
 // TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
-var in_buffer: [2048]u8 = undefined;
-var out_buffer: [2048]u8 = undefined;
+var in_buffer: [4096]u8 = undefined;
+var out_buffer: [4096]u8 = undefined;
 var stdin: std.fs.File.Reader = undefined;
 var stdout: std.fs.File.Writer = undefined;
 

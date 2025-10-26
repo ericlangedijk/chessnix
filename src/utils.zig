@@ -73,10 +73,14 @@ pub const TextFileReader = struct {
     }
 
     pub fn readline(self: *TextFileReader) !?[]const u8 {
-        const line = self.reader.interface.takeDelimiterExclusive('\n') catch |err| {
+        const line = self.reader.interface.takeDelimiterInclusive('\n') catch |err| {
             return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
         };
         return std.mem.trimEnd(u8, line, "\r\n");
+        // const line = self.reader.interface.takeDelimiterExclusive('\n') catch |err| {
+        //     return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
+        // };
+        // return std.mem.trimEnd(u8, line, "\r\n");
     }
 };
 

@@ -23,50 +23,54 @@ const io = lib.io;
 pub fn run_silent_debugmode_tests() !void
 {
     lib.not_in_release();
+    //var perft_tests: usize = 0;
+
 
     var timer = utils.Timer.start();
 
-    try run_tests(3);
-    try test_flip();
+    const perfts: usize = try run_perfts(3);
+    const flips: usize = try test_flip();
+    const evals: usize = try test_eval();
 
     const time = timer.read();
-    lib.io.debugprint("silent debug tests ok ({D})\n", .{ time });
+    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, flips = {}, evals = {} (time {D})\n", .{ perfts, flips, evals, time });
 }
 
-pub const Error = error
-{
+pub const Error = error {
     PerftError,
     FlipError,
+    EvalError,
 };
 
-fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error
-{
+fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error {
     lib.io.debugprint("catched error: {s}\n", .{ @errorName(err) });
     lib.io.debugprint(str, args);
     return err;
 }
 
 /// Run all testpositions.
-pub fn run_tests(max_depth: usize) !void
-{
+fn run_perfts(max_depth: usize) !usize {
     lib.not_in_release();
 
     const max: u64 = std.math.clamp(max_depth, 1, 6);
     var total: u64 = 0;
-    var totaltime: u64 = 0;
     var pos: Position = .empty;
-    var timer = utils.Timer.start();
+    var done: usize = 0;
 
     for (testpositions, 0..) |str, index| {
         try pos.set(str);
+
+        // TEMP EVAL OUTPUT for later check
+        // const hce = @import("hce.zig");
+        // var ev: hce.Evaluator(false) = .init();
+        // const e = ev.evaluate(&pos, null, null);
+        // io.debugprint("{f} ,{}\n", .{ pos, e });
 
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d| {
             if (d == 0) continue;
-            timer.reset();
             const perft_nodes: u64 = perft.run_quick(&pos, @truncate(d));
-            totaltime += timer.read();
             total += perft_nodes;
             const ok: bool = expected_nodes == perft_nodes;
             if (!ok) {
@@ -80,15 +84,18 @@ pub fn run_tests(max_depth: usize) !void
                 );
             }
         }
+        done += 1;
     }
+    return done;
 }
 
 /// Test flip position.
-pub fn test_flip() !void {
+fn test_flip() !usize {
     lib.not_in_release();
 
     var pos: Position = .empty;
     var mirrored: Position = .empty;
+    var done: usize = 0;
 
     for (testpositions, 0..) |str, index| {
         try pos.set(str);
@@ -104,7 +111,34 @@ pub fn test_flip() !void {
                 , .{ index, str }
             );
         }
+        done += 1;
     }
+    return done;
+}
+
+/// When optimizing hce evaluation, make sure the evals stay the same as we stored them earlier.
+pub fn test_eval() !usize {
+    lib.not_in_release();
+
+    const hce = @import("hce.zig");
+    var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\fixed_evals_list.txt", ctx.galloc, 256);
+    defer reader.deinit();
+    var pos: Position = .empty;
+    var done: usize = 0;
+    while (try reader.readline()) |line| {
+        try pos.set(line);
+        var tokenizer = std.mem.tokenizeScalar(u8, line, ',');
+        _ = tokenizer.next(); // fen
+        const eval_str = tokenizer.next() orelse @panic("wrong input for eval fen");
+        const eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
+        var ev: hce.Evaluator(false) = .init();
+        const e: types.Value = ev.evaluate(&pos, null, null);
+        if (e != eval) {
+            return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, eval, e });
+        }
+        done += 1;
+    }
+    return done;
 }
 
 pub const ParseDepthError = error
@@ -116,8 +150,7 @@ pub const FenDepths = lib.BoundedArray(u64, 16);
 
 /// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324"
 /// "1B6/1r3Bk1/8/Pp6/4KN1p/8/5b1R/8 b - -;23;728;14764;461899;9440955;292742932"
-fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
-{
+fn decode_depths(fen: []const u8) ParseDepthError!FenDepths {
     // TODO: simplyfy the depths (remove). it is just for debugging.
     var depths: lib.BoundedArray(u64, 16) = .{};
     depths.append_assume_capacity(0);
@@ -141,7 +174,7 @@ fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
             if (slice[0] != 'D') return ParseDepthError.NoDepthChar;
             var sub_iter = std.mem.tokenizeScalar(u8, slice, ' ');
             var i: usize = 0;
-            while (sub_iter.next()) |part|{
+            while (sub_iter.next()) |part| {
 
                 if (i == 0) { // D1 (depth)
                     //const nr = part[1..];
@@ -164,7 +197,6 @@ fn decode_depths(fen: []const u8) ParseDepthError!FenDepths
 fn index_of(slice: []const u8, value:u8) ?usize {
     return std.mem.indexOfScalar(u8, slice, value);
 }
-
 
 // TODO: remove and move to normal function. tests.zig.
 // test "see"

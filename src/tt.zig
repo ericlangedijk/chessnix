@@ -12,8 +12,11 @@ const assert = std.debug.assert;
 const ctx = lib.ctx;
 const wtf = lib.wtf;
 
+const Color = types.Color;
+const SmallValue = types.SmallValue;
 const Value = types.Value;
 const Move = types.Move;
+const ScorePair = types.ScorePair;
 
 pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
 
@@ -143,13 +146,13 @@ pub const TranspositionTable = struct {
 };
 
 /// Must be 16 bytes.
-pub const PawnEntry = packed struct {
+pub const PawnEntry = struct {
     /// The position pawn key.
     key: u64,
-    /// The evaluation according to search.
-    score: i16,
+    /// The evaluation of both white and black according to eval.
+    scores: [2]ScorePair,
 
-    const empty: PawnEntry = .{ .key = 0, .score = 0, };
+    const empty: PawnEntry = .{ .key = 0, .scores = @splat(.empty) };
 };
 
 /// ### Deprecated for now.
@@ -163,12 +166,6 @@ pub const PawnTranspositionTable = struct {
     mb: u64,
     /// Mask for indexing.
     mask: u64,
-    /// Filled at this age.
-    filled: u64,
-    /// Probes.
-    probes: u64,
-    /// Hits
-    hits: u64,
 
     pub fn init(size_in_megabytes: u64) !PawnTranspositionTable {
         comptime if (@sizeOf(PawnEntry) != 16) @compileError("TT PawnEntry must be 16 bytes");
@@ -176,7 +173,7 @@ pub const PawnTranspositionTable = struct {
         const len: u64 = (size_in_megabytes * 1024 * 1024) / 16;
         const data: []PawnEntry = try ctx.galloc.alloc(PawnEntry, len);
         @memset(data, PawnEntry.empty);
-        return .{ .data = data, .len = len, .mb = size_in_megabytes, .mask = len - 1, .filled = 0, .probes = 0, .hits = 0, };
+        return .{ .data = data, .len = len, .mb = size_in_megabytes, .mask = len - 1 };
     }
 
     pub fn deinit(self: *PawnTranspositionTable) void {
@@ -185,47 +182,38 @@ pub const PawnTranspositionTable = struct {
 
     pub fn clear(self: *PawnTranspositionTable) void {
         @memset(self.data, PawnEntry.empty);
-        self.filled = 0;
-        self.probes = 0;
-        self.hits = 0;
     }
+
+    // /// TODO: atomic store when multiple threads.
+    // pub fn store(self: *PawnTranspositionTable, key: u64, score: ScorePair, comptime us: Color) void {
+    //     const entry: *PawnEntry = &self.data[key & self.mask];
+    //     entry.key = key;
+    //     entry.scores[us.u] = score;
+    // }
 
     /// TODO: atomic store when multiple threads.
-    pub fn store(self: *PawnTranspositionTable, key: u64, score: Value) void {
-        if (comptime lib.is_paranoid) {
-            assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-        }
-        const entry: *PawnEntry = self.get_mut(key);
-        const was_empty: bool = entry.key == 0;
-        entry.* = .{
-            .key = key,
-            .score = @truncate(score),
-        };
-        if (was_empty) self.filled += 1;
+    pub fn get(self: *PawnTranspositionTable, key: u64) *PawnEntry {
+        return &self.data[key & self.mask];
+        // const entry: *PawnEntry = &self.data[key & self.mask];
+        // if (entry.key != key) return null;
+        // self.hits += 1;
+        // return entry;
     }
 
-    pub fn probe(self: *PawnTranspositionTable, key: u64) ?Value {
-        self.probes += 1;
-        const entry: PawnEntry = self.get(key);
-        if (entry.key != key) return null;
-        self.hits += 1;
-        return entry.score;
-    }
+    // fn index_of(self: *const PawnTranspositionTable, key: u64) u64 {
+    //     // return key & (self.len - 1);
+    //     return key & self.mask;
+    // }
 
-    fn index_of(self: *const PawnTranspositionTable, key: u64) u64 {
-        // return key & (self.len - 1);
-        return key & self.mask;
-    }
+    // fn get_mut(self: *PawnTranspositionTable, key: u64) *PawnEntry {
+    //     const idx = self.index_of(key);
+    //     return &self.data[idx];
+    // }
 
-    fn get_mut(self: *PawnTranspositionTable, key: u64) *PawnEntry {
-        const idx = self.index_of(key);
-        return &self.data[idx];
-    }
-
-    pub fn get(self: *PawnTranspositionTable, key: u64) PawnEntry {
-        const idx = self.index_of(key);
-        return self.data[idx];
-    }
+    // pub fn get(self: *PawnTranspositionTable, key: u64) PawnEntry {
+    //     const idx = self.index_of(key);
+    //     return self.data[idx];
+    // }
 };
 
 /// Must be 16 bytes.
@@ -322,61 +310,61 @@ const Error = error {
 
 
 
-test "transpositiontable" {
-    const position = @import("position.zig");
-    try lib.initialize();
+// test "transpositiontable" {
+//     const position = @import("position.zig");
+//     try lib.initialize();
 
-    {
-        var pt: PawnTranspositionTable = try .init(2);
-        defer pt.deinit();
-        var pos: position.Position = .empty;
-        var st: position.StateInfo = undefined;
-        try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-        pt.store(st.pawnkey, 42);
-        const e = pt.probe(pos.state.pawnkey);
-        try std.testing.expect(e != null);
-        try std.testing.expect(e.? == 42);
-    }
+//     {
+//         var pt: PawnTranspositionTable = try .init(2);
+//         defer pt.deinit();
+//         var pos: position.Position = .empty;
+//         var st: position.StateInfo = undefined;
+//         try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+//         pt.store(st.pawnkey, 42);
+//         const e = pt.probe(pos.state.pawnkey);
+//         try std.testing.expect(e != null);
+//         try std.testing.expect(e.? == 42);
+//     }
 
-    // {
-    //     const megabyte: usize = 1024 * 1024;
+//     // {
+//     //     const megabyte: usize = 1024 * 1024;
 
-    //     var tt: TranspositionTable = try .init(8);
-    //     defer tt.deinit();
+//     //     var tt: TranspositionTable = try .init(8);
+//     //     defer tt.deinit();
 
-    //     try std.testing.expectEqual((8 * megabyte) / 16, tt.len);
+//     //     try std.testing.expectEqual((8 * megabyte) / 16, tt.len);
 
-    //     var pos: position.Position = .empty;
-    //     var st: position.StateInfo = undefined;
-    //     try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-    //     const move: types.Move = .create(types.Square.E2, types.Square.A6);
-    //     var e: ?Entry = null;
+//     //     var pos: position.Position = .empty;
+//     //     var st: position.StateInfo = undefined;
+//     //     try pos.set(&st, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
+//     //     const move: types.Move = .create(types.Square.E2, types.Square.A6);
+//     //     var e: ?Entry = null;
 
-    //     // Probing must succeed.
-    //     const eq_entry: Entry = .{ .bound = .Exact, .key = pos.state.key, .depth = 1, .move = move, .score = 42, .age = 0 };
-    //     tt.store(.Exact, pos.state.key, 1, move, 42);
-    //     e = tt.probe(pos.state.key);
-    //     try std.testing.expect(e != null);
-    //     try std.testing.expect(eq_entry == e.?);
+//     //     // Probing must succeed.
+//     //     const eq_entry: Entry = .{ .bound = .Exact, .key = pos.state.key, .depth = 1, .move = move, .score = 42, .age = 0 };
+//     //     tt.store(.Exact, pos.state.key, 1, move, 42);
+//     //     e = tt.probe(pos.state.key);
+//     //     try std.testing.expect(e != null);
+//     //     try std.testing.expect(eq_entry == e.?);
 
-    //     // Probing must fail.
-    //     var newstate: position.StateInfo = undefined;
-    //     pos.do_move(types.Color.WHITE, &newstate, move);
-    //     e = tt.probe(pos.state.key);
-    //     try std.testing.expect(e == null);
+//     //     // Probing must fail.
+//     //     var newstate: position.StateInfo = undefined;
+//     //     pos.do_move(types.Color.WHITE, &newstate, move);
+//     //     e = tt.probe(pos.state.key);
+//     //     try std.testing.expect(e == null);
 
-    //     // We should have 1 entry.
-    //     //try std.testing.expectEqual(1, tt.filled);
+//     //     // We should have 1 entry.
+//     //     //try std.testing.expectEqual(1, tt.filled);
 
-    //     // We should have 2 entries.
-    //     tt.store(.Lower, pos.state.key, 1, move, 144);
-    //     //try std.testing.expectEqual(2, tt.filled);
+//     //     // We should have 2 entries.
+//     //     tt.store(.Lower, pos.state.key, 1, move, 144);
+//     //     //try std.testing.expectEqual(2, tt.filled);
 
-    //     // Probing must succeed
-    //     e = tt.probe(pos.state.key);
-    //     try std.testing.expect(e != null);
-    //     try std.testing.expectEqual(e.?.score, 144);
-    // }
-}
+//     //     // Probing must succeed
+//     //     e = tt.probe(pos.state.key);
+//     //     try std.testing.expect(e != null);
+//     //     try std.testing.expectEqual(e.?.score, 144);
+//     // }
+// }
 
 
