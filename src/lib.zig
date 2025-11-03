@@ -61,7 +61,7 @@ pub const MemoryContext = struct {
 };
 
 // TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
-var in_buffer: [4096]u8 = undefined;
+var in_buffer: [8192]u8 = undefined;
 var out_buffer: [4096]u8 = undefined;
 var stdin: std.fs.File.Reader = undefined;
 var stdout: std.fs.File.Writer = undefined;

@@ -301,15 +301,19 @@ const TTY = struct {
         //io.debugprint("tt permille {}\n", .{t.permille()});
         //io.debugprint("tt age {}\n", .{t.age});
 
-//        const s = &engine.searcher;
+       const s = engine;
 
         //io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
-        io.print("is draw {}\n", .{ engine.pos.is_draw_by_insufficient_material() });
+        //io.print("is draw {}\n", .{ engine.pos.is_draw_by_insufficient_material() });
+
+        io.print("sizeof ttentry {}\n", .{ @sizeOf(tt.Entry) });
+        io.print("sizeof evalentry {}\n", .{ @sizeOf(tt.EvalEntry) });
+        io.print("sizeof pawnentry {}\n", .{ @sizeOf(tt.PawnEntry) });
 
         //io.debugprint("{}\n", .{});
-        // io.debugprint("tt probes {}\n", .{ s.transpositiontable.probes });
-        // io.debugprint("tt hits   {}\n", .{ s.transpositiontable.hits });
-        // io.debugprint("nodes     {}\n", .{ s.processed_nodes });
+        io.print("tt len {}\n", .{ s.transpositiontable.data.len });
+        io.print("eval tt len {}\n", .{ s.evaltranspositiontable.data.len });
+        io.print("pawneval len {}\n", .{ s.pawntranspositiontable.data.len });
         // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
        // engine.pos.print_history();
     }

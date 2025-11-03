@@ -4,6 +4,7 @@
 /testdata
 /src/tools
 /src/tests
+/src/egtb.zig
 testdata
 main.exe
 main.pdb

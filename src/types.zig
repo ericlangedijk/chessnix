@@ -261,6 +261,10 @@ pub const Square = packed union {
         return if (us.e == .white) self else .{ .u = self.u ^ 56 };
     }
 
+    pub fn relative_dyn(self: Square, us: Color) Square {
+        return if (us.e == .white) self else .{ .u = self.u ^ 56 };
+    }
+
     pub fn flipped(self: Square) Square {
         return .{ .u = self.u ^ 56 };
     }
@@ -406,22 +410,35 @@ pub const PieceType = packed union {
     }
 };
 
+// an (maybe clunky) alternative is
+// 0000 w pawn
+// 0001 b pawn
+// 0010 w knight
+// 0011 b_knight
+// 0100 w bishop
+// 0101 b bishop
+// 0110 w rook
+// 0111 b_rook
+// 1000 w queen
+// 1001 b queen
+// 1010 w king
+// 1011 b king
+
 pub const Piece = packed union {
     /// To have convenient array indexing the values are just sequential.
     pub const Enum = enum(u4) {
-        w_pawn = 0,
-        w_knight = 1,
-        w_bishop = 2,
-        w_rook = 3,
-        w_queen = 4,
-        w_king = 5,
-
-        b_pawn = 6,
-        b_knight = 7,
-        b_bishop = 8,
-        b_rook = 9,
-        b_queen = 10,
-        b_king = 11,
+        w_pawn   = 0,  // 0000
+        w_knight = 1,  // 0001
+        w_bishop = 2,  // 0010
+        w_rook   = 3,  // 0011
+        w_queen  = 4,  // 0100
+        w_king   = 5,  // 0101
+        b_pawn   = 6,  // 0110
+        b_knight = 7,  // 0111
+        b_bishop = 8,  // 1000
+        b_rook   = 9,  // 1001
+        b_queen  = 10, // 1010
+        b_king   = 11, // 1011
 
         no_piece = 12,
     };
@@ -510,6 +527,16 @@ pub const Piece = packed union {
 
     pub fn is_pawn(self: Piece) bool {
         return self.piecetype().e == .pawn;
+    }
+
+    pub fn is_minor(self: Piece) bool {
+        const pt: PieceType.Enum = self.piecetype().e;
+        return pt == .knight or pt == .bishop;
+    }
+
+    pub fn is_major(self: Piece) bool {
+        const pt: PieceType.Enum = self.piecetype().e;
+        return pt == .rook or pt == .queen;
     }
 
     pub fn is_pawn_of_color(self: Piece, comptime us: Color) bool {
@@ -744,6 +771,8 @@ pub const ParsingError = error {
 /// Constants
 ////////////////////////////////////////////////////////////////
 
+pub const megabyte: usize = 1024 * 1024;
+
 pub const max_game_length: usize = 1024;
 pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128;
@@ -755,11 +784,12 @@ pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
+// Only used for Static Exchange Evaluation.
 pub const value_pawn: Value = 100;
-pub const value_knight: Value = 317; // 305;
-pub const value_bishop: Value = 333;
-pub const value_rook: Value = 510; // 474;//// 463; // was: 563
-pub const value_queen: Value = 950;
+pub const value_knight: Value = 300; // 317; // 305;
+pub const value_bishop: Value = 300; //333;
+pub const value_rook: Value = 500; // 510; // 474;//// 463; // was: 563
+pub const value_queen: Value = 950; //950;
 pub const value_king: Value = 0;
 
 // Values used in Position stolen from Stockfish.

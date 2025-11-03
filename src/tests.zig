@@ -45,6 +45,7 @@ pub const Error = error {
 fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error {
     lib.io.debugprint("catched error: {s}\n", .{ @errorName(err) });
     lib.io.debugprint(str, args);
+    lib.io.debugprint("\n", .{});
     return err;
 }
 
@@ -124,18 +125,32 @@ pub fn test_eval() !usize {
     var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\fixed_evals_list.txt", ctx.galloc, 256);
     defer reader.deinit();
     var pos: Position = .empty;
+    //var flipped_pos: Position = .empty;
     var done: usize = 0;
     while (try reader.readline()) |line| {
         try pos.set(line);
         var tokenizer = std.mem.tokenizeScalar(u8, line, ',');
         _ = tokenizer.next(); // fen
         const eval_str = tokenizer.next() orelse @panic("wrong input for eval fen");
-        const eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
+        const stored_eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
         var ev: hce.Evaluator(false) = .init();
-        const e: types.Value = ev.evaluate(&pos, null, null);
-        if (e != eval) {
-            return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, eval, e });
+        const eval: types.Value = ev.evaluate(&pos, null, null);
+        if (eval != stored_eval) {
+            return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
         }
+        // TODO CHECK OUT.
+        // flipped_pos = pos;
+        // flipped_pos.flip();
+        // const eval_flipped = ev.evaluate(&flipped_pos, null, null);
+        // if (eval_flipped != eval) {
+        //     pos.draw();
+        //     flipped_pos.draw();
+        //     var e = hce.Evaluator(true).init();
+        //     _ = e.evaluate(&pos, null, null);
+        //     _ = e.evaluate(&flipped_pos, null, null);
+        //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });
+        // }
+
         done += 1;
     }
     return done;
