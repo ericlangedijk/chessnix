@@ -33,14 +33,13 @@ pub fn run() void {
 }
 
 fn uci_loop() !void {
-    engine = try Engine.create();
-    defer engine.destroy();
-
     const is_tty = lib.is_tty();
-
     if (is_tty) {
-        io.print("chessnix {s} by eric\n", .{ lib.version });
+        io.print("chessnix {s} by eric langedijk\n", .{ lib.version });
     }
+
+    engine = try Engine.create(false);
+    defer engine.destroy();
 
     command_loop: while (true) {
         const input = try io.readline() orelse continue :command_loop; // continue, break?
@@ -102,6 +101,8 @@ fn uci_loop() !void {
 /// Just a simple wrapper.
 const UCI = struct {
 
+
+    // option name Hash type spin default 16 min 1 max 33554432
     fn respond_uciok() void {
         // try io.print
         // (
@@ -119,12 +120,14 @@ const UCI = struct {
         io.print
         (
             \\id chessnix {s}
-            \\id author eric
+            \\id author eric langedijk
+            \\option name Hash type spin default {} min {} max {}
             \\uciok
             \\
             ,
             .{
                 lib.version,
+                search.Options.default_hash_size, search.Options.min_hash_size, search.Options.max_hash_size,
             }
         );
     }
@@ -150,21 +153,28 @@ const UCI = struct {
 
     /// Parse UCI command after "setoption"
     fn setoption(tokenizer: *Tokenizer) !void {
+        //io.debugprint("setoption, ", .{});
+
         // name Hash value 32
         const name_token: []const u8 = tokenizer.next() orelse return;
         if (!eql(name_token, "name")) return;
 
+        //io.debugprint("{s}, ", .{name_token});
+
         const name: []const u8 = tokenizer.next() orelse return;
+        //io.debugprint("{s}, ", .{name});
 
         const value_token: []const u8 = tokenizer.next() orelse return;
         if (!eql(value_token, "value")) return;
+
+        //io.debugprint("{s}, ", .{value_token});
 
         const value: []const u8 = tokenizer.next() orelse return;
         if (eql(name, "Hash")) {
             const v: u64 = std.fmt.parseInt(u64, value, 10) catch return;
             engine.options.set_hash_size(v);
+            try engine.apply_hash_size();
         }
-        // io.debugprint("{any}\n", .{ engine.options});
     }
 
     /// Parce UCI command after "position"

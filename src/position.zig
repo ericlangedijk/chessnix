@@ -62,6 +62,22 @@ pub const rook_castle_destination_squares: [2][2]Square = .{ .{ .F1, .D1 }, .{ .
 /// Indexing [color][castletype].
 pub const castle_flags: [2][2]u4 = .{ .{ cf_white_short, cf_white_long }, .{ cf_black_short, cf_black_long } };
 
+// pub const BackRow = packed struct {
+//     kingfile: u3,
+//     left_rookfile: u3,
+//     right_rookfile: u3,
+
+//     pub fn left_rooksquare(self: BackRow, comptime us: Color) Square {
+//         return if (us.e == .white) Square.from_rank_file(0, self.left_rookfile) else Square.from_rank_file(0, self.left_rookfile);
+//     }
+
+//     pub fn path(self: BackRow, comptime us: Color, comptime castletype: CastleType) u64 {
+
+//     }
+
+//     const empty: BackRow = .{ .king_file = 0, .left_rookfile = 0, .right_rookfile = 0, .is_usable = false };
+// };
+
 /// The initial layout for `Position`, supporting Chess960.
 pub const Layout = struct {
     // 0...959

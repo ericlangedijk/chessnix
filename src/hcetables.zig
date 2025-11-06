@@ -50,9 +50,6 @@ pub const king_cannot_reach_passed_pawn_bonus = pair(-344, 199);
 
 pub const bishop_pair_bonus: ScorePair = pair(18, 58);
 
-/// EXPERIMENTAL
-pub const bad_bishop_penalty: ScorePair = pair(-5, -30);
-
 pub const tempo_bonus: ScorePair = pair(30, 27);
 
 /// By [popcnt].
@@ -145,7 +142,7 @@ pub const king_on_file_penalty: [2][8]ScorePair = .{
     .{ pair(-3, 45), pair(-31, 19), pair(-17, 12), pair(3, -5), pair(-2, -7), pair(-3, 3), pair(-27, 23), pair(-15, 34) }, // half open
 };
 
-/// By [threatenedpiece][is_protected]
+/// By [threatened piecetype][is_protected]
 pub const threatened_by_pawn_penalty: [6][2]ScorePair = .{
     .{ pair(-17, 13), pair(-11, 17) },
     .{ pair(-66, -20), pair(-66, -25) },
@@ -155,7 +152,7 @@ pub const threatened_by_pawn_penalty: [6][2]ScorePair = .{
     .{ pair(0, 0), pair(0, 0) },
 };
 
-/// By [threatenedpiece][is_protected]
+/// By [threatened piecetype][is_protected]
 pub const threatened_by_knight_penalty: [6][2]ScorePair = .{
     .{ pair(-1, -20), pair(10, -12) },
     .{ pair(-24, -43), pair(-4, -59) },
@@ -165,7 +162,7 @@ pub const threatened_by_knight_penalty: [6][2]ScorePair = .{
     .{ pair(0, 0), pair(0, 0) },
 };
 
-/// By [threatenedpiece][is_protected]
+/// By [threatened piecetype][is_protected]
 pub const threatened_by_bishop_penalty: [6][2]ScorePair = .{
     .{ pair(-10, -20), pair(1, -9) },
     .{ pair(-47, -23), pair(-21, -24) },
@@ -176,7 +173,7 @@ pub const threatened_by_bishop_penalty: [6][2]ScorePair = .{
 
 };
 
-/// By [threatenedpiece][is_protected]
+/// By [threatened piecetype][is_protected]
 pub const threatened_by_rook_penalty: [6][2]ScorePair = .{
     .{ pair(-2, -25), pair(10, -11) }, // pawn
     .{ pair(-42, -24), pair(-3, -13) }, // knight

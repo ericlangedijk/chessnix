@@ -31,7 +31,7 @@ pub const TTSizes = struct {
     pawneval: usize,
 };
 
-/// We need to divide the total hash space over the 3 used hash tables. Minimum is 16 MB. TODO: omit pawn eval and eval if minimum size.
+/// We need to divide the total hash space over the 3 used hash tables. Minimum is 16 MB.
 pub fn compute_tt_sizes(mb: usize) TTSizes {
     const required_mb: usize = @max(16, mb);
     const size: f64 = @floatFromInt(required_mb * types.megabyte);
@@ -88,20 +88,35 @@ pub const TranspositionTable = struct {
         ctx.galloc.free(self.data);
     }
 
+    pub fn resize(self: *TranspositionTable, size_in_bytes: usize) !void {
+        const len: usize = size_in_bytes / @sizeOf(Entry);
+        self.data = try ctx.galloc.realloc(self.data, len);
+        self.clear();
+    }
+
     pub fn clear(self: *TranspositionTable) void {
         @memset(self.data, Entry.empty);
     }
 
+
+// Alpha / UPPER bound → real score ≤ stored score
+// Beta / LOWER bound → real score ≥ stored score
+// Exact → real score == stored score (PV result)
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
         if (comptime lib.is_paranoid) {
              assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
         }
         const entry: *Entry = self.get(key);
 
-        // Don't overwrite
-        if (entry.bound != .None and entry.key == key and entry.depth > depth) {
+        // // Don't overwrite
+        // if (entry.bound != .None and entry.key == key and entry.depth > depth) {
+        //     return;
+        // }
+
+        if (entry.key == key and entry.depth > depth) {
             return;
         }
+
 
         const adjusted_score = get_adjusted_score_for_tt_store(score, ply);
         entry.* = .{ .bound = bound, .key = key, .depth = depth, .move = move, .score = @truncate(adjusted_score) };
@@ -178,6 +193,14 @@ pub const PawnTranspositionTable = struct {
         ctx.galloc.free(self.data);
     }
 
+    pub fn resize(self: *PawnTranspositionTable, size_in_bytes: usize) !void {
+        const len: usize = size_in_bytes / @sizeOf(PawnEntry);
+        //self.data = try ctx.galloc.resize(ctx.galloc, PawnEntry, len);
+        //try ctx.galloc.realloc(self.data, len);
+        self.data = try ctx.galloc.realloc(self.data, len);
+        self.clear();
+    }
+
     pub fn clear(self: *PawnTranspositionTable) void {
         @memset(self.data, PawnEntry.empty);
     }
@@ -213,6 +236,12 @@ pub const EvalTranspositionTable = struct {
         ctx.galloc.free(self.data);
     }
 
+    pub fn resize(self: *EvalTranspositionTable, size_in_bytes: usize) !void {
+        const len: usize = size_in_bytes / @sizeOf(EvalEntry);
+        self.data = try ctx.galloc.realloc(self.data, len);
+        self.clear();
+    }
+
     pub fn clear(self: *EvalTranspositionTable) void {
         @memset(self.data, EvalEntry.empty);
     }
@@ -236,3 +265,46 @@ pub const EvalTranspositionTable = struct {
         return entry.score;
     }
 };
+
+/// Generic hashtable logic here.
+fn HashTable(Element: type) type {
+    return struct {
+        const Self = @This();
+        const elementsize: usize = @sizeOf(Element);
+        //const empty_element: Element = std.mem.zeroes(Element);
+
+        data: []Element,
+
+        fn init(size_in_bytes: usize) !Self {
+            const len: usize = size_in_bytes / elementsize;
+            return .{
+                .data = ctx.galloc(Element, len),
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            ctx.galloc.free(self.data);
+        }
+
+        fn create_data(len: usize) ![]Element {
+            const data = ctx.galloc(Element, len);
+            clear_data(data);
+            return data;
+        }
+
+        fn clear_data(data: []Element) void {
+            const ptr: []u8 = @bitCast(data);
+            @memset(ptr, 0);
+        }
+
+        fn resize(self: *Self, size_in_bytes: usize) !void {
+            const len: usize = size_in_bytes / elementsize;
+            self.data = try ctx.galloc.realloc(self.data, len);
+            self.clear();
+        }
+
+        fn get(self: *Self, key: u64) *Element {
+            return *self.data[key % self.data.len];
+        }
+    };
+}

@@ -163,6 +163,7 @@ pub fn popcnt(bitboard: u64) u7 {
     return @popCount(bitboard);
 }
 
+/// Convenient popcount.
 pub fn popcnt_v(bitboard: u64) Value {
     return @popCount(bitboard);
 }
@@ -180,8 +181,9 @@ pub fn first_square_or_null(bitboard: u64) ?Square {
 /// Unsafe lsb
 pub fn first_square(bitboard: u64) Square {
     if (comptime lib.is_paranoid) assert(bitboard != 0);
-    const lsb: u6 = @truncate(@ctz(bitboard));
-    return .{ .u = lsb}; //Square.from(lsb);
+    //const lsb: u6 = @truncate(@ctz(bitboard));
+    const lsb: u6 = @intCast(@ctz(bitboard));
+    return .{ .u = lsb }; //Square.from(lsb);
 }
 
 /// Unsafe pop lsb and clears that lsb from the bitboard.
@@ -203,10 +205,10 @@ pub fn clear_square(bitboard: *u64, sq: Square) void {
 }
 
 /// Unsafe
-pub fn lsb_u64(u: u64) u6 {
-    if (comptime lib.is_paranoid) assert(u != 0);
-    return @truncate(@ctz(u));
-}
+// pub fn lsb_u64(u: u64) u6 {
+//     if (comptime lib.is_paranoid) assert(u != 0);
+//     return @truncate(@ctz(u));
+// }
 
 pub fn test_bit_u8(u: u8, bit: u3) bool {
     const one: u8 = @as(u8, 1) << bit;
