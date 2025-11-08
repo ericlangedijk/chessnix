@@ -134,7 +134,7 @@ pub fn test_eval() !usize {
         const eval_str = tokenizer.next() orelse @panic("wrong input for eval fen");
         const stored_eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
         var ev: hce.Evaluator(false) = .init();
-        const eval: types.Value = ev.evaluate(&pos, null, null);
+        const eval: types.Value = ev.evaluate(&pos, null);
         if (eval != stored_eval) {
             return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
         }

@@ -50,8 +50,8 @@ pub const Engine = struct {
     transpositiontable: tt.TranspositionTable,
     /// Shared tt for all threads.
     evaltranspositiontable: tt.EvalTranspositionTable,
-    /// Shared tt for all threads.
-    pawntranspositiontable: tt.PawnTranspositionTable,
+    // Shared tt for all threads.
+    // pawntranspositiontable: tt.PawnTranspositionTable,
     /// Threading.
     busy: std.atomic.Value(bool),
     /// The number of threads we use.
@@ -83,7 +83,7 @@ pub const Engine = struct {
         var engine: *Engine = try ctx.galloc.create(Engine);
         engine.transpositiontable = try .init(sizes.tt);
         engine.evaltranspositiontable = try .init(sizes.eval);
-        engine.pawntranspositiontable = try .init(sizes.pawneval);
+        //engine.pawntranspositiontable = try .init(sizes.pawneval);
         engine.busy = std.atomic.Value(bool).init(false);
         engine.num_threads = 1;
         engine.controller_thread = null;
@@ -107,20 +107,21 @@ pub const Engine = struct {
     pub fn destroy(self: *Engine) void {
         self.transpositiontable.deinit();
         self.evaltranspositiontable.deinit();
-        self.pawntranspositiontable.deinit();
+        //self.pawntranspositiontable.deinit();
         ctx.galloc.destroy(self);
     }
 
     fn print_hash_sizes(self: *const Engine) void {
-        io.print("info string hash {} MB entries tt {} entries eval {} entries pawneval {}\n", .{ self.options.hash_size, self.transpositiontable.data.len, self.evaltranspositiontable.data.len, self.pawntranspositiontable.data.len });
+        io.print("info string hash {} MB entries tt {} entries eval {}\n", .{ self.options.hash_size, self.transpositiontable.hash.data.len, self.evaltranspositiontable.hash.data.len });
     }
 
+    /// After the options are determined.
     pub fn apply_hash_size(self: *Engine) !void {
         if (self.is_busy()) return;
         const sizes: tt.TTSizes = tt.compute_tt_sizes(self.options.hash_size);
         try self.transpositiontable.resize(sizes.tt);
         try self.evaltranspositiontable.resize(sizes.eval);
-        try self.pawntranspositiontable.resize(sizes.pawneval);
+        //try self.pawntranspositiontable.resize(sizes.pawneval);
         if (!self.mute) {
             self.print_hash_sizes();
         }
@@ -131,7 +132,7 @@ pub const Engine = struct {
         self.set_startpos();
         self.transpositiontable.clear();
         self.evaltranspositiontable.clear();
-        self.pawntranspositiontable.clear();
+        //self.pawntranspositiontable.clear();
         self.is_newgame = true;
     }
 
@@ -143,7 +144,7 @@ pub const Engine = struct {
 
     /// After an illegal move we stop without crashing.
     pub fn set_startpos_with_optional_moves(self: *Engine, moves: ?[]const u8) !void {
-        if (self.is_busy()) return;
+        if (self.is_busy()) @panic("WTF");
         self.set_startpos();
         if (moves) |str| {
             self.parse_moves(str);
@@ -168,7 +169,7 @@ pub const Engine = struct {
         }
     }
 
-    // If we have any moves, make them. We stop if we encounter an illegal move.
+    /// If we have any moves, make them. We stop if we encounter an illegal move.
     fn parse_moves(self: *Engine, moves: []const u8) void {
         var tokenizer = std.mem.tokenizeScalar(u8, moves, ' ');
         var idx: usize = 1;
@@ -254,8 +255,8 @@ pub const Searcher = struct {
     transpositiontable: *tt.TranspositionTable,
     /// Copied from mgr, for direct access.
     evaltranspositiontable: *tt.EvalTranspositionTable,
-    /// Copied from mgr, for direct access.
-    pawntranspositiontable: *tt.PawnTranspositionTable,
+    // Copied from mgr, for direct access.
+    //pawntranspositiontable: *tt.PawnTranspositionTable,
     /// The evaluator
     evaluator: hce.Evaluator(false),
     /// Copied from mgr, for direct access.
@@ -278,7 +279,7 @@ pub const Searcher = struct {
     timer: utils.Timer,
     /// Statistics.
     stats: Stats,
-    /// the global best move.
+    /// This is the final move we output.
     selected_move: Move,
 
     fn init() Searcher {
@@ -286,7 +287,7 @@ pub const Searcher = struct {
             .engine = undefined,
             .transpositiontable = undefined,
             .evaltranspositiontable = undefined,
-            .pawntranspositiontable = undefined,
+            //.pawntranspositiontable = undefined,
             .evaluator = .init(),
             .termination = .infinite,
             .position_stack = @splat(.empty),
@@ -308,7 +309,7 @@ pub const Searcher = struct {
         self.termination = engine.time_params.termination;
         self.transpositiontable = &engine.transpositiontable;
         self.evaltranspositiontable = &engine.evaltranspositiontable;
-        self.pawntranspositiontable = &engine.pawntranspositiontable;
+        //self.pawntranspositiontable = &engine.pawntranspositiontable;
 
         // Copy stuff.
         const len: u16 = self.engine.pos.ply_from_root + 1;
@@ -424,6 +425,7 @@ pub const Searcher = struct {
                 delta += delta;
             }
 
+            self.selected_move = iteration_node.pv.buffer[0];
             // Copy the last finished pv.
             rootnode.copy_from(iteration_node);
 
@@ -501,8 +503,7 @@ pub const Searcher = struct {
             }
 
             if (pos.is_draw_by_insufficient_material() or self.is_draw_by_repetition_or_rule50(pos)) {
-                const random: u2 = @truncate(self.stats.nodes & 2);
-                return @as(i32, 1) - random;
+                return 0;
             }
 
             // Adjust dtm window.
@@ -522,8 +523,7 @@ pub const Searcher = struct {
         // Clear killers for the next ply.
         childnode.killers = @splat(Move.empty);
 
-        // TODO: use tt alpha beta info: adjust window??
-        // TT Probe. Keeping the stored tt_move for move ordering.
+        // TT Probe. Keeping the stored tt_move for move ordering if no return.
         var tt_move: Move = .empty;
         if (self.tt_probe(key, depth, ply, alpha, beta, &tt_move)) |tt_score| {
             if (!is_pvs) {
@@ -546,7 +546,7 @@ pub const Searcher = struct {
             return self.quiescence_search(pos, alpha, beta, mode, us);
         }
 
-        // Reversed Futility Pruning
+        // Reversed Futility Pruning.
         if (!is_pvs and !is_check and depth <= 4 and static_eval < mate_threshold) {
             const mul: Value =  if (improvement > 0) 40 else 74;
             const futility_margin: Value = depth * mul;
@@ -567,6 +567,8 @@ pub const Searcher = struct {
                 return if (score > mate_threshold) beta else score;
             }
         }
+
+        // NOTE: Any attempt on razoring (right here) made the engine play weaker.
 
         // Generate moves. if at root copy the rootmoves (has no scores) otherwise generate.
         var movepicker: MovePicker = .empty;
@@ -599,12 +601,13 @@ pub const Searcher = struct {
                 if (depth < 3 and move_idx > 3 and static_eval + (depth * 24) < alpha) {
                     continue :moveloop;
                 }
-                // Late Move Pruning.
+                // Late Move Pruning. It seems logical to not do this the first 3 iterations. (@EXPERIMENTAL)
                 const lmp_threshold: [5]u8 = .{ 0, 3, 6, 12, 24 };
-                if (self.iteration > 3 and depth <= 4 and is_quiet and move_idx > lmp_threshold[@abs(depth)]) {
+                if (self.iteration >= 4 and depth <= 4 and is_quiet and move_idx > lmp_threshold[@abs(depth)]) {
                     continue : moveloop;
                 }
             }
+
 
             // Do move
             const next_pos: *const Position = self.do_move(pos, us, ex.move);
@@ -621,6 +624,7 @@ pub const Searcher = struct {
             }
 
             // Late Move Reduction.
+            //if (self.iteration >= 4 and !is_check and depth >= 3 and move_idx > 0 and !ex.is_killer and is_quiet) {
             if (!is_check and depth >= 3 and move_idx > 0 and !ex.is_killer and is_quiet) {
                 reduction = lmr_depth_reduction_table[@abs(depth)][move_idx + 1];
                 if (is_pvs) reduction -= 1;
@@ -667,16 +671,10 @@ pub const Searcher = struct {
                 // Alpha.
                 if (score > alpha) {
                     best_move = ex.move;
-                    if (is_root) {
-                        self.selected_move = ex.move;
-                    }
-
                     if (is_pvs){
                         node.update_pv(best_move, best_score, childnode);
                     }
-
                     alpha = score;
-
                     // Beta.
                     if (score >= beta) {
                         self.stats.beta_cutoffs += 1;
@@ -740,7 +738,7 @@ pub const Searcher = struct {
         node.clear();
 
         if (ply >= max_search_depth) {
-            return self.evaluate(pos);
+            return self.evaluate(pos) + self.history_heuristics.get_correction(pos);
         }
 
         const them = comptime us.opp();
@@ -756,7 +754,7 @@ pub const Searcher = struct {
 
         if (!is_check) {
             // Static eval.
-            score = self.evaluate(pos);
+            score = self.evaluate(pos) + self.history_heuristics.get_correction(pos);
             // Fail high.
             if (score >= beta) return score;
             // Raise alpha.
@@ -820,7 +818,8 @@ pub const Searcher = struct {
     }
 
     fn evaluate(self: *Searcher, pos: *const Position) Value {
-        return self.evaluator.evaluate(pos, self.evaltranspositiontable, self.pawntranspositiontable);
+        //return self.evaluator.evaluate(pos, self.evaltranspositiontable, self.pawntranspositiontable);
+        return self.evaluator.evaluate(pos, self.evaltranspositiontable);
     }
 
     fn do_move(self: *Searcher, pos: *const Position, comptime us: Color, m: Move) *const Position {
@@ -940,7 +939,7 @@ pub const Searcher = struct {
         return self.stopped;
     }
 
-    /// Buggy shit, this mate in X.
+    /// Not used. Buggy shit this mate in X.
     fn mate_in(score: Value) Value {
         return if (score > 0) @divFloor(mate - score + 1, 2) else @divFloor(-mate - score, 2);
         //     static int MateIn(int evaluation) {
@@ -1203,22 +1202,55 @@ const History = struct {
     }
 
     fn clear(self: *History) void {
-        self.piece_to = std.mem.zeroes([12][64]Value);
-        self.pawn_correction = std.mem.zeroes(CorrectionTable);
-        self.minor_correction = std.mem.zeroes(CorrectionTable);
-        self.major_correction = std.mem.zeroes(CorrectionTable);
+
+
+        //io.debugprint("clear\n", .{});
+        const bytes: []u8 = @ptrCast(@constCast(self));
+        @memset(bytes, 0);
+        //self.print_state();
+
+        // const to_hist: []Value = @ptrCast(&self.piece_to);
+        // @memset(to_hist, 0);
+
+        // const pawn_corr: []Value = @ptrCast(&self.pawn_correction);
+        // @memset(pawn_corr, 0);
+        // const min_corr: []Value = @ptrCast(&self.minor_correction);
+        // @memset(min_corr, 0);
+        // const maj_corr: []Value = @ptrCast(&self.major_correction);
+        // @memset(maj_corr, 0);
+
+        // self.piece_to = std.mem.zeroes([12][64]Value);
+        // self.pawn_correction = std.mem.zeroes(CorrectionTable);
+        // self.minor_correction = std.mem.zeroes(CorrectionTable);
+        // self.major_correction = std.mem.zeroes(CorrectionTable);
     }
 
     fn decay(self: *History) void {
         const to_hist: []Value = @ptrCast(&self.piece_to);
         for (to_hist) |*v| {
-            //v.* = @divTrunc(v.*, 2);
-            v.* >>= 1;
+            v.* >>= 3; // >> 1 or 2 or 3
         }
 
-        self.pawn_correction = std.mem.zeroes(CorrectionTable);
-        self.minor_correction = std.mem.zeroes(CorrectionTable);
-        self.major_correction = std.mem.zeroes(CorrectionTable);
+        // TODO: clear, decay or do nothing with this correction?
+
+        // self.pawn_correction = std.mem.zeroes(CorrectionTable);
+        // self.minor_correction = std.mem.zeroes(CorrectionTable);
+        // self.major_correction = std.mem.zeroes(CorrectionTable);
+
+        // var ptr: []Value = @ptrCast(&self.pawn_correction);
+        // for (ptr) |*v| {
+        //     v.* >>= 1;
+        // }
+
+        // ptr = @ptrCast(&self.minor_correction);
+        // for (ptr) |*v| {
+        //     v.* >>= 1;
+        // }
+
+        // ptr = @ptrCast(&self.major_correction);
+        // for (ptr) |*v| {
+        //     v.* >>= 1;
+        // }
     }
 
     fn update_quiet_score(self: *History, pos: *const Position, move: Move, depth: i32) void {
@@ -1284,11 +1316,33 @@ const History = struct {
         corr_eval += self.minor_correction[u][pos.minorkey % CORRECTION_HISTORY_SIZE] * 2;
         corr_eval += self.major_correction[u][pos.majorkey % CORRECTION_HISTORY_SIZE] * 2;
         corr_eval >>= 9;
-        // High tech callibrated with one single position :) finding Rxc3
-        // position fen 2rqk2r/1p2bppp/pn1pbn2/4p3/4P3/P1N1B1Q1/1PPNBPPP/1KR1R3 b k - 11 17
+        // More or less random clamp here.
         corr_eval = std.math.clamp(corr_eval, -60, 60);
         return corr_eval;
     }
+
+    /// DEBUG
+    pub fn print_state(self: *const History) void {
+        const max: usize = CORRECTION_HISTORY_SIZE * 6;
+        var filled: usize = 0;
+        var ptr: []const Value = @ptrCast(&self.pawn_correction);
+        for (ptr) |v| {
+            if (v != 0 ) filled += 1;
+        }
+
+        ptr = @ptrCast(&self.minor_correction);
+        for (ptr) |v| {
+            if (v != 0 ) filled += 1;
+        }
+
+        ptr = @ptrCast(&self.major_correction);
+        for (ptr) |v| {
+            if (v != 0 ) filled += 1;
+        }
+
+        io.print("correction history filled {}%\n", .{funcs.percent(max, filled)});
+    }
+
 };
 
 /// The available options.
@@ -1312,8 +1366,9 @@ pub const Options = struct {
 pub const TimeParams = struct {
     termination: Termination,
     max_depth: u8,
+    /// Restrict search on nodes.
     max_nodes: u64,
-    /// In ms: either
+    /// Restrict search on milliseconds, either
     /// * The explicit `uci.go.movetime` if provided.
     /// * Calculated if `uci.go.wtime` or `uci.go.btime` provided.
     /// * zero.
@@ -1357,6 +1412,8 @@ pub const TimeParams = struct {
 
             // Do not flag on the last move before time control.
             result.max_movetime = (time / moves) + if (moves > 1 and inc > 0) (inc / 2) else 0;
+            // TODO: add some time in the beginning (lots of moves left).
+            // if (result.max_movetime > 5000 and result.movestogo > 10) result.max_movetime *= 2;
             return result;
         }
 
@@ -1419,21 +1476,3 @@ fn compute_reduction_table() [max_search_depth][max_move_count]Value {
     }
     return result;
 }
-
-
-
-
-
-
-
-// EXPERIMENTAL
-// fn allow_late_move_pruning(depth: i32, iteration: i32, move_idx: usize, is_quiet: bool, is_root: bool, is_check: bool) bool {
-
-//     const lmp_threshold_table = [_]u8{ 0, 2, 4, 8, 16, 32, 48, 64 }; // move index limits per depth
-
-//     if (is_root or is_check or !is_quiet) return false;   // never prune these
-//     if (depth < 4) return false;   // 3                        // depth too shallow
-//     if (iteration < 5) return false; // 4                      // move ordering unstable
-//     const capped_depth = @min(@abs(depth), lmp_threshold_table.len - 1);
-//     return move_idx > lmp_threshold_table[capped_depth];  // prune late quiets
-// }

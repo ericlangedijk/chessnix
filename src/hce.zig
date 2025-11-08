@@ -131,16 +131,17 @@ pub fn Evaluator(comptime tracing: bool) type {
             };
         }
 
-        pub fn evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, pawnhash: ?*tt.PawnTranspositionTable) Value {
+        // pub fn evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, pawnhash: ?*tt.PawnTranspositionTable) Value {
+        pub fn evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable) Value {
             const has_pawns: bool = pos.all_pawns() != 0;
             return switch(has_pawns) {
-                false => self.internal_evaluate(pos, evalhash, pawnhash, false),
-                true => self.internal_evaluate(pos, evalhash, pawnhash, true),
+                false => self.internal_evaluate(pos, evalhash, false),
+                true => self.internal_evaluate(pos, evalhash, true),
             };
         }
 
         /// Here and there the comptime has_pawns is there to boost a little speed.
-        fn internal_evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, pawnhash: ?*tt.PawnTranspositionTable, comptime has_pawns: bool) Value {
+        fn internal_evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, comptime has_pawns: bool) Value {
             // Eval TT Probe.
             if (evalhash) |hash| {
                 if (hash.probe(pos.key)) |ev| {
@@ -185,22 +186,25 @@ pub fn Evaluator(comptime tracing: bool) type {
             var score: ScorePair = .empty;
 
             if (has_pawns) {
+
+                score.inc(self.eval_pawns(Color.WHITE));
+                score.dec(self.eval_pawns(Color.BLACK));
                 // Pawn TT probe.
-                var pawnentry: ?*tt.PawnEntry = null;
-                if (pawnhash) |hash| {
-                    pawnentry = hash.get(pos.key);
-                }
-                const is_cached: bool = pawnentry != null and pawnentry.?.key == pos.key;
-                switch (is_cached) {
-                    false => {
-                        score.inc(self.eval_pawns(Color.WHITE, false, pawnentry));
-                        score.dec(self.eval_pawns(Color.BLACK, false, pawnentry));
-                    },
-                    true => {
-                        score.inc(self.eval_pawns(Color.WHITE, true, pawnentry));
-                        score.dec(self.eval_pawns(Color.BLACK, true, pawnentry));
-                    },
-                }
+                // var pawnentry: ?*tt.PawnEntry = null;
+                // if (pawnhash) |hash| {
+                //     pawnentry = hash.get(pos.pawnkey);
+                // }
+                // const is_cached: bool = pawnentry != null and pawnentry.?.key == pos.pawnkey;
+                // switch (is_cached) {
+                //     false => {
+                //         score.inc(self.eval_pawns(Color.WHITE, false, pawnentry));
+                //         score.dec(self.eval_pawns(Color.BLACK, false, pawnentry));
+                //     },
+                //     true => {
+                //         score.inc(self.eval_pawns(Color.WHITE, true, pawnentry));
+                //         score.dec(self.eval_pawns(Color.BLACK, true, pawnentry));
+                //     },
+                // }
             }
             if (tracing) io.print("after P {any}\n", .{ score });
 
@@ -250,10 +254,10 @@ pub fn Evaluator(comptime tracing: bool) type {
             return result;
         }
 
-        fn eval_pawns(self: *Self, comptime us: Color, comptime is_cached_score: bool, pawnentry: ?*tt.PawnEntry) ScorePair {
+        //fn eval_pawns(self: *Self, comptime us: Color, comptime is_cached_score: bool, pawnentry: ?*tt.PawnEntry) ScorePair {
+        fn eval_pawns(self: *Self, comptime us: Color) ScorePair {
             if (comptime lib.is_paranoid) {
                 assert(self.pos.all_pawns() != 0);
-                assert(!is_cached_score or pawnentry != null);
             }
             const pos: *const Position = self.pos;
             const them: Color = comptime us.opp();
@@ -263,99 +267,68 @@ pub fn Evaluator(comptime tracing: bool) type {
             var sp: ScorePair = undefined;
             var passed_pawns: u64 = 0;
 
-            // Skip the 'pawn only' evaluation if we have a cached value from the pawn TT.
-            // When skipping we still have to:
-            // - determine the passed pawns.
-            // - add pawn material in the score.
-
-            // Cached: set the cached score and determine passed pawns + material.
-            if (is_cached_score) {
-                score = pawnentry.?.scores[us.u];
-                var pawns: u64 = our_pawns;
-                while (pawns != 0) {
-                    const sq: Square = pop(&pawns);
-                    score.inc(hcetables.piece_value_table[PieceType.PAWN.u]);
-                    if (tracing) trace(hcetables.piece_value_table[PieceType.PAWN.u], us, sq, "material P", .{});
-                    const their_pawns_ahead: u64 = bitboards.get_passed_pawn_mask(us, sq) & their_pawns;
-                    if (their_pawns_ahead == 0) {
-                        passed_pawns |= sq.to_bitboard();
-                    }
-                }
-                if (tracing) io.print("cached pawn score {t} {any} -> initial score {any}\n", .{ us.e, pawnentry.?.*, score});
+            score = .empty;
+            // Pawn phalanx (horizontally next to eachother).
+            var connected_pawns: u64 = (funcs.shift_bitboard(our_pawns, .east)) & our_pawns;
+            while (connected_pawns != 0) {
+                const sq: Square = pop(&connected_pawns);
+                const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
+                sp = hcetables.pawn_phalanx_bonus[relative_rank];
+                score.inc(sp);
+                if (tracing) trace(sp, us, sq, "pawn phalanx", .{});
             }
-            // Not cached: Start with empty score and calculate it + material.
-            else {
-                score = .empty;
-                // Pawn phalanx (horizontally next to eachother).
-                var connected_pawns: u64 = (funcs.shift_bitboard(our_pawns, .east)) & our_pawns;
-                while (connected_pawns != 0) {
-                    const sq: Square = pop(&connected_pawns);
-                    const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
-                    sp = hcetables.pawn_phalanx_bonus[relative_rank];
+
+            // Loop through the pawns.
+            var pawns: u64 = our_pawns;
+            while (pawns != 0) {
+                const sq: Square = pop(&pawns);
+                const sq_bb: u64 = sq.to_bitboard();
+                const relative_sq: Square = sq.relative(us);
+                const relative_rank: u3 = relative_sq.coord.rank;
+                const file: u3 = sq.coord.file;
+
+                // Material.
+                score.inc(hcetables.piece_value_table[PieceType.PAWN.u]);
+                if (tracing) trace(hcetables.piece_value_table[PieceType.PAWN.u], us, sq, "material P", .{});
+
+                // Psqt.
+                sp = hcetables.piece_square_table[PieceType.PAWN.u][relative_sq.u];
+                score.inc(sp);
+                if (tracing) trace(sp, us, sq, "psqt P", .{});
+
+                // Protected pawn.
+                if (self.pawn_attacks[us.u] & sq_bb != 0) {
+                    sp = hcetables.protected_pawn_bonus[relative_rank];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "pawn phalanx", .{});
+                    if (tracing) trace(sp, us, sq, "protected pawn", .{});
                 }
 
-                // Loop through the pawns.
-                var pawns: u64 = our_pawns;
-                while (pawns != 0) {
-                    const sq: Square = pop(&pawns);
-                    const sq_bb: u64 = sq.to_bitboard();
-                    const relative_sq: Square = sq.relative(us);
-                    const relative_rank: u3 = relative_sq.coord.rank;
-                    const file: u3 = sq.coord.file;
-
-                    // Material.
-                    score.inc(hcetables.piece_value_table[PieceType.PAWN.u]);
-                    if (tracing) trace(hcetables.piece_value_table[PieceType.PAWN.u], us, sq, "material P", .{});
-
-                    // Psqt.
-                    sp = hcetables.piece_square_table[PieceType.PAWN.u][relative_sq.u];
+                // Doubled pawn.
+                const pawns_ahead_on_file = funcs.forward_file(us, sq) & our_pawns;
+                const is_doubled: bool = pawns_ahead_on_file != 0;
+                if (is_doubled) {
+                    sp = hcetables.doubled_pawn_penalty[file];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "psqt P", .{});
-
-                    // Protected pawn.
-                    if (self.pawn_attacks[us.u] & sq_bb != 0) {
-                        sp = hcetables.protected_pawn_bonus[relative_rank];
-                        score.inc(sp);
-                        if (tracing) trace(sp, us, sq, "protected pawn", .{});
-                    }
-
-                    // Doubled pawn.
-                    const pawns_ahead_on_file = funcs.forward_file(us, sq) & our_pawns;
-                    const is_doubled: bool = pawns_ahead_on_file != 0;
-                    if (is_doubled) {
-                        sp = hcetables.doubled_pawn_penalty[file];
-                        score.inc(sp);
-                        if (tracing) trace(sp, us, sq, "doubled pawn", .{});
-                    }
-
-                    // Passed pawn.
-                    const their_pawns_ahead: u64 = bitboards.get_passed_pawn_mask(us, sq) & their_pawns;
-                    if (their_pawns_ahead == 0) {
-                        passed_pawns |= sq_bb;
-                        sp = hcetables.passed_pawn_bonus[relative_rank];
-                        score.inc(sp);
-                        if (tracing) trace(sp, us, sq, "passed pawn", .{});
-                    }
-
-                    // Isolated pawn.
-                    const pawns_on_adjacent_files = bitboards.adjacent_file_masks[sq.u] & our_pawns;
-                    if (pawns_on_adjacent_files == 0) {
-                        sp = hcetables.isolated_pawn_penalty[file];
-                        score.inc(sp);
-                        if (tracing) trace(sp, us, sq, "isolated pawn", .{});
-                    }
+                    if (tracing) trace(sp, us, sq, "doubled pawn", .{});
                 }
 
-                // Store in Pawn TT
-                if (pawnentry) |entry| {
-                    entry.key = pos.key;
-                    entry.scores[us.u] = score;
-                    if (tracing) lib.io.print("store pawn tt {t} {any}\n", .{us.e, entry.*});
+                // Passed pawn.
+                const their_pawns_ahead: u64 = bitboards.get_passed_pawn_mask(us, sq) & their_pawns;
+                if (their_pawns_ahead == 0) {
+                    passed_pawns |= sq_bb;
+                    sp = hcetables.passed_pawn_bonus[relative_rank];
+                    score.inc(sp);
+                    if (tracing) trace(sp, us, sq, "passed pawn", .{});
                 }
 
-            } // (not cached)
+                // Isolated pawn.
+                const pawns_on_adjacent_files = bitboards.adjacent_file_masks[sq.u] & our_pawns;
+                if (pawns_on_adjacent_files == 0) {
+                    sp = hcetables.isolated_pawn_penalty[file];
+                    score.inc(sp);
+                    if (tracing) trace(sp, us, sq, "isolated pawn", .{});
+                }
+            }
 
             // Pawn king stuff.
             const king_sq: Square = self.king_squares[us.u];

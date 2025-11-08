@@ -73,7 +73,6 @@ pub fn btm() u64 {
     return btm_key;
 }
 
-
 // // for (z.piece_square_keys, 0..) |k, i| {
 // //     lib.io.debugprint("0x{x:0>16},\n", .{k});
 // //     std.debug.assert(k == z.pc_sq[i]);
@@ -93,7 +92,6 @@ pub fn btm() u64 {
 
 
 // // lib.io.debugprint("0x{x:0>16}  0x{x:0>16},\n", .{z.btm(), z.black_tm});
-
 // // for (p.Layouts.all, 0..) |backrow, i| {
 // //     lib.io.debugprint("{} {any}\n", .{i, backrow});
 // // }

@@ -80,6 +80,7 @@ pub fn relative_rank_7(us: Color) u3 {
     return if (us.e == .white) bitboards.rank_7 else bitboards.rank_2;
 }
 
+/// TODO: move to bitboards.
 pub fn forward_file(comptime us: Color, sq: Square) u64 {
     return if (us.e == .white) bitboards.bb_north[sq.u] else bitboards.bb_south[sq.u];
 }

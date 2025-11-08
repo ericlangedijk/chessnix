@@ -276,7 +276,7 @@ const TTY = struct {
         //funcs.print_bitboard(bb);
 
         var ev: hce.Evaluator(true) = .init();
-        const e = ev.evaluate(&engine.pos, null, null);
+        const e = ev.evaluate(&engine.pos, null);
         // //_ = ev.evaluate(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
         // //const e = ev.evaluate(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
         io.print("do_static_evalcall result eval = {}\n", .{ e });
@@ -316,16 +316,32 @@ const TTY = struct {
         //io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
         //io.print("is draw {}\n", .{ engine.pos.is_draw_by_insufficient_material() });
 
-        io.print("sizeof ttentry {}\n", .{ @sizeOf(tt.Entry) });
-        io.print("sizeof evalentry {}\n", .{ @sizeOf(tt.EvalEntry) });
-        io.print("sizeof pawnentry {}\n", .{ @sizeOf(tt.PawnEntry) });
+        //io.print("sizeof ttentry {}\n", .{ @sizeOf(tt.Entry) });
+        //io.print("sizeof evalentry {}\n", .{ @sizeOf(tt.EvalEntry) });
+        //io.print("sizeof pawnentry {}\n", .{ @sizeOf(tt.PawnEntry) });
 
         //io.debugprint("{}\n", .{});
-        io.print("tt len {}\n", .{ s.transpositiontable.data.len });
-        io.print("eval tt len {}\n", .{ s.evaltranspositiontable.data.len });
-        io.print("pawneval len {}\n", .{ s.pawntranspositiontable.data.len });
+        io.print("tt len {}\n", .{ s.transpositiontable.hash.data.len });
+        io.print("eval tt len {}\n", .{ s.evaltranspositiontable.hash.data.len });
+        //io.print("pawneval len {}\n", .{ s.pawntranspositiontable.hash.data.len });
+
+        const a = s.transpositiontable.hash.percentage_filled();
+        const b = s.evaltranspositiontable.hash.percentage_filled();
+        //const c = s.pawntranspositiontable.hash.percentage_filled();
+
+        io.print("filled tt {}% eval {}%\n", .{ a, b });
+
+        s.searcher.history_heuristics.print_state();
         // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
        // engine.pos.print_history();
+
+
+        // if (comptime lib.is_paranoid) {
+        //     for (self.transpositiontable.hash.data) |e| {
+        //         assert(e != tt.Entry.empty);
+        //     }
+        // }
+
     }
 };
 
