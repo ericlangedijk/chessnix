@@ -1,3 +1,11 @@
+### Version 1.0
+Engine plays reasonable chess. No numbers yet but guessing between 2500 and 2900.
+Special thanks to Aron Pekovski. I used most of the tuned evaluation of an old version of Integral (3).
+More thanks to Janez and Colin on Discord. The people on TalkChess. The people on the Zig Forum.
+And the authors of all the engines I used for testing: Bbc, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Seawall, Shallow, Stockfish, Supernova, Teki.
+Many many things need still to be changed, but it is time for a first version.
+
+### Version 0.1
 Engine plays terrible chess, mainly because I am not interested at all in writing an evaluation function.
 To be continued...
 
