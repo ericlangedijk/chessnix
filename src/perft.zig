@@ -114,7 +114,7 @@ pub fn bench() !void {
 
     main_loop: inline for (&testruns) |*testrun| {
         for (1..testrun.end_depth + 1) |depth| {
-            try pos.set(testrun.fen);
+            try pos.set(testrun.fen, false);
             var timer = utils.Timer.start();
             const nodes: u64 = run_quick(&pos, @truncate(depth));
             const time = timer.read();

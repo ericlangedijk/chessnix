@@ -529,6 +529,10 @@ pub const Piece = packed union {
         return self.piecetype().e == .pawn;
     }
 
+    pub fn is_rook(self: Piece) bool {
+        return self.piecetype().e == .rook;
+    }
+
     pub fn is_minor(self: Piece) bool {
         const pt: PieceType.Enum = self.piecetype().e;
         return pt == .knight or pt == .bishop;
@@ -537,6 +541,10 @@ pub const Piece = packed union {
     pub fn is_major(self: Piece) bool {
         const pt: PieceType.Enum = self.piecetype().e;
         return pt == .rook or pt == .queen;
+    }
+
+    pub fn is_king(self: Piece) bool {
+        return self.piecetype().e == .king;
     }
 
     pub fn is_pawn_of_color(self: Piece, comptime us: Color) bool {
@@ -664,7 +672,7 @@ pub const Move = packed struct(u16) {
         return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
-    // Zig-format for UCI move output (e2e4).
+    // Zig-format classic for UCI move output (e2e4).
     pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void {
         if (self.is_empty()) {
             try writer.print("0000", .{});
@@ -783,48 +791,24 @@ pub const mate: Value = 30000;
 pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
+pub const discard_value: Value = -1_000_000;
 
 // Only used for Static Exchange Evaluation.
 pub const value_pawn: Value = 100;
-pub const value_knight: Value = 300; // 317; // 305;
-pub const value_bishop: Value = 300; //333;
-pub const value_rook: Value = 500; // 510; // 474;//// 463; // was: 563
-pub const value_queen: Value = 950; //950;
+pub const value_knight: Value = 300;
+pub const value_bishop: Value = 300;
+pub const value_rook: Value = 500;
+pub const value_queen: Value = 950;
 pub const value_king: Value = 0;
-
-// Values used in Position stolen from Stockfish.
-// pub const material_pawn: Value = 126;
-// pub const material_knight: Value = 781;
-// pub const material_bishop: Value = 825;
-// pub const material_rook: Value = 1276;
-// pub const material_queen: Value = 2538;
-// pub const material_king: Value = 0;
-
-// /// The total material value in the starting position including pawns
-// pub const max_material_value: Value = 18620;
-
-// /// The threshold value for piece square tables.
-// pub const max_material_without_pawns: Value = 16604;
-
-// pub const opening_threshold: Value = 16604;
-// pub const midgame_threshold: Value = 15258;
-// pub const endgame_threshold: Value = 3915;
 
 const piece_values: [12]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
 };
 
-// const piece_material_values: [12]Value = .{
-//     material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
-//     material_pawn, material_knight, material_bishop, material_rook, material_queen, material_king,
-// };
-
-//const int gamephaseInc[12] = {0,0,1,1,1,1,2,2,4,4,0,0}; // p p n n b b r r q q k k
-
 pub const max_phase: u8 = 24;
 
-/// By [piece]
+/// Game phase table. Indexing by [piece]
 pub const phase_table: [12]u8 = .{
     0, // w_pawn
     1, // w_knight

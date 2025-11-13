@@ -13,17 +13,14 @@ pub fn initialize() !void {
     memory_context = .init();
     io_context = .init();
 
-    // Then initialize chess.
+    // Then initialize chess. These are computed. The rest of the tables is comptime computed.
     @import("zobrist.zig").initialize();
-    // Init chess960 hash
-    @import("position.zig").Layout.initialize();
 
     lib_is_initialized = true;
 }
 
 pub fn finalize() void {
     lib_is_initialized = false;
-    @import("position.zig").Layout.finalize();
     memory_context.deinit();
 }
 
@@ -106,6 +103,11 @@ const IoContext = struct {
     pub fn debugprint(_: *const IoContext, comptime str: []const u8, args: anytype) void {
         not_in_release();
         std.debug.print(str, args);
+    }
+
+    pub fn dpr(_: *const IoContext, comptime str: []const u8) void {
+        not_in_release();
+        std.debug.print("{s}\n", .{ str });
     }
 
     /// Allowed during UCI.

@@ -186,27 +186,10 @@ pub fn Evaluator(comptime tracing: bool) type {
             var score: ScorePair = .empty;
 
             if (has_pawns) {
-
                 score.inc(self.eval_pawns(Color.WHITE));
                 score.dec(self.eval_pawns(Color.BLACK));
-                // Pawn TT probe.
-                // var pawnentry: ?*tt.PawnEntry = null;
-                // if (pawnhash) |hash| {
-                //     pawnentry = hash.get(pos.pawnkey);
-                // }
-                // const is_cached: bool = pawnentry != null and pawnentry.?.key == pos.pawnkey;
-                // switch (is_cached) {
-                //     false => {
-                //         score.inc(self.eval_pawns(Color.WHITE, false, pawnentry));
-                //         score.dec(self.eval_pawns(Color.BLACK, false, pawnentry));
-                //     },
-                //     true => {
-                //         score.inc(self.eval_pawns(Color.WHITE, true, pawnentry));
-                //         score.dec(self.eval_pawns(Color.BLACK, true, pawnentry));
-                //     },
-                // }
+                if (tracing) io.print("after P {any}\n", .{ score });
             }
-            if (tracing) io.print("after P {any}\n", .{ score });
 
             score.inc(self.eval_knights(Color.WHITE));
             score.dec(self.eval_knights(Color.BLACK));
@@ -277,6 +260,17 @@ pub fn Evaluator(comptime tracing: bool) type {
                 score.inc(sp);
                 if (tracing) trace(sp, us, sq, "pawn phalanx", .{});
             }
+
+            // @EXPERIMENTAL
+            // if (pos.all_pawns() & bitboards.file_e == 0 and popcnt(our_pawns & bitboards.bb_queenside) > popcnt(their_pawns & bitboards.bb_queenside)) {
+            //     sp = hcetables.pawn_majority_bonus;
+            //     score.inc(sp);
+            // }
+
+            // if (pos.all_pawns() & bitboards.file_d == 0 and popcnt(our_pawns & bitboards.bb_kingside) > popcnt(their_pawns & bitboards.bb_kingside)) {
+            //     sp = hcetables.pawn_majority_bonus;
+            //     score.inc(sp);
+            // }
 
             // Loop through the pawns.
             var pawns: u64 = our_pawns;

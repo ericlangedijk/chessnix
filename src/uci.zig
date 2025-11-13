@@ -331,7 +331,7 @@ const TTY = struct {
 
         io.print("filled tt {}% eval {}%\n", .{ a, b });
 
-        s.searcher.history_heuristics.print_state();
+        //s.searcher.history_heuristics.print_state();
         // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
        // engine.pos.print_history();
 

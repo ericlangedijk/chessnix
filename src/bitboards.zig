@@ -45,6 +45,8 @@ pub const bb_black_squares: u64 = 0b01010101_10101010_10101010_01010101_10101010
 pub const bb_white_squares: u64 = ~bb_black_squares;
 pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
 pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
+pub const bb_queenside: u64 = bb_file_a | bb_file_b | bb_file_d | bb_file_d;
+pub const bb_kingside: u64 = bb_file_e | bb_file_f | bb_file_g | bb_file_h;
 
 pub const bb_colored_squares: [2]u64 = .{ bb_white_squares, bb_black_squares };
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
@@ -227,6 +229,8 @@ fn compute_squarepairs() [64 * 64]SquarePair {
                     if (sq.u == to.u) break;
                 }
             }
+            // In between.
+            sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
         }
     }
     return sp;
@@ -311,8 +315,11 @@ fn compute_adjacent_file_masks() [64]u64 {
 /// Information about a pair of squares.
 /// * Mainly used for determining pinners and pinned pieces.
 pub const SquarePair = struct {
-    /// The bitboard of the squares in between two squares **excluded** the from-square and **included** the to-square.
+    /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
     ray: u64 = 0,
+
+    // The bitboard of the squares in between the 2 squares.
+    in_between: u64 = 0,
     /// The from-to direction.
     direction: ?Direction = null,
     /// The from-to or to-from orientation.
@@ -321,6 +328,7 @@ pub const SquarePair = struct {
     axis: Axis = .none,
     /// Distance
     dist: u3 = 0,
+
     const empty: SquarePair = .{};
 };
 

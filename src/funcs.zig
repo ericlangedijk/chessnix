@@ -286,6 +286,7 @@ pub fn mul(i: Value, f: Float) Value {
     return @intFromFloat(float(i) * f);
 }
 
+/// div trunc
 pub fn div(i: Value, d: Value) Value {
     return @divTrunc(i, d);
 }

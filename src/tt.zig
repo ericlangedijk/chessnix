@@ -31,43 +31,36 @@ pub const TTSizes = struct {
     tt: usize,
     /// Space in bytes for eval table.
     eval: usize,
-
-    // Space in bytes for pawn eval table.
-    //pawneval: usize,
 };
 
-/// We need to divide the total hash space over the 3 used hash tables. Minimum is 16 MB.
-pub fn compute_tt_sizes(mb: usize) TTSizes {
-    const required_mb: usize = @max(16, mb);
+/// We need to divide the total hash space over the 2 used hash tables. Minimum is 16 MB.
+pub fn compute_tt_sizes(megabytes: usize) TTSizes {
+    const required_mb: usize = @max(16, megabytes);
     const size: f64 = @floatFromInt(required_mb * types.megabyte);
     var sizes: TTSizes = undefined;
     sizes.tt = @intFromFloat(size * 0.80);
     sizes.eval = @intFromFloat(size * 0.20);
-    //sizes.pawneval = @intFromFloat(size * 0.05);
     return sizes;
 }
 
 /// Adjust score for mate in X when storing.
-pub fn get_adjusted_score_for_tt_store(score: Value, ply: u16) Value {
-    if (score >= types.mate_threshold) return score + ply
-    else if (score <= -types.mate_threshold) return score - ply;
-    return score;
+pub fn get_adjusted_score_for_tt_store(tt_score: Value, ply: u16) Value {
+    if (tt_score >= types.mate_threshold) return tt_score + ply
+    else if (tt_score <= -types.mate_threshold) return tt_score - ply;
+    return tt_score;
 }
 
 /// Adjust score for mate in X when probing.
-pub fn get_adjusted_score_for_tt_probe(score: Value, ply: u16) Value {
-    if (score >= types.mate_threshold) return score - ply
-    else if (score <= -types.mate_threshold) return score + ply;
-    return score;
+pub fn get_adjusted_score_for_tt_probe(tt_score: Value, ply: u16) Value {
+    if (tt_score >= types.mate_threshold) return tt_score - ply
+    else if (tt_score <= -types.mate_threshold) return tt_score + ply;
+    return tt_score;
 }
 
-////////////////////////////////////////////////////////////////
-// Elements.
-////////////////////////////////////////////////////////////////
 pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
 
 pub const Entry = packed struct {
-    /// The kind (exact, alpha or beta) with which this entry was stored..
+    /// The kind (exact, alpha or beta) with which this entry was stored.
     bound: Bound,
     /// The position hash key. If key == 0 we assume this entry is empty.
     key: u64,
@@ -77,8 +70,22 @@ pub const Entry = packed struct {
     move: Move,
     /// The evaluation according to search.
     score: i16,
+    /// Stored during principal variation search?
+    was_pv: bool,
 
-    pub const empty: Entry = .{ .bound = .None, .key = 0, .depth = 0, .move = .empty, .score = 0 };
+    pub const empty: Entry = .{ .bound = .None, .key = 0, .depth = 0, .move = .empty, .score = 0, .was_pv = false };
+
+    pub fn is_score_usable(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
+        if (self.depth < depth) {
+            return false;
+        }
+        switch (self.bound) {
+            .None  => return false,
+            .Exact => return true,
+            .Alpha => return self.score <= alpha,
+            .Beta  => return self.score >= beta,
+        }
+    }
 };
 
 pub const EvalEntry = packed struct {
@@ -88,15 +95,6 @@ pub const EvalEntry = packed struct {
     score: i16,
 
     const empty: EvalEntry = .{ .key = 0, .score = 0 };
-};
-
-pub const PawnEntry = struct {
-    /// The position pawn key.
-    key: u64,
-    /// The evaluation of both white and black according to static evaluation.
-    scores: [2]ScorePair,
-
-    const empty: PawnEntry = .{ .key = 0, .scores = @splat(.empty) };
 };
 
 /// The main transposition table.
@@ -121,9 +119,10 @@ pub const TranspositionTable = struct {
         self.hash.clear();
     }
 
-    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: u8, ply: u16, move: Move, score: Value) void {
+    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool) void {
         if (comptime lib.is_paranoid) {
              assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+             assert(depth >= 0);
         }
         const entry: *Entry = self.get(key);
 
@@ -133,7 +132,7 @@ pub const TranspositionTable = struct {
         }
 
         const adjusted_score = get_adjusted_score_for_tt_store(score, ply);
-        entry.* = .{ .bound = bound, .key = key, .depth = depth, .move = move, .score = @truncate(adjusted_score) };
+        entry.* = .{ .bound = bound, .key = key, .depth = @intCast(depth), .move = move, .score = @intCast(adjusted_score), .was_pv = pv };
     }
 
     /// The score of the entry is adjusted for the ply when mating distance is there.
@@ -169,6 +168,15 @@ pub const TranspositionTable = struct {
                 return if (adjusted_score >= beta) adjusted_score else null;
             },
         }
+    }
+
+    /// TODO: we can just return the entry for overwrite. this saves another lookup.
+    pub fn probe_raw(self: *TranspositionTable, key: u64) ?*const Entry {
+        const entry: *const Entry = self.get(key);
+        if (entry.key != key) {
+            return null;
+        }
+        return entry;
     }
 
     fn get(self: *TranspositionTable, key: u64) *Entry {
@@ -221,72 +229,13 @@ pub const EvalTranspositionTable = struct {
     }
 };
 
-/// A simple hash for pawn evaluation speedup.
-pub const PawnTranspositionTable = struct {
-    /// Array allocated on the heap.
-    hash: HashTable(PawnEntry),
-
-    pub fn init(size_in_bytes: u64) !PawnTranspositionTable {
-        return .{
-            .hash = try .init(size_in_bytes)
-        };
-        // const len: u64 = size_in_bytes / @sizeOf(PawnEntry);
-        // const data: []PawnEntry = try ctx.galloc.alloc(PawnEntry, len);
-        // @memset(data, PawnEntry.empty);
-        // return .{ .data = data };
-    }
-
-    pub fn deinit(self: *PawnTranspositionTable) void {
-        //ctx.galloc.free(self.data);
-        self.hash.deinit();
-    }
-
-    pub fn resize(self: *PawnTranspositionTable, size_in_bytes: usize) !void {
-        try self.hash.resize(size_in_bytes);
-        // const len: usize = size_in_bytes / @sizeOf(PawnEntry);
-        // //self.data = try ctx.galloc.resize(ctx.galloc, PawnEntry, len);
-        // //try ctx.galloc.realloc(self.data, len);
-        // self.data = try ctx.galloc.realloc(self.data, len);
-        // self.clear();
-    }
-
-    pub fn clear(self: *PawnTranspositionTable) void {
-        self.hash.clear();
-        //@memset(self.data, PawnEntry.empty);
-    }
-
-    // pub fn probe(self: *EvalTranspositionTable, pawnkey: u64) ?Value {
-    //     const entry: *const EvalEntry = self.get(pawnkey);
-    //     if (entry.key != pawnkey) {
-    //         return null;
-    //     }
-    //     return entry.score;
-    // }
-
-    // pub fn store(self: *EvalTranspositionTable, key: u64, score: Value) void {
-    //     if (comptime lib.is_paranoid) {
-    //         assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-    //     }
-    //     const entry: *EvalEntry = self.get(key);
-    //     entry.key = key;
-    //     entry.score = @truncate(score);
-    // }
-
-    /// Get writable entry. Check key when retrieving!
-    pub fn get(self: *PawnTranspositionTable, pawnkey: u64) *PawnEntry {
-        return self.hash.get(pawnkey);
-        // return if (e.key == pawnkey) e else null;
-        //return &self.data[key % self.data.len];
-    }
-};
-
+/// Simple internal generic hash.
 fn HashTable(Element: type) type {
     return struct {
         const Self = @This();
 
+        /// The comptime Element must implement a `empty` const.
         const elementsize: usize = @sizeOf(Element);
-        /// The `empty` must be an implemented const of the struct (Entry, EvalEntry, PawnEntry).
-        //const empty_element: Element = Element.empty;
 
         /// Array allocated on the heap.
         data: []Element,
@@ -302,6 +251,7 @@ fn HashTable(Element: type) type {
             ctx.galloc.free(self.data);
         }
 
+        /// Slow! just for state output.
         pub fn percentage_filled(self: *const Self) usize {
             var filled: usize = 0;
             for (self.data) |e| {

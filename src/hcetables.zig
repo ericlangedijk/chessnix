@@ -46,6 +46,9 @@ pub const isolated_pawn_penalty: [8]ScorePair = .{
     pair(-8, 12), pair(-1, -12), pair(-11, -4), pair(-7, -13), pair(-11, -15), pair(-4, -6), pair(1, -12), pair(-7, 8),
 };
 
+// @EXPERIMENTAL
+pub const pawn_majority_bonus: ScorePair = pair(10, 40);
+
 pub const king_cannot_reach_passed_pawn_bonus = pair(-344, 199);
 
 pub const bishop_pair_bonus: ScorePair = pair(18, 58);
