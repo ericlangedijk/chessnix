@@ -1,8 +1,11 @@
+### Current Code Swamp 1.x
+Currently finetuning the algorithms, speed, chess960 support. ELO target for the 1.x version is 3200.
+
+I am a github noob and only use the main branch as a backup of the current state on my PC.
+With every release an extra zip of the source code at that moment is provided.
+
 ### Version 1.0
 Engine plays reasonable chess. No numbers yet but guessing between 2500 and 2900.
-Special thanks to Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3).
-More thanks to Janez and Colin on Discord. The people on TalkChess. The people on the Zig Forum.
-And the authors of all the engines I used for testing: Bbc, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Seawall, Shallow, Stockfish, Supernova, Teki.
 Many many things need still to be changed, but it is time for a first version.
 
 ### Version 0.1
@@ -26,3 +29,9 @@ To be continued...
 - bench -> performs perft speedtests on 4 positions.
 - d -> draw the current position.
 - quit -> stop the program.
+
+### Thanks to:
+Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3).
+More thanks to Janez and Colin on Discord. The people on TalkChess. The people on the Zig Forum.
+And the authors of all the engines I used for testing: Bbc, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, Seawall, Shallow, Stockfish, Supernova, Teki.
+I also learned a lot from the source code of all these engines.
