@@ -129,14 +129,14 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
 /// TODO: TEST CORRECTNESS
 pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
     return switch (dir) {
-        .north => (u & ~bitboards.bb_rank_8) << 8,
-        .east => (u & ~bitboards.bb_file_h) << 1,
-        .south => (u & ~bitboards.bb_rank_1) >> 8,
-        .west => (u & ~bitboards.bb_file_a) >> 1,
+        .north      => (u & ~bitboards.bb_rank_8) << 8,
+        .east       => (u & ~bitboards.bb_file_h) << 1,
+        .south      => (u & ~bitboards.bb_rank_1) >> 8,
+        .west       => (u & ~bitboards.bb_file_a) >> 1,
         .north_west => (u & ~bitboards.bb_file_a) << 7,
         .north_east => (u & ~bitboards.bb_file_h) << 9,
         .south_east => (u & ~bitboards.bb_file_a) >> 7,
-        .south_west =>(u & ~bitboards.bb_file_a) >> 9,
+        .south_west => (u & ~bitboards.bb_file_a) >> 9,
     };
 }
 

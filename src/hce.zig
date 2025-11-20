@@ -1,3 +1,5 @@
+// zig fmt: off
+
 //! Hand Crafted Evaluation.
 
 const std = @import("std");
@@ -88,6 +90,10 @@ fn compute_king_pawnstorm_areas_black() [64]u64 {
     return ps;
 }
 
+pub var READS: u64 = 0;
+pub var WRITES: u64 = 0;
+pub var HITS: u64 = 0;
+
 pub fn Evaluator(comptime tracing: bool) type {
 
     return struct {
@@ -131,23 +137,57 @@ pub fn Evaluator(comptime tracing: bool) type {
             };
         }
 
-        // pub fn evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, pawnhash: ?*tt.PawnTranspositionTable) Value {
         pub fn evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable) Value {
-            const has_pawns: bool = pos.all_pawns() != 0;
-            return switch(has_pawns) {
-                false => self.internal_evaluate(pos, evalhash, false),
-                true => self.internal_evaluate(pos, evalhash, true),
-            };
-        }
 
-        /// Here and there the comptime has_pawns is there to boost a little speed.
-        fn internal_evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, comptime has_pawns: bool) Value {
             // Eval TT Probe.
             if (evalhash) |hash| {
                 if (hash.probe(pos.key)) |ev| {
                     return ev;
                 }
             }
+
+//            const use_hash: bool = hash != null;
+            // const tt_entry: ?*tt.Entry = if (hash != null) hash.?.get(pos.key) else null;
+
+            // if (tt_entry != null) {
+            //     READS += 1;
+            //     if (tt_entry.?.key == pos.key) {
+            //         if (tt_entry.?.get_static_eval()) |ev| {
+            //             HITS += 1;
+            //             return ev;
+            //         }
+            //     }
+            // }
+
+            const has_pawns: bool = pos.all_pawns() != 0;
+            const score: Value = switch(has_pawns) {
+                false => self.internal_evaluate(pos, false),
+                true => self.internal_evaluate(pos, true),
+            };
+
+            if (evalhash) |hash| {
+                //WRITES += 1;
+                hash.store(pos.key, score);
+            }
+
+            // if (tt_entry != null) {
+            //     WRITES += 1;
+            //     tt_entry.?.key = pos.key;
+            //     tt_entry.?.static_eval = @intCast(score);
+            // }
+
+            return score;
+        }
+
+        /// Here and there the comptime has_pawns is there to boost a little speed.
+        //fn internal_evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, comptime has_pawns: bool) Value {
+        fn internal_evaluate(self: *Self, pos: *const Position, comptime has_pawns: bool) Value {
+            // // Eval TT Probe.
+            // if (evalhash) |hash| {
+            //     if (hash.probe(pos.key)) |ev| {
+            //         return ev;
+            //     }
+            // }
 
             // Init pos reference.
             self.pos = pos;
@@ -230,14 +270,13 @@ pub fn Evaluator(comptime tracing: bool) type {
                 io.print("final result {}\n", .{ result });
             }
 
-            if (evalhash) |hash| {
-                hash.store(pos.key, result);
-            }
+            // if (evalhash) |hash| {
+            //     hash.store(pos.key, result);
+            // }
 
             return result;
         }
 
-        //fn eval_pawns(self: *Self, comptime us: Color, comptime is_cached_score: bool, pawnentry: ?*tt.PawnEntry) ScorePair {
         fn eval_pawns(self: *Self, comptime us: Color) ScorePair {
             if (comptime lib.is_paranoid) {
                 assert(self.pos.all_pawns() != 0);
@@ -260,17 +299,6 @@ pub fn Evaluator(comptime tracing: bool) type {
                 score.inc(sp);
                 if (tracing) trace(sp, us, sq, "pawn phalanx", .{});
             }
-
-            // @EXPERIMENTAL
-            // if (pos.all_pawns() & bitboards.file_e == 0 and popcnt(our_pawns & bitboards.bb_queenside) > popcnt(their_pawns & bitboards.bb_queenside)) {
-            //     sp = hcetables.pawn_majority_bonus;
-            //     score.inc(sp);
-            // }
-
-            // if (pos.all_pawns() & bitboards.file_d == 0 and popcnt(our_pawns & bitboards.bb_kingside) > popcnt(their_pawns & bitboards.bb_kingside)) {
-            //     sp = hcetables.pawn_majority_bonus;
-            //     score.inc(sp);
-            // }
 
             // Loop through the pawns.
             var pawns: u64 = our_pawns;
@@ -324,7 +352,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 }
             }
 
-            // Pawn king stuff.
+            // Pawn - king stuff.
             const king_sq: Square = self.king_squares[us.u];
             const their_king_sq: Square = self.king_squares[them.u];
             while (passed_pawns != 0) {
@@ -764,15 +792,6 @@ pub fn Evaluator(comptime tracing: bool) type {
             return hcetables.pawn_storm_table[i];
         }
 
-        // fn legalize_moves(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
-        //     _ = self;
-        //     _ = pt;
-        //     _ = us;
-        //     _ = from;
-        //     //_ = bb_moves;
-        //     return bb_moves;
-        // }
-
         /// TODO: Certainly not legal. Only heuristic. We need all pins? Now we use only the pins of the side to move.
         fn legalize_moves(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
 
@@ -945,22 +964,3 @@ pub fn see_score(pos: *const Position, m: Move) Value {
     }
     return gain[0];
 }
-
-/// NOT USED.
-pub fn bishop_knight_mating_score(their_king_sq: Square, our_bishop_color: Color) u3 {
-    return switch (our_bishop_color.e) {
-        .white => @min(funcs.square_distance(their_king_sq, Square.A8), funcs.square_distance(their_king_sq, Square.H1)),
-        .black => @min(funcs.square_distance(their_king_sq, Square.A8), funcs.square_distance(their_king_sq, Square.H1)),
-    };
-}
-
-
-
-    // fn scale_towards_draw(score: Value, drawcounter: u16) Value {
-    //     if (drawcounter <= 2) return score;
-    //     // drawcounter ranges 0...100
-    //     const s: f32 = @floatFromInt(score);
-    //     const d: f32 = @floatFromInt(drawcounter);
-    //     const factor: f32 = (100.0 - d) / 100.0;
-    //     return @intFromFloat(s * factor);
-    // }

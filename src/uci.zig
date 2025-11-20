@@ -288,6 +288,23 @@ const TTY = struct {
     }
 
     fn print_state() void {
+
+        io.print("R {} W {} H {}\n", .{ hce.READS, hce.WRITES, hce.HITS });
+        if (true) return;
+
+        // engine.set_position("1kr4r/1p1nnp2/1P1qb2p/p1pp4/P2P1NpN/2QBP1P1/5PP1/2R2RK1 w - - 0 24", null) catch return;
+        engine.set_position("1kr5/1p3p2/1P1qb2p/p1pp4/P2P2pN/2Q1P1P1/5PP1/2R3K1 w - - 0 24", null) catch return;
+
+
+
+        const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
+        const see = hce.see_score(&engine.pos, m);
+        //const see2 = hce.see_score_phased(&engine.pos, m);
+        draw_position();
+
+        io.print("see score {}", .{ see });
+        //io.print("see score phased {}", .{ see2 });
+        if (true) return;
         //const t: *const tt.TranspositionTable = &engine.transpositiontable;
 
 // position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8

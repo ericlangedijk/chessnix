@@ -1,13 +1,6 @@
 // zig fmt: off
 
-//! TranspositionTable for search.
-
-// TODO: atomics when multiple threads.
-// TODO: paranoid asserts for too small sizes.
-// Alpha / UPPER bound → real score ≤ stored score
-// Beta / LOWER bound → real score ≥ stored score
-// Exact → real score == stored score (PV result)
-
+//! Transposition Table for search.
 
 const std = @import("std");
 
@@ -59,6 +52,7 @@ pub fn get_adjusted_score_for_tt_probe(tt_score: Value, ply: u16) Value {
 
 pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
 
+/// 16 bytes, 123 bits. We could still stuff a 5 bits age in here.
 pub const Entry = packed struct {
     /// The kind (exact, alpha or beta) with which this entry was stored.
     bound: Bound,
@@ -70,12 +64,22 @@ pub const Entry = packed struct {
     move: Move,
     /// The evaluation according to search.
     score: i16,
+    /// Stored raw static eval. Used to speedup evaluation. -infinity serves as null.
+    static_eval: i16,
     /// Stored during principal variation search?
     was_pv: bool,
 
-    pub const empty: Entry = .{ .bound = .None, .key = 0, .depth = 0, .move = .empty, .score = 0, .was_pv = false };
+    pub const empty: Entry = .{
+        .bound = .None,
+        .key = 0,
+        .depth = 0,
+        .move = .empty,
+        .score = -types.infinity,
+        .static_eval = -types.infinity,
+        .was_pv = false
+    };
 
-    pub fn is_score_usable(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
+    pub fn is_score_usable_for_depth(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
         if (self.depth < depth) {
             return false;
         }
@@ -85,6 +89,19 @@ pub const Entry = packed struct {
             .Alpha => return self.score <= alpha,
             .Beta  => return self.score >= beta,
         }
+    }
+
+    pub fn is_score_usable(self: *const Entry, alpha: Value, beta: Value) bool {
+        switch (self.bound) {
+            .None  => return false,
+            .Exact => return true,
+            .Alpha => return self.score <= alpha,
+            .Beta  => return self.score >= beta,
+        }
+    }
+
+    pub fn get_static_eval(self: *const Entry) ?i16 {
+        return if (self.static_eval != -types.infinity) self.static_eval else null;
     }
 };
 
@@ -119,10 +136,11 @@ pub const TranspositionTable = struct {
         self.hash.clear();
     }
 
+    /// Store the search score. Does not overwrite the static_eval.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool) void {
         if (comptime lib.is_paranoid) {
-             assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-             assert(depth >= 0);
+            assert(depth >= 0 and depth <= 128);
+            assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
         }
         const entry: *Entry = self.get(key);
 
@@ -131,47 +149,15 @@ pub const TranspositionTable = struct {
             return;
         }
 
-        const adjusted_score = get_adjusted_score_for_tt_store(score, ply);
-        entry.* = .{ .bound = bound, .key = key, .depth = @intCast(depth), .move = move, .score = @intCast(adjusted_score), .was_pv = pv };
+        entry.bound = bound;
+        entry.key = key;
+        entry.depth = @intCast(depth);
+        entry.move = move;
+        entry.score = @intCast(get_adjusted_score_for_tt_store(score, ply));
+        entry.was_pv = pv;
     }
 
-    /// The score of the entry is adjusted for the ply when mating distance is there.
-    pub fn probe(self: *TranspositionTable, key: u64, depth: u8, ply: u16, alpha: Value, beta: Value, tt_move: *Move) ?Value {
-        // We should return a copy with adjusted score.
-        const entry: *const Entry = self.get(key);
-
-        if (entry.key != key) {
-            return null;
-        }
-
-        // Usable move.
-        tt_move.* = entry.move;
-
-        // Check score is usable for this depth.
-        if (entry.depth < depth) {
-            return null;
-        }
-
-        const adjusted_score = get_adjusted_score_for_tt_probe(entry.score, ply);
-
-        switch (entry.bound) {
-            .None => {
-               unreachable;
-            },
-            .Exact => {
-                return adjusted_score;
-            },
-            .Alpha => {
-                return if (adjusted_score <= alpha) adjusted_score else null;
-            },
-            .Beta => {
-                return if (adjusted_score >= beta) adjusted_score else null;
-            },
-        }
-    }
-
-    /// TODO: we can just return the entry for overwrite. this saves another lookup.
-    pub fn probe_raw(self: *TranspositionTable, key: u64) ?*const Entry {
+    pub fn probe(self: *TranspositionTable, key: u64) ?*const Entry {
         const entry: *const Entry = self.get(key);
         if (entry.key != key) {
             return null;

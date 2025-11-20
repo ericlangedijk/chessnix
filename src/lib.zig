@@ -28,10 +28,12 @@ pub fn finalize() void {
 pub const BoundedArray = @import("utils.zig").BoundedArray;
 
 // Globals.
-pub const version = "1.0";
+pub const version = "1.2";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_paranoid: bool = if (is_debug) true else false; // Set paranoid to false to speedup debugging.
+pub const crash_guard: bool = false; // For local testing only. When doing batch tests with for example CuteChess.
+
 pub const ctx: *const MemoryContext = &memory_context;
 pub const io: *IoContext = &io_context;
 var memory_context: MemoryContext = undefined;

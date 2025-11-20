@@ -1,5 +1,6 @@
 ### Current Code Swamp 1.x
 Currently finetuning the algorithms, speed, chess960 support. ELO target for the 1.x version is 3200.
+Reached 2900 now.
 
 I am a github noob and only use the main branch as a backup of the current state on my PC.
 With every release an extra zip of the source code at that moment is provided.

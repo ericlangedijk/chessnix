@@ -1,6 +1,6 @@
 // zig fmt: off
 
-//! The basic types.
+//! Basic types and consts.
 
 const std = @import("std");
 const bitboards = @import("bitboards.zig");
@@ -240,12 +240,8 @@ pub const Square = packed union {
         return if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
     }
 
-    // fn same_color(sq1: u8, sq2: u8) bool {
-    //     return (((sq1 ^ sq2) & 1) == 0);
-    // }
-
     pub fn to_bitboard(self: Square) u64 {
-        return bitboards.square_bitboards[self.u]; // It seems this is a bit faster than 1 << square.
+        return bitboards.square_bitboards[self.u];
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -387,16 +383,9 @@ pub const PieceType = packed union {
         return self.u;
     }
 
-    //pub fn bitcast(self: PieceType)
-
     pub fn value(self: PieceType) Value {
         return piece_values[self.u];
     }
-
-    // /// Returns the material code.
-    // pub fn material(self: PieceType) Value {
-    //     return piece_material_values[self.u];
-    // }
 
     pub fn to_char(self: PieceType) u8 {
         return switch(self.e) {
@@ -409,20 +398,6 @@ pub const PieceType = packed union {
         };
     }
 };
-
-// an (maybe clunky) alternative is
-// 0000 w pawn
-// 0001 b pawn
-// 0010 w knight
-// 0011 b_knight
-// 0100 w bishop
-// 0101 b bishop
-// 0110 w rook
-// 0111 b_rook
-// 1000 w queen
-// 1001 b queen
-// 1010 w king
-// 1011 b king
 
 pub const Piece = packed union {
     /// To have convenient array indexing the values are just sequential.
@@ -477,10 +452,6 @@ pub const Piece = packed union {
         return piece_values[self.u];
     }
 
-    // pub fn material(self: Piece) Value {
-    //     return piece_material_values[self.u];
-    // }
-
     pub fn from_usize(u: usize) Piece {
         if (comptime lib.is_paranoid) {
             assert(u <= 11);
@@ -491,10 +462,6 @@ pub const Piece = packed union {
     pub fn idx(self: Piece) usize {
         return self.u;
     }
-
-    // pub fn bitcast(self: Piece) u4 {
-    //     return @bitCast(self);
-    // }
 
     pub fn is_empty(self: Piece) bool {
         return self.e == .no_piece;
@@ -550,10 +517,6 @@ pub const Piece = packed union {
     pub fn is_pawn_of_color(self: Piece, comptime us: Color) bool {
         return if (us.e == .white) self.e == .w_pawn else self.e == .b_pawn;
     }
-
-    // pub fn is_king(self: Piece) bool {
-    //     return self.piecetype().e == .king;
-    // }
 
     pub fn to_print_char(self: Piece) u8 {
         var ch: u8 = switch(self.piecetype().e) {
@@ -627,7 +590,7 @@ pub const Move = packed struct(u16) {
     }
 
     pub fn is_empty(self: Move) bool {
-        return self.bitcast() == 0;
+        return self == empty; //.bitcast() == 0;
     }
 
     pub fn is_null_move(self: Move) bool {
@@ -668,7 +631,6 @@ pub const Move = packed struct(u16) {
         if (comptime lib.is_paranoid) {
             assert(self.is_promotion());
         }
-        //return .{ .u = @truncate((self.flags & 0b0111) - 2) };
         return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
@@ -783,7 +745,7 @@ pub const megabyte: usize = 1024 * 1024;
 
 pub const max_game_length: usize = 1024;
 pub const max_move_count: usize = 224;
-pub const max_search_depth: u8 = 128;
+pub const max_search_depth: u8 = 128; // TOOD: maybe 256 for egtb
 pub const max_threads: u16 = 32;
 
 pub const infinity: Value = 32000;
@@ -791,14 +753,12 @@ pub const mate: Value = 30000;
 pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
-pub const discard_value: Value = -1_000_000;
 
-// Only used for Static Exchange Evaluation.
-pub const value_pawn: Value = 100;
-pub const value_knight: Value = 300;
+pub const value_pawn: Value = 98;
+pub const value_knight: Value = 299;
 pub const value_bishop: Value = 300;
-pub const value_rook: Value = 500;
-pub const value_queen: Value = 950;
+pub const value_rook: Value = 533;
+pub const value_queen: Value = 921;
 pub const value_king: Value = 0;
 
 const piece_values: [12]Value = .{

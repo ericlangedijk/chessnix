@@ -8,6 +8,7 @@ const uci = @import("uci.zig");
       const bb = @import("bitboards.zig");
       const t = @import("types.zig");
       const f = @import("funcs.zig");
+      const tt = @import("tt.zig");
 
 
 pub fn main() !void
@@ -20,7 +21,13 @@ pub fn main() !void
         try @import("tests.zig").run_silent_debugmode_tests();
     }
 
-    // try @import("tests/enginetests.zig").lichess_puzzles();
+    //lib.io.print("{} {}\n", .{ @sizeOf(tt.Entry), @bitSizeOf(tt.Entry)});
+
+    //try @import("tests/enginetests.zig").lichess_puzzles();
+    //try @import("search.zig").debug_compute_reduction_table();
+
+    //const table = @import("hce.zig").see_values;
+   // std.debug.print("{any}", .{table});
 
     uci.run();
 }
