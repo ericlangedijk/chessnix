@@ -64,7 +64,7 @@ pub const Entry = packed struct {
     move: Move,
     /// The evaluation according to search.
     score: i16,
-    /// Stored raw static eval. Used to speedup evaluation. -infinity serves as null.
+    /// Stored raw static eval. Not used.
     static_eval: i16,
     /// Stored during principal variation search?
     was_pv: bool,

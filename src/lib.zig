@@ -21,6 +21,7 @@ pub fn initialize() !void {
 
 pub fn finalize() void {
     lib_is_initialized = false;
+    @import("position.zig").finalize();
     memory_context.deinit();
 }
 

@@ -79,12 +79,12 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
                 count = do_run(output, false, them, depth - 1, &next_pos); // go recursive
                 nodes += count;
             }
-            //pos.undo_move(us);
         }
 
         if (output and is_root) {
-            io.print("{f}: {}\n", .{ m, count });
-            //io.debugprint("{f}: {} {}\n", .{ m, count, m.is_capture() });
+            m.print_buffered(pos.is_960);
+            io.print_buffered(": {}\n", .{ count });
+            io.flush();
         }
     }
     return nodes;

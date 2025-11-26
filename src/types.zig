@@ -9,6 +9,8 @@ const funcs = @import("funcs.zig");
 const lib = @import("lib.zig");
 
 const assert = std.debug.assert;
+const wtf = lib.wtf();
+const io = lib.io;
 
 // Much used, we shorten.
 pub const P = PieceType.PAWN;
@@ -518,6 +520,10 @@ pub const Piece = packed union {
         return if (us.e == .white) self.e == .w_pawn else self.e == .b_pawn;
     }
 
+    pub fn is_rook_of_color(self: Piece, comptime us: Color) bool {
+        return if (us.e == .white) self.e == .w_rook else self.e == .b_rook;
+    }
+
     pub fn to_print_char(self: Piece) u8 {
         var ch: u8 = switch(self.piecetype().e) {
             .pawn => 'P',
@@ -634,58 +640,36 @@ pub const Move = packed struct(u16) {
         return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
-    // Zig-format classic for UCI move output (e2e4).
-    pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void {
+    /// Prints uci move to stdout.
+    pub fn print_buffered(self: Move, is_960: bool) void {
         if (self.is_empty()) {
-            try writer.print("0000", .{});
+            io.print_buffered("0000", .{});
             return;
         }
         const from: Square = self.from;
         var to: Square = self.to;
 
-        if (self.flags == Move.castle_short) {
-            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
-            to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u];
-        }
-        else if (self.flags == Move.castle_long) {
-            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
-            to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
+        // Only in classic chess we need to decode our "king takes rook".
+        // In Chess960 this is default.
+        if (!is_960) {
+            if (self.flags == Move.castle_short) {
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u];
+            }
+            else if (self.flags == Move.castle_long) {
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
+            }
         }
 
-        try writer.print("{t}{t}", .{ from.e, to.e });
+        io.print_buffered("{t}{t}", .{ from.e, to.e });
 
         if (self.is_promotion()) {
             const prom: PieceType = self.promoted_to();
             const ch: u8 = "?nbrq?"[prom.u];
-            try writer.print("{u}", .{ ch });
+            io.print_buffered("{u}", .{ ch });
         }
     }
-
-    /// UCI string
-    pub fn to_string(self: Move) lib.BoundedArray(u8, 5) {
-        var result: lib.BoundedArray(u8, 5) = .{};
-        const from: Square = self.from;
-        var to: Square = self.to;
-
-        if (self.is_castle()) {
-            const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
-            if (self.flags == Move.castle_short)
-                to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u]
-            else
-                to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
-        }
-
-        result.print_assume_capacity("{t}", .{ from.e});
-        result.print_assume_capacity("{t}", .{ to.e});
-
-        if (self.is_promotion()) {
-            const prom = self.promoted_to();
-            const ch: u8 = "?nbrq?"[prom.u];
-            result.print_assume_capacity("{u}", .{ ch });
-        }
-        return result;
-    }
-
 };
 
 pub const ScorePair = struct {

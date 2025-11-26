@@ -16,18 +16,22 @@ pub fn main() !void
     try lib.initialize();
     defer lib.finalize();
 
-    //  Debug tests.
+    // Debug tests.
     if (comptime lib.is_debug) {
         try @import("tests.zig").run_silent_debugmode_tests();
     }
 
-    //lib.io.print("{} {}\n", .{ @sizeOf(tt.Entry), @bitSizeOf(tt.Entry)});
+    // var ar: [2][6][64][6][64]i16 = std.mem.zeroes([2][6][64][6][64]i16);
 
-    //try @import("tests/enginetests.zig").lichess_puzzles();
-    //try @import("search.zig").debug_compute_reduction_table();
+    // ar[1][5][23][0][0] = 42;
+    // ar[1][5][23][0][5] = 43;
 
-    //const table = @import("hce.zig").see_values;
-   // std.debug.print("{any}", .{table});
+    // const entry: *[6][64]i16 = &ar[1][5][23];
+    // std.debug.print("{}\n", .{ entry[0][0] });
+    // std.debug.print("{}\n", .{ entry[0][5] });
+
+    //std.debug.print("{}\n", .{@sizeOf(p.Position)});
+    //std.debug.print("{}\n", .{@sizeOf(p.Layout)});
 
     uci.run();
 }

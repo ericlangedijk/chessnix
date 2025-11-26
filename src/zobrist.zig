@@ -4,20 +4,17 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
+const rnd = @import("rnd.zig");
 const types = @import("types.zig");
 
 const assert = std.debug.assert;
 
-const uses = struct
-{
-    const rnd = @import("rnd.zig");
-};
-
 const Piece = types.Piece;
 const Square = types.Square;
 
+
 pub fn initialize() void {
-    var random: uses.rnd.Random = .init(0);
+    var random: rnd.Random = .init(1);
 
     // First
     for (Piece.all) |pc| {
@@ -40,6 +37,8 @@ pub fn initialize() void {
 
     btm_key = random.next_u64();
 }
+
+
 
 pub var piece_square_keys: [12 * 64]u64 = @splat(0);
 pub var ep_keys: [64]u64 = @splat(0);

@@ -29,7 +29,7 @@ pub fn run_silent_debugmode_tests() !void
     var timer = utils.Timer.start();
 
     const perfts: usize = try run_perfts(3);
-    const perfts_960: usize = 0; //try run_perfts_960(3);
+    const perfts_960: usize = try run_perfts_960(3);
     const flips: usize = try test_flip();
     const evals: usize = 0;//try test_eval();
 
@@ -103,7 +103,8 @@ fn run_perfts_960(max_depth: usize) !usize {
 
     for (testpositions_960, 0..) |str, index| {
         try pos.set(str, true);
-        std.debug.print("{s}\n", .{ str });
+        //std.debug.print("{s}\n", .{ str });
+        //std.debug.print("nr of layout entries {}\n", .{ position.alternative_layout_map.count() });
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d| {

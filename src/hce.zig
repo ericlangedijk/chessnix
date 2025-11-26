@@ -793,37 +793,31 @@ pub fn Evaluator(comptime tracing: bool) type {
         }
 
         /// TODO: Certainly not legal. Only heuristic. We need all pins? Now we use only the pins of the side to move.
-        fn legalize_moves(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
+        fn legalize_moves1(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
 
             const from_bb: u64 = from.to_bitboard();
             if (pt.e == .knight and self.pos.pins & from_bb & self.pos.pins != 0) {
                 return 0;
             }
             _ = us;
-            //_ = self; _ = pt; _= us; _ = from;
             return bb_moves;
-            // const from_bb: u64 = from.to_bitboard();
-            // if (from_bb & self.pos.pins == 0) {
-            //     return bb_moves;
+        }
+
+
+        fn legalize_moves(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
+            //_ = us;
+            const from_bb: u64 = from.to_bitboard();
+            if (self.pos.pins & from_bb == 0) {
+                return bb_moves;
+            }
+            if (pt.e == .knight) {
+                return 0;
+            }
+            // else {
+            //     return bb_moves & bitboards.get_squarepair(self.king_squares[us.u], from).ray;
             // }
-            // switch (pt.e) {
-            //     // .pawn => {
-            //     //     return bb_moves;
-            //     // },
-            //     .knight => {
-            //         return 0;
-            //     },
-            //     else => {
-            //         return bitboards.get_squarepair(from, self.king_squares[us.u]).ray & bb_moves; // from first
-            //     },
-            //     // .bishop, .rook, .queen => {
-            //     //     //return bitboards.get_squarepair(self.king_squares[us.u], from).ray & bb_moves; // king_sq first!
-            //     //     return bb_moves;
-            //     // },
-            //     // .king => {
-            //     //     return bb_moves;
-            //     // },
-            // }
+            _ = us;
+            return bb_moves;
         }
 
         pub fn sliding_score(pos: *const Position, score: ScorePair) Value {

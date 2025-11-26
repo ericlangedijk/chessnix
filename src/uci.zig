@@ -117,11 +117,15 @@ const UCI = struct {
         //         search.Options.default_hash_size, search.Options.min_hash_size, search.Options.max_hash_size,
         //     }
         // );
+
+       // uci is started with "setoption name UCI_Chess960 value true" before ucinewgame. (or after???)
+
         io.print
         (
             \\id chessnix {s}
             \\id author eric langedijk
             \\option name Hash type spin default {} min {} max {}
+            \\option name UCI_Chess960 type check default false
             \\uciok
             \\
             ,
@@ -151,29 +155,30 @@ const UCI = struct {
         try engine.stop();
     }
 
-    /// Parse UCI command after "setoption"
+    /// Parse UCI command after "setoption".
     fn setoption(tokenizer: *Tokenizer) !void {
-        //io.debugprint("setoption, ", .{});
-
+        // The tokens are setoption [name] [value] [requested-value]
         // name Hash value 32
+        // name UCI_Chess960 value true
+
         const name_token: []const u8 = tokenizer.next() orelse return;
         if (!eql(name_token, "name")) return;
 
-        //io.debugprint("{s}, ", .{name_token});
-
         const name: []const u8 = tokenizer.next() orelse return;
-        //io.debugprint("{s}, ", .{name});
 
         const value_token: []const u8 = tokenizer.next() orelse return;
         if (!eql(value_token, "value")) return;
 
-        //io.debugprint("{s}, ", .{value_token});
-
         const value: []const u8 = tokenizer.next() orelse return;
+
         if (eql(name, "Hash")) {
             const v: u64 = std.fmt.parseInt(u64, value, 10) catch return;
             engine.options.set_hash_size(v);
             try engine.apply_hash_size();
+        }
+        else if (eql(name, "UCI_Chess960")) {
+            const v: bool = std.mem.eql(u8, value, "true");
+            engine.options.set_chess_960(v);
         }
     }
 
@@ -229,8 +234,8 @@ const UCI = struct {
             else if (eql(next, "infinite")) {
                 result.infinite = true;
             }
-    }
-    return result;
+        }
+        return result;
     }
 
     fn parse_64(str: ?[]const u8) ?u64 {
@@ -295,8 +300,6 @@ const TTY = struct {
         // engine.set_position("1kr4r/1p1nnp2/1P1qb2p/p1pp4/P2P1NpN/2QBP1P1/5PP1/2R2RK1 w - - 0 24", null) catch return;
         engine.set_position("1kr5/1p3p2/1P1qb2p/p1pp4/P2P2pN/2Q1P1P1/5PP1/2R3K1 w - - 0 24", null) catch return;
 
-
-
         const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
         const see = hce.see_score(&engine.pos, m);
         //const see2 = hce.see_score_phased(&engine.pos, m);
@@ -307,7 +310,7 @@ const TTY = struct {
         if (true) return;
         //const t: *const tt.TranspositionTable = &engine.transpositiontable;
 
-// position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8
+        // position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8
 
         //io.debugprint("upcoming rep {}\n", .{engine.pos.is_repetition()});
         //io.debugprint("threefold rep {}\n", .{engine.pos.is_threefold_repetition()});
@@ -350,15 +353,13 @@ const TTY = struct {
 
         //s.searcher.history_heuristics.print_state();
         // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
-       // engine.pos.print_history();
-
+        // engine.pos.print_history();
 
         // if (comptime lib.is_paranoid) {
         //     for (self.transpositiontable.hash.data) |e| {
         //         assert(e != tt.Entry.empty);
         //     }
         // }
-
     }
 };
 
