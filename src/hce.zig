@@ -212,8 +212,8 @@ pub fn Evaluator(comptime tracing: bool) type {
             }
 
             self.mobility_areas = .{
-                ~(self.pos.by_color(Color.WHITE) | self.pawn_attacks[Color.BLACK.u]),
-                ~(self.pos.by_color(Color.BLACK) | self.pawn_attacks[Color.WHITE.u]),
+                ~(pos.by_color(Color.WHITE) | self.pawn_attacks[Color.BLACK.u]),
+                ~(pos.by_color(Color.BLACK) | self.pawn_attacks[Color.WHITE.u]),
             };
 
             self.knight_attacks = @splat(0);
@@ -269,10 +269,6 @@ pub fn Evaluator(comptime tracing: bool) type {
                 io.print("pair {} {}\n", .{ score.mg, score.eg });
                 io.print("final result {}\n", .{ result });
             }
-
-            // if (evalhash) |hash| {
-            //     hash.store(pos.key, result);
-            // }
 
             return result;
         }
@@ -462,16 +458,17 @@ pub fn Evaluator(comptime tracing: bool) type {
                 // Mobility
                 const moves: u64 = self.legalize_moves(PieceType.BISHOP, us, sq, attacks.get_bishop_attacks(sq, occ));
                 const mobility: u64 = moves & self.mobility_areas[us.u];
-                const mobility_count: u7 = popcnt(mobility);
-                sp = hcetables.bishop_mobility_table[mobility_count];
+                const cnt: u7 = popcnt(mobility);
+                sp = hcetables.bishop_mobility_table[cnt];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "bishop mobility, popcnt = {}", .{ mobility_count });
+                if (tracing) trace(sp, us, sq, "bishop mobility, popcnt = {}", .{ cnt });
 
                 // Update
                 self.bishop_attacks[us.u] |= moves;
 
                 // King attack.
                 const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
+
                 if (enemy_king_attacks != 0) {
                     const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                     sp = hcetables.attack_power[PieceType.BISHOP.u][king_attack_count];
@@ -825,9 +822,7 @@ pub fn Evaluator(comptime tracing: bool) type {
             const phase: u8 = @min(max, pos.phase);
             const mg: Value = score.mg;
             const eg: Value = score.eg;
-            //return @divTrunc(opening * phase + endgame * (max - phase), max);
-            return @divTrunc(mg * phase + eg * (max - phase), max);
-        }
+            return @divTrunc(mg * phase + eg * (max - phase), max);        }
 
         fn trace(sp: ScorePair, us: Color, sq: ?Square, comptime msg: []const u8, args: anytype) void {
             //const avg

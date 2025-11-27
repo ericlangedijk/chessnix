@@ -86,7 +86,7 @@ pub const Position = struct {
     nullmove_state: bool,
     /// Draw counter. After 50 reversible moves (100 ply) it is a draw.
     rule50: u16,
-    /// The enpassant square.
+    /// The enpassant square. A1 means no ep square.
     ep_square: Square,
     /// Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4,
@@ -282,6 +282,7 @@ pub const Position = struct {
         self.lazy_update_state();
     }
 
+    /// Assumes king is on the board.
     fn set_castling_right(self: *Position, us: Color, rook_sq: Square) void {
         const king_sq: Square = self.king_square(us);
         if (rook_sq.u > king_sq.u) {
@@ -345,7 +346,9 @@ pub const Position = struct {
 
     /// Parses a uci-move.
     pub fn parse_move(self: *const Position, str: []const u8) types.ParsingError!Move {
-        if (str.len < 4 or str.len > 5) return types.ParsingError.IllegalMove;
+        if (str.len < 4 or str.len > 5) {
+            return types.ParsingError.IllegalMove;
+        }
 
         const us = self.stm;
         const from: Square = Square.from_string(str[0..2]);
@@ -379,7 +382,9 @@ pub const Position = struct {
 
         var finder: MoveFinder = .init(from, to, prom_flags);
         self.lazy_generate_moves(&finder);
-        if (finder.found()) return finder.move; // return the exact move found.
+        if (finder.found()) {
+            return finder.move; // return the exact move found.
+        }
         return types.ParsingError.IllegalMove;
     }
 
@@ -746,6 +751,7 @@ pub const Position = struct {
         self.ply += 1;
         self.ply_from_root += 1;
         self.game_ply += 1;
+        self.nullmove_state = false;
         self.ep_square = Square.zero;
 
         // Update the castling rights.
@@ -758,7 +764,7 @@ pub const Position = struct {
             }
         }
 
-        // Switch is in numerical order
+        // Switch is in numerical order.
         sw: switch (m.flags) {
             Move.silent => {
                 self.move_piece(us, pc, from, to);
@@ -777,7 +783,7 @@ pub const Position = struct {
                 self.move_piece(us, pc, from, to);
                 key ^= key_delta;
                 pawnkey ^= key_delta;
-                // Only set ep if valid.
+                // Only set ep if usable.
                 if (bitboards.ep_masks[to.u] & self.pawns(them) != 0) {
                     const ep: Square = if (us.e == .white) to.sub(8) else to.add(8);
                     self.ep_square = ep;
@@ -1317,7 +1323,8 @@ pub const Position = struct {
                         store(from, to, flag, storage) orelse return;
                     }
                 }
-            } else {
+            }
+            else {
                 bb = our_queens_bishops & ~self.pins;
                 while (bb != 0) {
                     from = pop_square(&bb);
@@ -1352,7 +1359,8 @@ pub const Position = struct {
                         store(from, to, flag, storage) orelse return;
                     }
                 }
-            } else {
+            }
+            else {
                 bb = our_queens_rooks & ~self.pins;
                 while (bb != 0) {
                     from = pop_square(&bb);
@@ -1456,23 +1464,6 @@ pub const Position = struct {
         return !self.is_square_attacked_by_for_occupation(bb_without_king, to, them);
     }
 
-    // /// Compares the kings path with unsafe squares.
-    // fn is_legal_castle_classic(self: *const Position, comptime us: Color, comptime castletype: CastleType, bb_unsafe: u64) bool {
-    //     const path: u64 = self.layout.attack_paths[us.u][castletype.u];
-    //     return path & bb_unsafe == 0;
-    // }
-
-    // /// Checks for each square on the kings path if it is attacked.
-    // fn is_legal_castle_check_attacks_classic(self: *const Position, comptime us: Color, comptime castletype: CastleType) bool {
-    //     const them: Color = comptime us.opp();
-    //     var path: u64 = self.layout.attack_paths[us.u][castletype.u];
-    //     while (path != 0) {
-    //         const sq = pop_square(&path);
-    //         if (self.is_square_attacked_by(sq, them)) return false;
-    //     }
-    //     return true;
-    // }
-
     /// Compares the kings path with unsafe squares.
     fn is_legal_castle(self: *const Position, comptime us: Color, comptime castletype: CastleType, bb_unsafe: u64) bool {
         // Chess980 requires this additional pin check.
@@ -1493,9 +1484,11 @@ pub const Position = struct {
         return true;
     }
 
-    /// Meant to be a validation after uci position command.
+    /// Meant to be a validation after uci position command. Not used yet.
     pub fn is_valid(self: *const Position) bool {
-        if (popcnt(self.all() > 32)) return false;
+        if (popcnt(self.all() > 32)) {
+            return false;
+        }
 
         const wk: u8 = popcnt(self.kings(Color.WHITE));
         const bk: u8 = popcnt(self.kings(Color.BLACK));
@@ -1517,6 +1510,12 @@ pub const Position = struct {
     /// ### Debug only.
     pub fn pos_ok(self: *const Position) bool {
         lib.not_in_release();
+
+        if (self.phase == 0 and (self.all_except_pawns_and_kings(Color.WHITE) | self.all_except_pawns_and_kings(Color.BLACK)) != 0) {
+            lib.io.debugprint("PHASE ERROR", .{});
+            self.draw();
+            return false;
+        }
 
         if (popcnt(self.kings(Color.WHITE)) != 1) {
             lib.io.debugprint("WHITE KING ERROR", .{});
@@ -1614,7 +1613,8 @@ pub const Position = struct {
         // Color to move.
         if (self.stm.e == .white) {
             try writer.print(" w", .{});
-        } else {
+        }
+        else {
             try writer.print(" b", .{});
         }
 
@@ -1622,7 +1622,8 @@ pub const Position = struct {
         try writer.print(" ", .{});
         if (self.castling_rights == 0) {
             try writer.print("-", .{});
-        } else {
+        }
+        else {
             if (self.castling_rights & cf_white_short != 0) try writer.print("K", .{});
             if (self.castling_rights & cf_white_long != 0)  try writer.print("Q", .{});
             if (self.castling_rights & cf_black_short != 0) try writer.print("k", .{});
@@ -1633,7 +1634,8 @@ pub const Position = struct {
         try writer.print(" ", .{});
         if (self.ep_square.u > 0) {
             try writer.print("{t}", .{self.ep_square.e});
-        } else {
+        }
+        else {
             try writer.print("-", .{});
         }
 
@@ -1728,7 +1730,7 @@ pub const Position = struct {
 pub const Params = packed struct {
     /// Only generate captures and promotions. Used in quiet search.
     /// * When in check this is mostly ignored. In that case we generate all moves (evasions).
-    /// * Whether in check or not: when captures is true we only generate queen promotions.
+    /// * When in check or not in check: when captures is true we only generate queen promotions.
     captures: bool = false,
     /// The color for which we are generating.
     us: Color = Color.WHITE,
@@ -1877,11 +1879,11 @@ pub const Layout = struct {
     rook_start_squares: [2][2]Square,
     /// Indexing: [color].
     king_start_squares: [2]Square,
-    /// Paths without the king. Indexing: [square].
+    /// Paths without the king. Indexing: [color][castletype].
     rook_paths: [2][2]u64,
-    /// Paths without the rook. Indexing: [square].
+    /// Paths without the rook. Indexing: [color][castletype].
     king_paths: [2][2]u64,
-    /// Paths of the king without the king we should check for enemy attacks. Indexing: [square].
+    /// Paths of the king without the king we should check for enemy attacks. Indexing: [color][castletype].
     attack_paths: [2][2]u64,
     /// Masks of castling rights. Indexing: [square].
     castling_masks: [64]u4,
@@ -1918,7 +1920,6 @@ pub const Layout = struct {
             // white short castle
             if (key.w_right_rook) |wr_| {
                 const wr: Square = .from(wr_);
-                //result.castling_masks[wk.u] |= cf_white_short;
                 result.castling_masks[wr.u] |= cf_white_short;
                 result.rook_start_squares[0][0] = wr;
                 result.rook_paths[0][0] = bitboards.get_squarepair(wr, rook_castle_destination_squares[0][0]).ray & ~wk.to_bitboard();
@@ -1928,7 +1929,6 @@ pub const Layout = struct {
             // white long castle
             if (key.w_left_rook) |wr_| {
                 const wr: Square = .from(wr_);
-                //result.castling_masks[wk.u] |= cf_white_long;
                 result.castling_masks[wr.u] |= cf_white_long;
                 result.rook_start_squares[0][1] = wr;
                 result.rook_paths[0][1] = bitboards.get_squarepair(wr, rook_castle_destination_squares[0][1]).ray & ~wk.to_bitboard();
@@ -1954,7 +1954,6 @@ pub const Layout = struct {
             // black long castle
             if (key.b_left_rook) |br_| {
                 const br: Square = .from(br_);
-                //result.castling_masks[bk.u] |= cf_black_long;
                 result.castling_masks[br.u] |= cf_black_long;
                 result.rook_start_squares[1][1] = br;
                 result.rook_paths[1][1] = bitboards.get_squarepair(br, rook_castle_destination_squares[1][1]).ray & ~bk.to_bitboard();

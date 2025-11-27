@@ -56,16 +56,16 @@ pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
 pub const Entry = packed struct {
     /// The kind (exact, alpha or beta) with which this entry was stored.
     bound: Bound,
-    /// The position hash key. If key == 0 we assume this entry is empty.
+    /// The position hash key.
     key: u64,
     /// The search depth when this entry was stored,
     depth: u8,
     /// The best move according to search.
     move: Move,
     /// The evaluation according to search.
-    score: i16,
-    /// Stored raw static eval. Not used.
-    static_eval: i16,
+    score: SmallValue,
+    /// Stored raw static eval. -infinity serves as null.
+    raw_static_eval: SmallValue,
     /// Stored during principal variation search?
     was_pv: bool,
 
@@ -75,7 +75,7 @@ pub const Entry = packed struct {
         .depth = 0,
         .move = .empty,
         .score = -types.infinity,
-        .static_eval = -types.infinity,
+        .raw_static_eval = -types.infinity,
         .was_pv = false
     };
 
@@ -100,8 +100,8 @@ pub const Entry = packed struct {
         }
     }
 
-    pub fn get_static_eval(self: *const Entry) ?i16 {
-        return if (self.static_eval != -types.infinity) self.static_eval else null;
+    pub fn get_raw_static_eval(self: *const Entry) ?Value {
+        return if (self.raw_static_eval != -types.infinity) self.static_eval else null;
     }
 };
 

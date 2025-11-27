@@ -82,6 +82,8 @@ pub const Color = packed union {
     e: Enum,
     /// The numeric value
     u: u1,
+    /// Handy.
+    is_black: bool,
 
     pub const all: [2]Color = .{ WHITE, BLACK };
     pub const WHITE: Color = .{ .e = .white };
@@ -478,6 +480,7 @@ pub const Piece = packed union {
         if (comptime lib.is_paranoid) {
             assert(self.e != .no_piece);
         }
+        //return .{ .is_black = self.u >= 6 };
         return if (self.u < 6) Color.WHITE else Color.BLACK;
     }
 
@@ -489,6 +492,7 @@ pub const Piece = packed union {
         return if (self.u < 6) .{ .u = self.u } else .{.u = self. u - 6 };
     }
 
+    /// Used for flipping the board.
     pub fn opp(self: Piece) Piece {
         if (self.is_empty()) return Piece.NO_PIECE;
         return if (self.color().e == .white ) .{.u = self.u + 6} else .{ .u = self.u - 6 };

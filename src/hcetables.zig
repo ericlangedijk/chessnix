@@ -146,7 +146,7 @@ pub const king_on_file_penalty: [2][8]ScorePair = .{
 
 /// By [threatened piecetype][is_protected]
 pub const threatened_by_pawn_penalty: [6][2]ScorePair = .{
-    .{ pair(-17, 13), pair(-11, 17) },
+    .{ pair(-17, 13), pair(-11, 17) }, // pawn threatens pawn
     .{ pair(-66, -20), pair(-66, -25) },
     .{ pair(-55, -44), pair(-64, -66) },
     .{ pair(-91, 3), pair(-79, -30) },
@@ -177,12 +177,12 @@ pub const threatened_by_bishop_penalty: [6][2]ScorePair = .{
 
 /// By [threatened piecetype][is_protected]
 pub const threatened_by_rook_penalty: [6][2]ScorePair = .{
-    .{ pair(-2, -25), pair(10, -11) }, // pawn
-    .{ pair(-42, -24), pair(-3, -13) }, // knight
-    .{ pair(-30, -29), pair(-14, -3) }, // bishop
-    .{ pair(-3, -62), pair(13, -38) }, // rook
-    .{ pair(-83, 9), pair(-62, -38) }, // queen
-    .{ pair(0, 0), pair(0, 0) }, // king
+    .{ pair(-2, -25), pair(10, -11) }, // rook threatens pawn
+    .{ pair(-42, -24), pair(-3, -13) }, // rook threatens knight
+    .{ pair(-30, -29), pair(-14, -3) }, // rook threatens bishop
+    .{ pair(-3, -62), pair(13, -38) }, // rook threatens rook
+    .{ pair(-83, 9), pair(-62, -38) }, // rook threatens queen
+    .{ pair(0, 0), pair(0, 0) }, // rook threatens king
 };
 
 /// By [piece]

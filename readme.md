@@ -14,6 +14,7 @@ Currently finetuning the algorithms, speed, chess960 support. ELO target for the
 - Changed: quiescence search. Does not store bestmove anymore.
 - Changed: node counting. Only incremented after doing a move.
 - Bug solved: invalid principal variation output.
+- Bug solved: bishop pair evaluation bug. The mask for white / black squares was wrong.
 
 ### Version 1.1
 Does not exist. This was a local bugfix for pv output.
