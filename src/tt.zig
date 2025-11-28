@@ -53,7 +53,7 @@ pub fn get_adjusted_score_for_tt_probe(tt_score: Value, ply: u16) Value {
 pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
 
 /// 16 bytes, 123 bits. We could still stuff a 5 bits age in here.
-pub const Entry = packed struct {
+pub const Entry = struct {
     /// The kind (exact, alpha or beta) with which this entry was stored.
     bound: Bound,
     /// The position hash key.
@@ -64,8 +64,6 @@ pub const Entry = packed struct {
     move: Move,
     /// The evaluation according to search.
     score: SmallValue,
-    /// Stored raw static eval. -infinity serves as null.
-    raw_static_eval: SmallValue,
     /// Stored during principal variation search?
     was_pv: bool,
 
@@ -75,7 +73,7 @@ pub const Entry = packed struct {
         .depth = 0,
         .move = .empty,
         .score = -types.infinity,
-        .raw_static_eval = -types.infinity,
+        // .raw_static_eval = -types.infinity,
         .was_pv = false
     };
 
@@ -99,24 +97,18 @@ pub const Entry = packed struct {
             .Beta  => return self.score >= beta,
         }
     }
-
-    pub fn get_raw_static_eval(self: *const Entry) ?Value {
-        return if (self.raw_static_eval != -types.infinity) self.static_eval else null;
-    }
 };
 
-pub const EvalEntry = packed struct {
-    /// The position key.
-    key: u64,
-    /// The evaluation according to search.
-    score: i16,
+pub const Bucket = struct {
+    e0: Entry,
+    e1: Entry,
 
-    const empty: EvalEntry = .{ .key = 0, .score = 0 };
+    pub const empty: Bucket = .{ .e0 = .empty, .e1 = .empty };
 };
 
 /// The main transposition table.
 pub const TranspositionTable = struct {
-    hash: HashTable(Entry),
+    hash: HashTable(Bucket),
 
     pub fn init(size_in_bytes: usize) !TranspositionTable {
         return .{
@@ -142,11 +134,30 @@ pub const TranspositionTable = struct {
             assert(depth >= 0 and depth <= 128);
             assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
         }
-        const entry: *Entry = self.get(key);
 
-        // Don't overwrite
-        if (entry.key == key and entry.depth > depth) {
-            return;
+        const bucket: *Bucket = self.hash.get(key);
+        var entry: *Entry = undefined;
+
+        if (bucket.e0.key == key) {
+            entry = &bucket.e0;
+        }
+        else if (bucket.e1.key == key) {
+            entry = &bucket.e1;
+        }
+        // No match, choose entry.
+        else {
+            if (bucket.e0.depth < bucket.e1.depth) {
+                entry = &bucket.e0;
+            }
+            else if (bucket.e1.depth < bucket.e0.depth) {
+                entry = &bucket.e1;
+            }
+            else {
+                // Same depth → prefer replacing a non-exact bound
+                const v0_cost: u1 = if (bucket.e0.bound == .Exact) 1 else 0;
+                const v1_cost: u1 = if (bucket.e1.bound == .Exact) 1 else 0;
+                entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1;
+            }
         }
 
         entry.bound = bound;
@@ -158,16 +169,24 @@ pub const TranspositionTable = struct {
     }
 
     pub fn probe(self: *TranspositionTable, key: u64) ?*const Entry {
-        const entry: *const Entry = self.get(key);
-        if (entry.key != key) {
-            return null;
+        const bucket: *const Bucket = self.hash.get(key);
+        if (bucket.e0.key == key) {
+            return &bucket.e0;
         }
-        return entry;
+        if (bucket.e1.key == key) {
+            return &bucket.e1;
+        }
+        return null;
     }
+};
 
-    fn get(self: *TranspositionTable, key: u64) *Entry {
-        return self.hash.get(key);
-    }
+pub const EvalEntry = packed struct {
+    /// The position key.
+    key: u64,
+    /// The evaluation according to search.
+    score: i16,
+
+    const empty: EvalEntry = .{ .key = 0, .score = 0 };
 };
 
 /// A simple cache for evaluation speedup.

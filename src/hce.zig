@@ -90,10 +90,6 @@ fn compute_king_pawnstorm_areas_black() [64]u64 {
     return ps;
 }
 
-pub var READS: u64 = 0;
-pub var WRITES: u64 = 0;
-pub var HITS: u64 = 0;
-
 pub fn Evaluator(comptime tracing: bool) type {
 
     return struct {

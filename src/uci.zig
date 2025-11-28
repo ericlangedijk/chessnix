@@ -294,7 +294,11 @@ const TTY = struct {
 
     fn print_state() void {
 
-        io.print("R {} W {} H {}\n", .{ hce.READS, hce.WRITES, hce.HITS });
+
+        // @import("history.zig").debug_hist(&engine.searcher.history_heuristics, &engine.pos);
+        // if (true) return;
+
+
         if (true) return;
 
         // engine.set_position("1kr4r/1p1nnp2/1P1qb2p/p1pp4/P2P1NpN/2QBP1P1/5PP1/2R2RK1 w - - 0 24", null) catch return;

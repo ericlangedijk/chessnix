@@ -235,6 +235,8 @@ pub const Engine = struct {
 pub const Stats = struct {
     /// The total amount of nodes.
     nodes: u64 = 0,
+    /// The total amount of quiescent search nodes.
+    qnodes: u64 = 0,
     /// Iteration reached.
     depth: u16 = 0,
     /// The max reached depth.
@@ -268,8 +270,8 @@ pub const Searcher = struct {
     pvnode: Node,
     /// Our node stack. Index #0 is our main pv. Indexing [ply + 1] for the current node.
     nodes: [max_search_depth + 2]Node,
-    // Heuristics for beta cutoffs.
-    history_heuristics: History,
+    // History heuristics for beta cutoffs.
+    hist: History,
     /// The current iteration.
     iteration: u8,
     /// Timeout. Any search value (0) returned - when stopped - should be discarded directly.
@@ -293,7 +295,7 @@ pub const Searcher = struct {
             .rootmoves = .empty,
             .pvnode = .empty,
             .nodes = @splat(.empty),
-            .history_heuristics = .init(),
+            .hist = .init(),
             .iteration = 0,
             .stopped = false,
             .timer = .empty,
@@ -325,10 +327,10 @@ pub const Searcher = struct {
 
         // Clear or decay history heuristics.
         if (is_newgame) {
-            self.history_heuristics.clear();
+            self.hist.clear();
         }
         else {
-            self.history_heuristics.decay();
+            self.hist.decay();
         }
 
         // Make our private copy of the position.
@@ -447,6 +449,8 @@ pub const Searcher = struct {
                 // else
                 //     0.0;
 
+                const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
+
                 const search_eff: f32 = if (non_terminal_used > 0)
                     (@as(f32, @floatFromInt(beta_cutoffs_used)) / @as(f32, @floatFromInt(non_terminal_used))) * 100.0
                 else
@@ -457,8 +461,8 @@ pub const Searcher = struct {
                 const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
 
                 io.print_buffered(
-                    "info depth {} seldepth {} score cp {} nodes {} time {} nps {} eff {d:.2} pv",
-                    .{ self.stats.depth, self.stats.seldepth, pvnode.score, self.stats.nodes, ms, nps, search_eff }
+                    "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} eff {d:.2} pv",
+                    .{ self.stats.depth, self.stats.seldepth, pvnode.score, self.stats.nodes, qnodes, ms, nps, search_eff }
                 );
 
                 for (pvnode.pv.slice()) |move| {
@@ -559,7 +563,8 @@ pub const Searcher = struct {
             node.eval = null;
         }
         else if (!is_singular_extension){
-            node.static_eval = adjust_for_drawcounter(self.evaluate_with_correction(pos, us), pos.rule50);
+            //node.static_eval = adjust_for_drawcounter(self.evaluate_with_correction(pos, us), pos.rule50);
+            node.static_eval = self.evaluate_with_correction(pos, us);
             if (tt_hit and tt_entry.?.is_score_usable(node.static_eval.?, node.static_eval.?)) {
                 node.eval = tt.get_adjusted_score_for_tt_probe(tt_entry.?.score, pos.ply);
             }
@@ -573,11 +578,11 @@ pub const Searcher = struct {
         if (!is_check) {
             // Most reliable.
             if (pos.ply >= 2 and self.nodes[pos.ply - 2].static_eval != null) {
-                improvement = if (node.static_eval.? > self.nodes[pos.ply - 2].static_eval.?) 1 else 0;
+                improvement = if (node.static_eval.? > self.nodes[pos.ply - 2].static_eval.?) 1 else 0; // TESTING
             }
             // Less reliable.
             else if (pos.ply >= 4 and self.nodes[pos.ply - 4].static_eval != null) {
-                improvement = if (node.static_eval.? > self.nodes[pos.ply - 4].static_eval.?) 1 else 0;
+                improvement = if (node.static_eval.? > self.nodes[pos.ply - 4].static_eval.?) 1 else 0; // TESTING
             }
         }
 
@@ -747,7 +752,10 @@ pub const Searcher = struct {
                 //if (parentnode) |par| { if (!par.current_move.move.is_quiet()) reduction -= 1; } // EXPERIMENTAL
                 if (is_pvs) reduction -= 1;
                 if (ex.is_killer) reduction -= 1;
-                if (is_quiet and self.history_heuristics.piece_to[ex.moved_piece.u][ex.move.to.u] > 2000) reduction -= 1; // EXPERIMENTAL 2000
+
+                // if (is_quiet and self.history_heuristics.piece_from_to[ex.moved_piece.u][ex.move.from.u][ex.move.to.u] > 2000) reduction -= 1; // EXPERIMENTAL 2000
+                if (is_quiet and self.hist.quiet.get_score(ex.*) > 2000) reduction -= 1; // EXPERIMENTAL 2000
+
                 if (improvement == 0) reduction += 1;
                 reduction = std.math.clamp(reduction, 0, new_depth - 1);
                 // Search nullwindow here.
@@ -788,7 +796,7 @@ pub const Searcher = struct {
                     // Beta.
                     if (score >= beta) {
                         self.stats.beta_cutoffs += 1;
-                        self.history_heuristics.record_beta_cutoff(parentnode, node, ex.*, depth, &movepicker, move_idx, is_quiet);
+                        self.hist.record_beta_cutoff(parentnode, node, depth, &movepicker, move_idx);
                         break :moveloop;
                     }
                 }
@@ -810,7 +818,7 @@ pub const Searcher = struct {
 
             // Update correction history.
             if (!is_check and !best_move.is_empty() and best_move.is_quiet() and !(tt_bound == .Alpha and best_score <= node.static_eval.?) and !(tt_bound == .Beta and best_score >= node.static_eval.?)) {
-                self.history_heuristics.update_correction_history(pos, node.static_eval.?, best_score, depth, us);
+                self.hist.correction.update(pos, node.static_eval.?, best_score, depth, us);
             }
         }
 
@@ -874,7 +882,8 @@ pub const Searcher = struct {
             // var eval: Value = self.evaluate_with_correction(pos, us);
 
             // When razoring we already have the static eval in the node.
-            var eval: Value = if (is_razoring) node.static_eval.? else adjust_for_drawcounter(self.evaluate_with_correction(pos, us), pos.rule50); //self.evaluate_with_correction(pos, us);
+            //var eval: Value = if (is_razoring) node.static_eval.? else adjust_for_drawcounter(self.evaluate_with_correction(pos, us), pos.rule50);
+            var eval: Value = if (is_razoring) node.static_eval.? else self.evaluate_with_correction(pos, us);
             if (tt_hit and tt_entry.?.is_score_usable(score, score)) {
                 eval = tt.get_adjusted_score_for_tt_probe(tt_entry.?.score, pos.ply);
             }
@@ -910,6 +919,7 @@ pub const Searcher = struct {
             // Do move
             const next_pos: *const Position = self.do_move(pos, us, ex.move);
             self.stats.nodes += 1;
+            self.stats.qnodes += 1;
 
             score = -self.quiescence_search(next_pos, -beta, -alpha, false, mode, them);
             if (self.stopped) {
@@ -942,7 +952,7 @@ pub const Searcher = struct {
     }
 
     fn evaluate_with_correction(self: *Searcher, pos: *const Position, comptime us: Color) Value {
-        const e: Value = self.evaluate(pos) + self.history_heuristics.get_correction(pos, us);
+        const e: Value = self.evaluate(pos) + self.hist.correction.get_correction(pos, us);
         return std.math.clamp(e, -mate_threshold, mate_threshold);
     }
 
@@ -960,7 +970,7 @@ pub const Searcher = struct {
             return score;
         }
         // Max penalty around 25 centipawns
-        const penalty: i32 = div(drawcounter * drawcounter, 400);
+        const penalty: i32 = div(drawcounter * drawcounter, 500); // TESTING 400, 600
 
         // Reduce the magnitude of the evaluation
         if (score > 0) {
@@ -1182,10 +1192,11 @@ pub const MovePicker = struct {
 
     /// Required function.
     pub fn reset(self: *MovePicker) void {
-        // We only are allowed to use this once.
-        if (comptime lib.is_paranoid) {
-            assert(self.count == 0);
-        }
+        // // We only are allowed to use this once.
+        // if (comptime lib.is_paranoid) {
+        //     assert(self.count == 0);
+        // }
+        self.count = 0;
     }
 
     /// Required function.
@@ -1229,7 +1240,8 @@ pub const MovePicker = struct {
             switch (m.flags) {
                 // Score from history heuristics.
                 Move.silent, Move.double_push, Move.castle_short, Move.castle_long => {
-                    score += searcher.history_heuristics.piece_to[pc.u][m.to.u];
+                    // score += searcher.history_heuristics.piece_from_to[pc.u][m.from.u][m.to.u];
+                    score += searcher.hist.quiet.get_score(ex.*);//piece_from_to[pc.u][m.from.u][m.to.u];
                     if (m == killers[0]) {
                         score += killer1;
                         ex.is_killer = true;
@@ -1238,15 +1250,12 @@ pub const MovePicker = struct {
                         score += killer2;
                         ex.is_killer = true;
                     }
-                    // if (m == killer) {
-                    //     score += killer1;
-                    //     ex.is_killer = true;
-                    // }
 
                     const parentnode: ?*const Node = if (pos.ply > 0) &searcher.nodes[pos.ply - 1] else null;
                     if (parentnode) |parent| {
                         if (!parent.current_move.move.is_empty() and parent.current_move.move.is_quiet()) {
-                            score += searcher.history_heuristics.continuation[parent.current_move.moved_piece.u][parent.current_move.move.to.u][pc.u][m.to.u];
+                            score += searcher.hist.continuation.get_score(parent.current_move, ex.*);
+                            //score += searcher.history_heuristics.continuation[parent.current_move.moved_piece.u][parent.current_move.move.to.u][pc.u][m.to.u];
                         }
                     }
                     // if (parentnode != null and parentnode.?.continuation_entry != null) {
