@@ -41,8 +41,10 @@ pub const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
 pub const bb_border_inner = (bb_rank_2 | bb_rank_7 | bb_file_b | bb_file_g) & ~bb_border;
 pub const bb_center = bb_full & ~bb_border & ~bb_border_inner;
 pub const bb_mini_center = bb_e4 | bb_d4 | bb_e5 | bb_d5;
-pub const bb_black_squares: u64 = 0b01010101_10101010_01010101_10101010_01010101_10101010_01010101_10101010;
-pub const bb_white_squares: u64 = ~bb_black_squares;
+
+pub const bb_white_squares: u64 = 0b01010101_10101010_01010101_10101010_01010101_10101010_01010101_10101010;
+pub const bb_black_squares: u64 = ~bb_white_squares;
+
 pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
 pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
 pub const bb_queenside: u64 = bb_file_a | bb_file_b | bb_file_d | bb_file_d;

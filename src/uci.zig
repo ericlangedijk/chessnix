@@ -104,22 +104,6 @@ const UCI = struct {
 
     // option name Hash type spin default 16 min 1 max 33554432
     fn respond_uciok() void {
-        // try io.print
-        // (
-        //     \\id chessnix {s}
-        //     \\id author eric
-        //     \\option name Hash spin default {} min {} max {}
-        //     \\uciok
-        //     \\
-        //     ,
-        //     .{
-        //         lib.version,
-        //         search.Options.default_hash_size, search.Options.min_hash_size, search.Options.max_hash_size,
-        //     }
-        // );
-
-       // uci is started with "setoption name UCI_Chess960 value true" before ucinewgame. (or after???)
-
         io.print
         (
             \\id chessnix {s}

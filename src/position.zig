@@ -1624,10 +1624,18 @@ pub const Position = struct {
             try writer.print("-", .{});
         }
         else {
-            if (self.castling_rights & cf_white_short != 0) try writer.print("K", .{});
-            if (self.castling_rights & cf_white_long != 0)  try writer.print("Q", .{});
-            if (self.castling_rights & cf_black_short != 0) try writer.print("k", .{});
-            if (self.castling_rights & cf_black_long != 0)  try writer.print("q", .{}); // TODO: 960 output "C:\Data\zig\_bk\chessnix 1.2\20 fucked something up this one has a history zig"
+            if (!self.is_960) {
+                if (self.castling_rights & cf_white_short != 0) try writer.print("K", .{});
+                if (self.castling_rights & cf_white_long != 0)  try writer.print("Q", .{});
+                if (self.castling_rights & cf_black_short != 0) try writer.print("k", .{});
+                if (self.castling_rights & cf_black_long != 0)  try writer.print("q", .{});
+            }
+            else {
+                if (self.castling_rights & cf_white_short != 0) try writer.print("{u}", .{ self.layout.rook_start_squares[0][0].char_of_file() - 32 });
+                if (self.castling_rights & cf_white_long != 0)  try writer.print("{u}", .{ self.layout.rook_start_squares[0][1].char_of_file() - 32 });
+                if (self.castling_rights & cf_black_short != 0) try writer.print("{u}", .{ self.layout.rook_start_squares[1][0].char_of_file() });
+                if (self.castling_rights & cf_black_long != 0)  try writer.print("{u}", .{ self.layout.rook_start_squares[1][1].char_of_file() });
+            }
         }
 
         // Enpassant.

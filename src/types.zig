@@ -581,6 +581,8 @@ pub const Move = packed struct(u16) {
     pub const rook_promotion_capture   : u4 = 0b1110; // 14
     pub const queen_promotion_capture  : u4 = 0b1111; // 15
 
+    const noisy_mask                   : u4 = 0b1100;
+
     /// 6 bits.
     from: Square = .zero,
     /// 6 bits.
@@ -589,7 +591,7 @@ pub const Move = packed struct(u16) {
     flags: u4 = 0,
 
     pub const empty: Move = .{};
-    pub const nullmove: Move = @bitCast(@as(u16, 0xffff));
+    //pub const nullmove: Move = @bitCast(@as(u16, 0xffff));
 
     pub fn create(from: Square, to: Square, flags: u4) Move {
         return .{ .from = from, .to = to, .flags = flags };
@@ -603,25 +605,31 @@ pub const Move = packed struct(u16) {
         return self == empty; //.bitcast() == 0;
     }
 
-    pub fn is_null_move(self: Move) bool {
-        return self.bitcast() == 0xffff;
-    }
+    // pub fn is_null_move(self: Move) bool {
+    //     return self.bitcast() == 0xffff;
+    // }
 
     pub fn is_capture(self: Move) bool {
-        return self.flags & 0b1000 != 0;
+        //return self.flags & 0b1000 != 0;
+        return self.flags & capture != 0;
     }
 
     pub fn is_quiet(self: Move) bool {
-        return self.flags & 0b1100 == 0; // no capture, no promotion.
+        //return self.flags & 0b1100 == 0; // no capture, no promotion.
+        return self.flags & noisy_mask == 0;
+    }
+
+    pub fn is_noisy(self: Move) bool {
+        return self.flags & noisy_mask != 0;
     }
 
     pub fn is_promotion(self: Move) bool {
         return self.flags & 0b0100 != 0;
     }
 
-    pub fn is_promotion_capture(self: Move) bool {
-        return self.flags & 0b1100 != 0;
-    }
+    // pub fn is_promotion_capture(self: Move) bool {
+    //     return self.flags & 0b1100 != 0;
+    // }
 
     pub fn is_ep(self: Move) bool {
         return self.flags == ep;

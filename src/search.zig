@@ -405,7 +405,7 @@ pub const Searcher = struct {
 
             aspiration_loop: while (true) {
                 // Search with aspiration window.
-                score = self.search(pos, depth - fails, alpha, beta, .pv, us, true);
+                score = self.search(pos, depth - fails, alpha, beta, .pv, us, true, false);
 
                 // Discard result if timeout.
                 if (self.stopped) {
@@ -439,19 +439,11 @@ pub const Searcher = struct {
 
             // And print it, including some move ordering stats.
             if (!self.engine.mute) {
-
-                //const nodes_used: u64 = self.stats.nodes - start_nodes;
                 const non_terminal_used: u64 = self.stats.non_terminal_nodes - start_non_terminal;
                 const beta_cutoffs_used: u64 = self.stats.beta_cutoffs - start_beta_cutoffs;
-
-                // const mbf: f32 = if (non_terminal_used > 0)
-                //     @as(f32, @floatFromInt(nodes_used)) / @as(f32, @floatFromInt(non_terminal_used))
-                // else
-                //     0.0;
-
                 const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
 
-                const search_eff: f32 = if (non_terminal_used > 0)
+                const search_efficiency: f32 = if (non_terminal_used > 0)
                     (@as(f32, @floatFromInt(beta_cutoffs_used)) / @as(f32, @floatFromInt(non_terminal_used))) * 100.0
                 else
                     0.0;
@@ -462,14 +454,13 @@ pub const Searcher = struct {
 
                 io.print_buffered(
                     "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} eff {d:.2} pv",
-                    .{ self.stats.depth, self.stats.seldepth, pvnode.score, self.stats.nodes, qnodes, ms, nps, search_eff }
+                    .{ self.stats.depth, self.stats.seldepth, pvnode.score, self.stats.nodes, qnodes, ms, nps, search_efficiency }
                 );
 
                 for (pvnode.pv.slice()) |move| {
                     io.print_buffered(" ", .{});
                     move.print_buffered(pos.is_960);
                 }
-
                 io.print_buffered("\n", .{});
                 io.flush();
             }
@@ -481,7 +472,7 @@ pub const Searcher = struct {
         }
     }
 
-    fn search(self: *Searcher, pos: *const Position, input_depth: i32, input_alpha: Value, input_beta: Value, comptime mode: SearchMode, comptime us: Color, comptime is_root: bool) Value {
+    fn search(self: *Searcher, pos: *const Position, input_depth: i32, input_alpha: Value, input_beta: Value, comptime mode: SearchMode, comptime us: Color, comptime is_root: bool, comptime cutnode: bool) Value {
         // Comptimes.
         const them: Color = comptime us.opp();
         const is_pvs: bool = comptime mode != .nonpv;
@@ -563,7 +554,6 @@ pub const Searcher = struct {
             node.eval = null;
         }
         else if (!is_singular_extension){
-            //node.static_eval = adjust_for_drawcounter(self.evaluate_with_correction(pos, us), pos.rule50);
             node.static_eval = self.evaluate_with_correction(pos, us);
             if (tt_hit and tt_entry.?.is_score_usable(node.static_eval.?, node.static_eval.?)) {
                 node.eval = tt.get_adjusted_score_for_tt_probe(tt_entry.?.score, pos.ply);
@@ -573,25 +563,32 @@ pub const Searcher = struct {
             }
         }
 
+        const improvement_margin: Value = 0; // TESTING
+        // if (!is_root) {
+        //     if (pos.rule50 > self.position_stack[pos.ply - 1].rule50) {
+        //         improvement_margin = if (pos.phase > 12) 1 else 2;
+        //     }
+        // }
+
         // Check improvement with same stm.
         var improvement: u1 = 0;
         if (!is_check) {
             // Most reliable.
             if (pos.ply >= 2 and self.nodes[pos.ply - 2].static_eval != null) {
-                improvement = if (node.static_eval.? > self.nodes[pos.ply - 2].static_eval.?) 1 else 0; // TESTING
+                improvement = if (node.static_eval.? > self.nodes[pos.ply - 2].static_eval.? + improvement_margin) 1 else 0;
             }
             // Less reliable.
-            else if (pos.ply >= 4 and self.nodes[pos.ply - 4].static_eval != null) {
-                improvement = if (node.static_eval.? > self.nodes[pos.ply - 4].static_eval.?) 1 else 0; // TESTING
+            else if (pos.ply >= 4 and self.nodes[pos.ply - 4].eval != null) {
+                improvement = if (node.static_eval.? > self.nodes[pos.ply - 4].static_eval.? + improvement_margin) 1 else 0;
             }
         }
 
         // Pruning before processing any moves
         if (!is_pvs and !is_check and !is_singular_extension) {
+
             // Reversed Static Futility Pruning.
             if (depth <= 4 and node.eval.? < mate_threshold) {
-                //const m: Value = if (improvement > 0) 40 else 74;
-                const m: Value = if (improvement > 0) 16 else 32;
+                const m: Value = if (improvement > 0) 16 else 32; // TESTING 40 else 74
                 const futility_margin: Value = depth * m;
                 if (node.eval.? - futility_margin >= beta) {
                     return node.eval.?;
@@ -609,11 +606,11 @@ pub const Searcher = struct {
 
             // Null Move Pruning. Are we still good if we let them play another move?
             // Avoid doing this in endgame positions, which have a high probability of zugzwang.
-            if (!pos.nullmove_state and node.eval.? >= beta and node.static_eval.? >= (beta + 170 - 24 * depth) and pos.phase > 0 and pos.all_except_pawns_and_kings(us) != 0) {
+            if (!pos.nullmove_state and depth >= 2 and node.eval.? >= beta and node.static_eval.? >= (beta + 170 - 24 * depth) and pos.phase > 0 and pos.all_except_pawns_and_kings(us) != 0) {
                 reduction = 3 + div(depth, 4);
                 const nmp_depth: i32 = @max(0, depth - 1 - reduction);
                 const next_pos: *const Position = self.do_nullmove(pos, us);
-                const nmp_score: Value = -self.search(next_pos, nmp_depth, -beta, -beta + 1, .nonpv, them, false);
+                const nmp_score: Value = -self.search(next_pos, nmp_depth, -beta, -beta + 1, .nonpv, them, false, !cutnode);
                 if (self.stopped) {
                     return 0;
                 }
@@ -624,7 +621,7 @@ pub const Searcher = struct {
         }
 
         // Internal Iterative Reduction: If we have no tt move move ordering is not optimal.
-        if (is_pvs and depth >= 8 and tt_move.is_empty() and !is_singular_extension) {
+        if ((is_pvs or cutnode) and depth >= 8 and tt_move.is_empty() and !is_singular_extension) {
             depth -= 1;
         }
 
@@ -672,11 +669,10 @@ pub const Searcher = struct {
 
             const is_quiet: bool = ex.move.is_quiet();
 
-            // Move Pruning.
+            // Move Pruning before we execute the move.
             if (!is_root and !is_pvs and !is_check and is_quiet and best_score > -mate_threshold) {
 
-                // Futility Pruning. These arguments test best for now. We need some kind of formula...
-                //if (depth <= 8 and quiets_seen > 3 and node.static_eval.? + 96 * depth < alpha) {
+                // Futility Pruning. These arguments test best for now. We need tuning.
                 if (depth <= 8 and quiets_seen > 3 and node.eval.? + 96 * depth < alpha) {
                     continue :moveloop;
                 }
@@ -700,14 +696,14 @@ pub const Searcher = struct {
                     node.excluded_tt_move = ex.move;
                     const reduced_depth: i32 = div(depth - 1, 2);
                     const s_beta = entry.score - (depth * 2);
-                    const s_score = self.search(pos, reduced_depth, s_beta - 1, s_beta, .nonpv, us, false);
+                    const s_score = self.search(pos, reduced_depth, s_beta - 1, s_beta, .nonpv, us, false, cutnode);
                     node.excluded_tt_move = Move.empty;
                     if (self.stopped) return 0;
 
                     // No move was able to beat the TT entries score, so we extend the TT move's search
                     if (s_score < s_beta) {
                         // Double extend if the TT move is singular by a big margin
-                        if (!is_pvs and s_score < s_beta - 28 and node.double_extensions <= 6) { // beta - 28, 10, 40, 5
+                        if (!is_pvs and s_score < s_beta - 28 and node.double_extensions <= 6) {
                             extension = 2;
                             node.double_extensions += 1;
                         }
@@ -745,38 +741,34 @@ pub const Searcher = struct {
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
             if (!is_check and depth >= 3 and moves_seen >= lmr_move_threshold) {
                 const is_quiet_idx: usize = @intFromBool(is_quiet);
-
-                reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][move_idx + 1];
-                //reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen]; // TESTING (WORSE)
-
-                //if (parentnode) |par| { if (!par.current_move.move.is_quiet()) reduction -= 1; } // EXPERIMENTAL
+                // reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][move_idx + 1]; // TESTING using moves_seen seems weaker.
+                reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen];
+                reduction += comptime @intFromBool(cutnode);
                 if (is_pvs) reduction -= 1;
                 if (ex.is_killer) reduction -= 1;
-
-                // if (is_quiet and self.history_heuristics.piece_from_to[ex.moved_piece.u][ex.move.from.u][ex.move.to.u] > 2000) reduction -= 1; // EXPERIMENTAL 2000
-                if (is_quiet and self.hist.quiet.get_score(ex.*) > 2000) reduction -= 1; // EXPERIMENTAL 2000
-
+                if (is_quiet and self.hist.quiet.get_score(ex.*) > 2000) reduction -= 1;
                 if (improvement == 0) reduction += 1;
                 reduction = std.math.clamp(reduction, 0, new_depth - 1);
+
                 // Search nullwindow here.
-                score = -self.search(next_pos, new_depth - reduction, -alpha - 1, -alpha, .nonpv, them, false);
+                score = -self.search(next_pos, new_depth - reduction, -alpha - 1, -alpha, .nonpv, them, false, true);
                 if (self.stopped) return 0;
-                need_full_search = score > alpha and reduction > 0; // original reducation != 0
+                need_full_search = score > alpha and reduction > 0;
             }
             else {
-                //need_full_search = !is_pvs or move_idx > 0;
-                need_full_search = !is_pvs or moves_seen >= 1; // Not sure yet if this is stronger or weaker or this is exactly the same. This line seems more logic to me.
+                need_full_search = !is_pvs or moves_seen >= 1;
             }
 
             // Either the move has potential from a reduced depth search or it's not expected to be a PV move, therefore we search it with a null window.
             if (need_full_search) {
-                score = -self.search(next_pos, new_depth, -alpha - 1, -alpha, .nonpv, them, false);
+                score = -self.search(next_pos, new_depth, -alpha - 1, -alpha, .nonpv, them, false, !cutnode);
                 if (self.stopped) return 0;
             }
 
             // Full window search on this move if it is probably good.
-            if (is_pvs and (score > alpha or move_idx == 0 or moves_seen == 0)) {
-                score = -self.search(next_pos, new_depth, -beta, -alpha, .pv, them, false);
+            //if (is_pvs and (score > alpha or move_idx == 0 or moves_seen == 0)) { // TESTING
+            if (is_pvs and (score > alpha or moves_seen == 0)) {
+                score = -self.search(next_pos, new_depth, -beta, -alpha, .pv, them, false, false);
                 if (self.stopped) return 0;
             }
 
@@ -848,6 +840,10 @@ pub const Searcher = struct {
         // Update stats.
         self.stats.seldepth = @max(self.stats.seldepth, pos.ply);
 
+        if (pos.is_draw_by_insufficient_material() or self.is_draw_by_repetition_or_rule50(pos)) {
+            return 0;
+        }
+
         // Check timeout at the start only. At the callsites just read the stopped value.
         if (self.check_stop()) {
             return 0;
@@ -861,7 +857,7 @@ pub const Searcher = struct {
         var tt_pv = is_pvs;
         var best_score = -infinity;
 
-        // Limit dtm.
+        // Limit dtm. TODO: is this needed in quiescence?
         alpha = @max(alpha, -mate + pos.ply);
         beta = @min(beta, mate - pos.ply);
 
@@ -879,10 +875,7 @@ pub const Searcher = struct {
 
         // Static Evaluation.
         if (!is_check) {
-            // var eval: Value = self.evaluate_with_correction(pos, us);
-
             // When razoring we already have the static eval in the node.
-            //var eval: Value = if (is_razoring) node.static_eval.? else adjust_for_drawcounter(self.evaluate_with_correction(pos, us), pos.rule50);
             var eval: Value = if (is_razoring) node.static_eval.? else self.evaluate_with_correction(pos, us);
             if (tt_hit and tt_entry.?.is_score_usable(score, score)) {
                 eval = tt.get_adjusted_score_for_tt_probe(tt_entry.?.score, pos.ply);
@@ -956,23 +949,15 @@ pub const Searcher = struct {
         return std.math.clamp(e, -mate_threshold, mate_threshold);
     }
 
-    pub fn adjust_eval(pos: *const Position, score: i32) i32 {
-            const phase_bounded = @min(pos.phase, 64);
-            const scale: i32 = 320 + 2 * @as(i32,@intCast(phase_bounded));
-            var e = @divTrunc(score * scale, 448);
-            e = @divTrunc(e * (150 - pos.rule50), 150);
-            //curr_accu.eval = e;
-            return e;
-    }
-
+    /// Not used. It messes up the static eval.
     fn adjust_for_drawcounter(score: Value, drawcounter: i32) Value {
         if (score == 0 or score <= -mate_threshold or score >= mate_threshold) {
             return score;
         }
-        // Max penalty around 25 centipawns
-        const penalty: i32 = div(drawcounter * drawcounter, 500); // TESTING 400, 600
+        // Max penalty around 25 centipawns.
+        const penalty: i32 = div(drawcounter * drawcounter, 400);
 
-        // Reduce the magnitude of the evaluation
+        // Reduce evaluation.
         if (score > 0) {
             return @max(0, score - penalty);
         }
@@ -1062,8 +1047,6 @@ pub const Searcher = struct {
 
     /// Not used.
     fn try_set_pv_from_tt(self: *Searcher, node: *Node) void {
-        // TODO: we can probably do some more optimizations here. Build in pondering etc. anyway. We are not there yet...
-        // TODO: can we actually do something with the previous PV during a game?
         var pos: Position = self.position_stack[0]; // temp copy
         var i: u8 = 0;
         while (true) {
@@ -1132,7 +1115,7 @@ pub const Node = struct {
 
     const empty: Node = .{};
 
-    /// Clear completely
+    /// Clear completely.
     fn clear(self: *Node) void {
         self.* = empty;
     }
@@ -1143,7 +1126,7 @@ pub const Node = struct {
         self.score = -infinity;
     }
 
-    /// Sets `pv` to `bestmove` + `childnode.pv` and sets `self.score` to `score`.
+    /// Sets pv to bestmove + childnode.pv and sets self.score.
     fn update_pv(self: *Node, bestmove: Move, score: Value, childnode: *const Node) void {
         self.pv.len = 0;
         self.pv.append_assume_capacity(bestmove);
@@ -1166,18 +1149,18 @@ pub const ExtMove = packed struct {
     /// The score for move ordering only. 32 bits.
     score: i32,
     /// Set during processing. 4 bits.
-    moved_piece: Piece,
+    piece: Piece,
     /// Set during processing. 1 bit.
     is_bad_capture: bool,
     /// Set during processing. 1 bit.
     is_killer: bool,
-    /// This idea probably failed for beta history. Maybe we can use it otherwise
+    /// This idea failed for beta history. Only punishing the seen moves drastically lowers engine strength. Maybe we can use it otherwise
     is_seen_by_search: bool,
 
     pub const empty: ExtMove = .{
         .move = .empty,
-        .score = 0,
-        .moved_piece = Piece.NO_PIECE,
+        .score = 0, // -infinity?
+        .piece = Piece.NO_PIECE,
         .is_bad_capture = false,
         .is_killer = false,
         .is_seen_by_search = false,
@@ -1186,27 +1169,23 @@ pub const ExtMove = packed struct {
 
 pub const MovePicker = struct {
     extmoves: [max_move_count]ExtMove,
-    count: u8,
+    count: usize,
 
     const empty: MovePicker = .{ .extmoves = undefined, .count = 0 };
 
     /// Required function.
     pub fn reset(self: *MovePicker) void {
-        // // We only are allowed to use this once.
-        // if (comptime lib.is_paranoid) {
-        //     assert(self.count == 0);
-        // }
         self.count = 0;
     }
 
     /// Required function.
     pub fn store(self: *MovePicker, move: Move) ?void {
-        self.extmoves[self.count] = ExtMove{ .move = move, .score = 0, .moved_piece = Piece.NO_PIECE, .is_bad_capture = false, .is_killer = false, .is_seen_by_search = false };
+        self.extmoves[self.count] = ExtMove{ .move = move, .score = 0, .piece = Piece.NO_PIECE, .is_bad_capture = false, .is_killer = false, .is_seen_by_search = false };
         self.count += 1;
     }
 
     fn copy_from(self: *MovePicker, other: *const MovePicker) void {
-        const cnt: u8 = other.count;
+        const cnt: usize = other.count;
         @memcpy(self.extmoves[0..cnt], other.extmoves[0..cnt]);
         self.count = cnt;
     }
@@ -1235,13 +1214,12 @@ pub const MovePicker = struct {
             score = 0;
             const m: Move = ex.move;
             const pc: Piece = pos.board[m.from.u];
-            ex.moved_piece = pc;
+            ex.piece = pc;
 
             switch (m.flags) {
                 // Score from history heuristics.
                 Move.silent, Move.double_push, Move.castle_short, Move.castle_long => {
-                    // score += searcher.history_heuristics.piece_from_to[pc.u][m.from.u][m.to.u];
-                    score += searcher.hist.quiet.get_score(ex.*);//piece_from_to[pc.u][m.from.u][m.to.u];
+                    score += searcher.hist.quiet.get_score(ex.*);
                     if (m == killers[0]) {
                         score += killer1;
                         ex.is_killer = true;
@@ -1255,33 +1233,27 @@ pub const MovePicker = struct {
                     if (parentnode) |parent| {
                         if (!parent.current_move.move.is_empty() and parent.current_move.move.is_quiet()) {
                             score += searcher.hist.continuation.get_score(parent.current_move, ex.*);
-                            //score += searcher.history_heuristics.continuation[parent.current_move.moved_piece.u][parent.current_move.move.to.u][pc.u][m.to.u];
                         }
                     }
-                    // if (parentnode != null and parentnode.?.continuation_entry != null) {
-
-                    // }
-                    //score += History.get_continuation_score(searcher, pos.ply, pc.piecetype(), ex.move.to);
                 },
                 Move.capture => {
                     const see = hce.see_score(pos, m);
                     score += capture + see;
                     ex.is_bad_capture = see < 100;
-                    //score += searcher.history_heuristics.capture_to[pc.u][m.to.u];
+                    // score += searcher.hist.capture.get_score(ex.*);
                 },
                 Move.ep => {
                     score += capture;
-                    //score += searcher.history_heuristics.capture_to[pc.u][m.to.u];
+                    //score += searcher.hist.capture.get_score(ex.*);
                 },
                 Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
                     score += promotion + (m.promoted_to().value() * 10);
                 },
                 Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
                     const capt: Piece = pos.board[m.to.u];
-                    //ex.captured_piece = capt;
                     score += promotion + (m.promoted_to().value() * 10);
                     score += capt.value();
-                    //score += searcher.history_heuristics.capture_to[pc.u][m.to.u];
+                    // score += searcher.hist.capture.get_score(ex.*);
                 },
                 else => {
                     unreachable;
@@ -1296,7 +1268,7 @@ pub const MovePicker = struct {
         }
     }
 
-    /// Get the next best scoring move, putting it at current_idx.
+    /// Get the next best scoring move, putting it at current_idx, before we move on.
     fn extract_next(self: *MovePicker, current_idx: usize) *ExtMove {
         const ptr: [*]ExtMove = &self.extmoves;
         var best_idx: usize = current_idx;
@@ -1318,28 +1290,7 @@ pub const MovePicker = struct {
     fn slice(self: *MovePicker) []ExtMove {
         return self.extmoves[0..self.count];
     }
-
-    /// Not used.
-    fn sort(self: *MovePicker) void {
-        // std.mem.sort(ExtMove, self.slice(), {}, less_than);
-        std.mem.sortUnstable(ExtMove, self.extmoves[0..self.count], {}, less_than);
-    }
-
-    fn less_than(_: void, a: ExtMove, b: ExtMove) bool {
-        return a.score > b.score;
-    }
-
-    // Not in release mode.
-    fn debugprint(self: *const MovePicker, iteration: u8) void {
-        io.debugprint("\n#{}: ", .{ iteration });
-        for (self.extmoves[0..self.count], 0..) |e, i| {
-           io.debugprint("{f} {}; ", .{ e.move, e.score });
-           _ = i;
-        }
-        io.debugprint("\n\n", .{});
-    }
 };
-
 
 /// The available options.
 pub const Options = struct {
