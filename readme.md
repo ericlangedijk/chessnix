@@ -6,13 +6,16 @@ Currently finetuning the algorithms, speed, chess960 support. ELO target for the
 - A little stronger: probably somewhere around 2890 ELO.
 - Added: Chess960 support.
 - Added: Razoring.
-- Added: Continuation History (simple).
+- Added: Continuation History.
 - Added: Correction History.
 - Added: Internal Iterative Reduction.
+- Added: CutNode reduction.
+- Added: Node inherits killers from 2 ply earlier.
+- Changed: Transposition Table with 2 entries per bucket.
 - Changed: Aspiration Window strategy.
 - Changed: Late Move Reduction. Using a precomputed table now.
-- Changed: quiescence search. Does not store bestmove anymore.
-- Changed: node counting. Only incremented after doing a move.
+- Changed: Quiescence search. Does not store bestmove anymore.
+- Changed: Node counting. Only incremented after doing a move.
 - Bug solved: invalid principal variation output.
 - Bug solved: bishop pair evaluation bug. The mask for white / black squares was wrong.
 

@@ -588,7 +588,7 @@ pub const Searcher = struct {
 
             // Reversed Static Futility Pruning.
             if (depth <= 4 and node.eval.? < mate_threshold) {
-                const m: Value = if (improvement > 0) 16 else 32; // TESTING 40 else 74
+                const m: Value = if (improvement > 0) 40 else 74;
                 const futility_margin: Value = depth * m;
                 if (node.eval.? - futility_margin >= beta) {
                     return node.eval.?;
@@ -741,8 +741,8 @@ pub const Searcher = struct {
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
             if (!is_check and depth >= 3 and moves_seen >= lmr_move_threshold) {
                 const is_quiet_idx: usize = @intFromBool(is_quiet);
-                // reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][move_idx + 1]; // TESTING using moves_seen seems weaker.
-                reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen];
+                reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][move_idx + 1]; // TESTING using moves_seen seems weaker.
+                // reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen];
                 reduction += comptime @intFromBool(cutnode);
                 if (is_pvs) reduction -= 1;
                 if (ex.is_killer) reduction -= 1;
@@ -1064,35 +1064,6 @@ pub const Searcher = struct {
             if (i > 127) break;
         }
     }
-
-    /// Debug only.
-    fn debug_validate_pv(pos: *const Position, pv: *const PV) void {
-        lib.not_in_release();
-        var nextpos: Position = pos.*;
-        for (pv.slice()) |m| {
-            var storage: position.MoveStorage = .init();
-            nextpos.lazy_generate_moves(&storage);
-            var found: bool = false;
-
-            for (storage.slice()) |smove| {
-                if (smove == m) {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                io.debugprint("{f} {f}\n", .{pos, m});
-                for (pv.slice()) |pm|
-                    io.debugprint("{f}, \n", .{pm});
-                io.dpr("\n");
-                @panic("WTF");
-            }
-            //io.debugprint("{f},", .{m});
-            nextpos.lazy_do_move(m);
-        }
-        //io.debugprint("\n", .{});
-    }
 };
 
 pub const Node = struct {
@@ -1120,7 +1091,7 @@ pub const Node = struct {
         self.* = empty;
     }
 
-    /// Only reset pv. The rest of the fields has to be assigned inside search.
+    /// Only reset pv. The rest of the fields have to be assigned inside search.
     fn clear_pv(self: *Node) void {
         self.pv.len = 0;
         self.score = -infinity;

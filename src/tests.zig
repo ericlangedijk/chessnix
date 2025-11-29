@@ -1,6 +1,6 @@
 // zig fmt: off
 
-//! Collection of debug tests.
+//! Collection of debug tests. Never used in release mode.
 
 const std = @import("std");
 const lib = @import("lib.zig");
