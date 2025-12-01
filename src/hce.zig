@@ -840,19 +840,25 @@ pub fn Evaluator(comptime tracing: bool) type {
 /// TODO: threshold.
 pub fn see_score(pos: *const Position, m: Move) Value {
     //const st: *const StateInfo = pos.state;gi
-    if (comptime lib.is_paranoid) {
-        assert(m.is_capture());
-    }
+    // if (comptime lib.is_paranoid) {
+    //     assert(m.is_capture());
+    // }
 
-    // This will hit a no_piece square.
-    if (m.is_ep()) {
+    // Ignore these.
+    if (m.is_ep() or m.is_castle()) {
         return 0;
     }
 
+
     const from: Square = m.from;
     const to: Square = m.to;
-    const value_them = pos.get(to).value();
-    const value_us = pos.get(from).value();
+    const value_them = pos.get(to).value();// - if(m.is_promotion()) PieceType.PAWN.value() else 0;
+    const value_us = pos.get(from).value();// - if(m.is_promotion()) m.promoted_to().value() else 0;
+
+    // if (m.is_promotion()) {
+    //      value_us += m.promoted_to().value() - PieceType.PAWN.value();
+    // }
+
     // good capture: if (value_them - value_us > P.value()) return true;
     var gain: [24]Value = @splat(0);
     gain[0] = value_them;
@@ -862,6 +868,7 @@ pub fn see_score(pos: *const Position, m: Move) Value {
     const queens_bishops = pos.all_queens_bishops();
     const queens_rooks = pos.all_queens_rooks();
     var occupation = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
+    //var occupation = pos.all() ^ from.to_bitboard();
     var attackers: u64 = pos.get_combined_attacks_to_for_occupation(occupation, to);
     var bb: u64 = 0;
     var side: Color = pos.stm;

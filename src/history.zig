@@ -19,10 +19,22 @@ const ExtMove = search.ExtMove;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
+
+fn get_bonus(depth: i32, comptime max_bonus: SmallValue) SmallValue {
+    return @intCast(@min(16 * depth * depth + 32 * depth + 16, max_bonus));
+}
+
+fn apply_bonus(entry: *SmallValue, bonus: SmallValue, comptime max_score: SmallValue) void {
+    const abs_bonus: u31 = @intCast(@abs(bonus));
+    var e: Value = entry.*;
+    e += bonus - @divTrunc(e * abs_bonus, max_score);
+    entry.* = @intCast(e);
+}
+
 /// Wrapper around all history heuristics.
 pub const History = struct {
     quiet: QuietHistory,
-    // capture: CaptureHistory,
+    capture: CaptureHistory,
     continuation: ContinuationHistory,
     correction: CorrectionHistory,
 
@@ -34,14 +46,8 @@ pub const History = struct {
         self.* = std.mem.zeroes(History);
     }
 
-    /// Call after each move in a game.
-    pub fn decay(self: *History) void {
-        self.quiet.decay();
-        // self.capture.decay();
-        self.continuation.decay();
-    }
-
-    pub fn record_beta_cutoff(self: *History, parentnode: ?*const Node, node: *Node, depth: i32, movepicker: *const MovePicker, move_idx: usize) void {
+    pub fn record_beta_cutoff(self: *History, parentnode: ?*const Node, node: *Node, depth: i32, prev_moves: []const ExtMove) void {
+        //assert(node.current_move.move == move)
         const current: ExtMove = node.current_move;
 
         if (current.move.is_quiet()) {
@@ -52,148 +58,135 @@ pub const History = struct {
                 node.killers[0] = current.move;
             }
 
-            if (depth <= 1) {
-                return;
-            }
+            // if (depth <= 1) { // TESTING #
+            //     return;
+            // }
 
             // Quiet history.
-            self.quiet.update(depth, current, movepicker, move_idx);
+            self.quiet.update(depth, current, prev_moves);
 
             // Continuation history.
             if (parentnode != null) {
                 const parent: ExtMove = parentnode.?.current_move;
                 if (!parent.move.is_empty() and parent.move.is_quiet()) {
-                    self.continuation.update(depth, parent, current);
+                    self.continuation.update(depth, parent, current, prev_moves);
                 }
             }
         }
-        // else if (current.move.is_capture()) {
-        //     // Quiet history.
-        //     self.capture.update(depth, current, movepicker, move_idx);
-        // }
+        else if (current.move.is_capture()) {
+            // Capture history.
+            self.capture.update(depth, current, prev_moves);
+        }
     }
+
+    //pub fn get_quiet_score()
+    // pub fn get_capture_score()
 };
 
+/// Heuristics for quiet moves.
 pub const QuietHistory = struct {
-    const max_value: SmallValue = 16384;
+
+    const max_bonus: SmallValue = 1300;
+    const max_score: SmallValue = 8000;
 
     /// Quiet move scores. Indexing: [piece][from-square][to-square]
-    piece_from_to: [12][64][64]SmallValue,
+    table: [12][64][64]SmallValue,
 
-    fn decay(self: *QuietHistory) void {
-        const all: []SmallValue = @ptrCast(&self.piece_from_to);
-        for (all) |*v| {
-            v.* >>= 2;
-        }
-    }
-
-    /// Only call for quiet move.
-    fn update(self: *QuietHistory, depth: i32, ex: ExtMove, movepicker: *const MovePicker, move_idx: usize) void {
-        const bonus: SmallValue = @intCast(depth * depth);
+    fn update(self: *QuietHistory, depth: i32, ex: ExtMove, prev_moves: []const ExtMove) void {
+        const bonus: SmallValue = get_bonus(depth, max_bonus);
 
         // Increase score for this move.
-        const v: *SmallValue = self.get_value_ptr(ex);
-        v.* = std.math.clamp(v.* + bonus, -max_value, max_value);
+        const v: *SmallValue = self.get_score_ptr(ex);
+        apply_bonus(v, bonus, max_score);
 
-        // Decrease score of previous quiet moves. These did not cause a beta cutoff.
-        if (move_idx > 0) {
-            for (movepicker.extmoves[0..move_idx]) |prev| {
-                if (prev.move.is_quiet()) {
-                    const p: *SmallValue = self.get_value_ptr(prev);
-                    p.* = std.math.clamp(p.* - bonus, -max_value, max_value);
-                }
+        // Decrease score of previous moves. These did not cause a beta cutoff.
+        for (prev_moves) |prev| {
+            if (prev.is_seen_by_search and prev.move.is_quiet()) {
+                const p: *SmallValue = self.get_score_ptr(prev);
+                apply_bonus(p, -bonus, max_score);
             }
         }
     }
 
-    /// Only call for quiet move.
-    fn get_value_ptr(self: *QuietHistory, ex: ExtMove) *SmallValue {
-        return &self.piece_from_to[ex.piece.u][ex.move.from.u][ex.move.to.u];
+    fn get_score_ptr(self: *QuietHistory, ex: ExtMove) *SmallValue {
+        return &self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
 
-    /// Only call for quiet move.
     pub fn get_score(self: *const QuietHistory, ex: ExtMove) SmallValue {
-        return self.piece_from_to[ex.piece.u][ex.move.from.u][ex.move.to.u];
+        return self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
 };
 
+/// Hearistics for captures moves.
 pub const CaptureHistory = struct {
-    const max_value: SmallValue = 4096;
 
-    /// Capture move scores. Indexing: [piece][from-square][to-square]
-    piece_from_to: [12][64][64]SmallValue,
+    const max_bonus: SmallValue = 1300;
+    const max_score: SmallValue = 8000;
 
-    fn decay(self: *CaptureHistory) void {
-        const all: []SmallValue = @ptrCast(&self.piece_from_to);
-        for (all) |*v| {
-            v.* >>= 1;
-        }
-    }
+    /// Capture move scores. Indexing: [piece][to-square][captured-piecetype]
+    table: [12][64][6]SmallValue,
 
-    /// Only call for capture move.
-    fn update(self: *CaptureHistory, depth: i32, ex: ExtMove, movepicker: *const MovePicker, move_idx: usize) void {
-        const bonus: SmallValue = @intCast(depth * 2);
+    fn update(self: *CaptureHistory, depth: i32, ex: ExtMove, prev_moves: []const ExtMove) void {
+        const bonus: SmallValue = get_bonus(depth, max_bonus);
 
         // Increase score for this move.
-        const v: *SmallValue = self.get_value_ptr(ex);
-        v.* = std.math.clamp(v.* + bonus, -max_value, max_value);
+        const v: *SmallValue = self.get_score_ptr(ex);
+        apply_bonus(v, bonus, max_bonus);
 
         // Decrease score of previous capture moves. These did not cause a beta cutoff.
-        if (move_idx > 0) {
-            for (movepicker.extmoves[0..move_idx]) |prev| {
-                if (prev.move.is_capture()) {
-                    const p: *SmallValue = self.get_value_ptr(prev);
-                    p.* = std.math.clamp(p.* - bonus, -max_value, max_value);
-                }
+        for (prev_moves) |prev| {
+            if (prev.is_seen_by_search and prev.move.is_capture()) {
+                const p: *SmallValue = self.get_score_ptr(prev);
+                apply_bonus(p, -bonus, max_score);
             }
         }
     }
 
-    /// Only call for capture move.
-    fn get_value_ptr(self: *CaptureHistory, ex: ExtMove) *SmallValue {
-        return &self.piece_from_to[ex.piece.u][ex.move.from.u][ex.move.to.u];
+    fn get_score_ptr(self: *CaptureHistory, ex: ExtMove) *SmallValue {
+        return &self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 
-    /// Only call for capture move.
     pub fn get_score(self: *const CaptureHistory, ex: ExtMove) SmallValue {
-        return self.piece_from_to[ex.piece.u][ex.move.from.u][ex.move.to.u];
+        return self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 };
 
-
+/// Heuristics for quiet continuation moves.
 pub const ContinuationHistory = struct {
-    const max_value: SmallValue = 4096;
+
+    const max_bonus: SmallValue = 1300;
+    const max_score: SmallValue = 8000; //6000;
 
     // Move pair scores. Indexing: [prevpiece][to-square][piece][to-square]
     table: [12][64][12][64]SmallValue,
 
-    fn decay(self: *ContinuationHistory) void {
-        const all: []SmallValue = @ptrCast(&self.table);
-        for (all) |*v| {
-            v.* >>= 1;
+    fn update(self: *ContinuationHistory, depth: i32, parent: ExtMove, current: ExtMove, prev_moves: []const ExtMove) void {
+        const bonus: SmallValue = get_bonus(depth, max_bonus);
+
+        // Increase score for this move pair.
+        const v: *SmallValue = self.get_score_ptr(parent, current);
+        apply_bonus(v, bonus, max_score);
+
+        // Decrease score of previous quiet moves. These did not cause a beta cutoff.
+        for (prev_moves) |prev| {
+            if (prev.is_seen_by_search and prev.move.is_quiet()) {
+                const p: *SmallValue = self.get_score_ptr(parent, prev);
+                apply_bonus(p, -bonus, max_score);
+            }
         }
     }
 
-    /// Only call for quiet moves.
-    fn update(self: *ContinuationHistory, depth: i32, parent: ExtMove, current: ExtMove) void {
-        // Increase score for this move pair.
-        const ch_bonus: SmallValue = @intCast(depth * 2);
-        const c: *SmallValue = self.get_value_ptr(parent, current);
-        c.* = std.math.clamp(c.* + ch_bonus, -max_value, max_value);
-    }
-
-    /// Only call for quiet moves.
-    fn get_value_ptr(self: *ContinuationHistory, parent: ExtMove, current: ExtMove) *SmallValue {
+    fn get_score_ptr(self: *ContinuationHistory, parent: ExtMove, current: ExtMove) *SmallValue {
         return &self.table[parent.piece.u][parent.move.to.u][current.piece.u][current.move.to.u];
     }
 
-    /// Only call for quiet move.
     pub fn get_score(self: *const ContinuationHistory, parent: ExtMove, current: ExtMove) SmallValue {
         return self.table[parent.piece.u][parent.move.to.u][current.piece.u][current.move.to.u];
     }
 
 };
 
+/// Heuristics for learning difference between static evaluation and search result.
 pub const CorrectionHistory = struct {
     const CORRECTION_HISTORY_SIZE: usize = 16384 * 2;
     const MAX_CORRECTION_HISTORY: SmallValue = 16384;

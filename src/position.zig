@@ -1108,8 +1108,7 @@ pub const Position = struct {
     }
 
     fn is_castlingpath_empty(self: *const Position, comptime us: Color, comptime castletype: CastleType, ) bool {
-        //const path: u64 = self.layout.in_between_bitboards[us.u][castletype.u];// | self.layout.king_paths[us.u][castletype.u]; // @NEW
-        const path: u64 = self.layout.rook_paths[us.u][castletype.u] | self.layout.king_paths[us.u][castletype.u]; // @NEW
+        const path: u64 = self.layout.rook_paths[us.u][castletype.u] | self.layout.king_paths[us.u][castletype.u];
         return path & self.all() == 0;
     }
 
@@ -1432,6 +1431,27 @@ pub const Position = struct {
                 }
             }
         }
+    }
+
+    /// TODO: write move generator check for 1 move checking absolute legality. For parsing moves and validating stored moves.
+    /// after that delete the return value tricks from this storage.
+    /// We need 2 versions -> an absolute move and an indication of a move.
+    fn is_move_legal(self: *const Position, move: Move) bool {
+        _ = self;
+        _ = move;
+        //_ = to;
+        //_ = flags; // contains EITHER the promotion piece OR castling flag
+        // check piece, check ep, check castling, checks, pins
+
+        //const piece: Piece =  self.board[from.u];
+        //const pt: PieceType = piece.piecetype();
+        //_ = pt;
+        //const to: Piece = self.boards[to.u]; // validate capture, ep, castle
+
+        // flag == 0 -> generate normal or ep
+        // castle -> generate castle
+        // promotion -> generate promotion.
+        return false;
     }
 
     fn store(from: Square, to: Square, flags: u4, noalias storage: anytype) ?void {

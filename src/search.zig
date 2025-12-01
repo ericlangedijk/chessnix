@@ -172,6 +172,7 @@ pub const Engine = struct {
 
     /// If we have any moves, make them. We stop if we encounter an illegal move.
     fn parse_moves(self: *Engine, moves: []const u8) void {
+        //var timer: utils.Timer = .start();
         var tokenizer = std.mem.tokenizeScalar(u8, moves, ' ');
         var idx: usize = 1;
         while (tokenizer.next()) |m| {
@@ -181,6 +182,9 @@ pub const Engine = struct {
             self.repetition_table[idx] = self.pos.key;
             idx += 1;
         }
+        //const elapsed_nanos = timer.read();
+        //const ms = elapsed_nanos / 1000000;
+        //io.print("info string parsetime {} {}\n", .{ elapsed_nanos, ms });
     }
 
     pub fn is_busy(self: *const Engine) bool {
@@ -325,12 +329,9 @@ pub const Searcher = struct {
         self.stats = .empty;
         self.selected_move = .empty;
 
-        // Clear or decay history heuristics.
         if (is_newgame) {
+            // Clear history heuristics.
             self.hist.clear();
-        }
-        else {
-            self.hist.decay();
         }
 
         // Make our private copy of the position.
@@ -387,6 +388,7 @@ pub const Searcher = struct {
             self.iteration = depth;
             self.stats.depth = depth;
             self.stats.seldepth = 0;
+            iteration_node.clear(); // TESTING
 
             //const start_nodes: u64 = self.stats.nodes;
             const start_non_terminal: u64 = self.stats.non_terminal_nodes;
@@ -607,6 +609,7 @@ pub const Searcher = struct {
             // Null Move Pruning. Are we still good if we let them play another move?
             // Avoid doing this in endgame positions, which have a high probability of zugzwang.
             if (!pos.nullmove_state and depth >= 2 and node.eval.? >= beta and node.static_eval.? >= (beta + 170 - 24 * depth) and pos.phase > 0 and pos.all_except_pawns_and_kings(us) != 0) {
+            //if (!pos.nullmove_state and node.eval.? >= beta and node.static_eval.? >= (beta + 170 - 24 * depth) and pos.phase > 0 and pos.all_except_pawns_and_kings(us) != 0) {
                 reduction = 3 + div(depth, 4);
                 const nmp_depth: i32 = @max(0, depth - 1 - reduction);
                 const next_pos: *const Position = self.do_nullmove(pos, us);
@@ -648,9 +651,11 @@ pub const Searcher = struct {
 
         // Inherited node stuff.
         node.double_extensions = if (!is_root) parentnode.?.double_extensions else 0;
-        if (pos.ply >= 2) {
-            node.killers = self.nodes[pos.ply - 2].killers;
-        }
+
+        // TESTING
+        // if (pos.ply >= 2) {
+        //     node.killers = self.nodes[pos.ply - 2].killers;
+        // }
 
         // Now analyze the moves.
         var best_move: Move = .empty;
@@ -668,6 +673,10 @@ pub const Searcher = struct {
             }
 
             const is_quiet: bool = ex.move.is_quiet();
+
+            // if (is_root) {
+            //     io.debugprint("{u}{t}{t} {} {}\n", .{ ex.piece.to_char(), ex.move.from.e, ex.move.to.e, ex.move.is_capture(), ex.score} );
+            // }
 
             // Move Pruning before we execute the move.
             if (!is_root and !is_pvs and !is_check and is_quiet and best_score > -mate_threshold) {
@@ -741,12 +750,13 @@ pub const Searcher = struct {
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
             if (!is_check and depth >= 3 and moves_seen >= lmr_move_threshold) {
                 const is_quiet_idx: usize = @intFromBool(is_quiet);
-                reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][move_idx + 1]; // TESTING using moves_seen seems weaker.
-                // reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen];
+                // TESTING
+                reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][move_idx + 1]; //
+                //reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen]; // this is weaker. we should have a skip_quiets!
                 reduction += comptime @intFromBool(cutnode);
                 if (is_pvs) reduction -= 1;
                 if (ex.is_killer) reduction -= 1;
-                if (is_quiet and self.hist.quiet.get_score(ex.*) > 2000) reduction -= 1;
+                if (is_quiet and self.hist.quiet.get_score(ex.*) > 4000) reduction -= 1; // TESTING #2
                 if (improvement == 0) reduction += 1;
                 reduction = std.math.clamp(reduction, 0, new_depth - 1);
 
@@ -788,7 +798,7 @@ pub const Searcher = struct {
                     // Beta.
                     if (score >= beta) {
                         self.stats.beta_cutoffs += 1;
-                        self.hist.record_beta_cutoff(parentnode, node, depth, &movepicker, move_idx);
+                        self.hist.record_beta_cutoff(parentnode, node, depth, movepicker.extmoves[0..move_idx]);
                         break :moveloop;
                     }
                 }
@@ -1115,23 +1125,26 @@ pub const Node = struct {
 
 /// 64 bits Move with score and info, used during search.
 pub const ExtMove = packed struct {
-    /// The generated move. 16 bits.
+    /// 16 bits. The generated move.
     move: Move,
-    /// The score for move ordering only. 32 bits.
+    /// 32 bits. The score for move ordering only.
     score: i32,
-    /// Set during processing. 4 bits.
+    /// 4 bits. Set during processing.
     piece: Piece,
-    /// Set during processing. 1 bit.
+    /// 4 bits. Set during processing.
+    captured: Piece,
+    /// 1 bit. Set during processing.
     is_bad_capture: bool,
-    /// Set during processing. 1 bit.
+    /// 1 bit. Set during processing.
     is_killer: bool,
-    /// This idea failed for beta history. Only punishing the seen moves drastically lowers engine strength. Maybe we can use it otherwise
+    /// 1 bit. Updated during search.
     is_seen_by_search: bool,
 
     pub const empty: ExtMove = .{
         .move = .empty,
         .score = 0, // -infinity?
         .piece = Piece.NO_PIECE,
+        .captured = Piece.NO_PIECE,
         .is_bad_capture = false,
         .is_killer = false,
         .is_seen_by_search = false,
@@ -1151,7 +1164,8 @@ pub const MovePicker = struct {
 
     /// Required function.
     pub fn store(self: *MovePicker, move: Move) ?void {
-        self.extmoves[self.count] = ExtMove{ .move = move, .score = 0, .piece = Piece.NO_PIECE, .is_bad_capture = false, .is_killer = false, .is_seen_by_search = false };
+        self.extmoves[self.count] = .empty; //ExtMove{ .move = move, .score = 0, .piece = Piece.NO_PIECE, .captured = Piece.NO_PIECE, .is_bad_capture = false, .is_killer = false, .is_seen_by_search = false };
+        self.extmoves[self.count].move = move;
         self.count += 1;
     }
 
@@ -1178,8 +1192,13 @@ pub const MovePicker = struct {
         const capture      : Value = 2_000_000;
         const killer1      : Value = 1_000_000;
         const killer2      : Value =   900_000;
+        const bad_capture      : Value = -2_000_000;
 
         var score: Value = undefined;
+
+        // if (!tt_move.is_empty()) debug_move_exists(pos, tt_move, "tt");
+        // if (!killers[0].is_empty())  debug_move_exists(pos, killers[0], "killer 1");
+        // if (!killers[1].is_empty())  debug_move_exists(pos, killers[1], "killer 2");
 
         for (self.slice()) |*ex| {
             score = 0;
@@ -1200,31 +1219,52 @@ pub const MovePicker = struct {
                         ex.is_killer = true;
                     }
 
-                    const parentnode: ?*const Node = if (pos.ply > 0) &searcher.nodes[pos.ply - 1] else null;
+                    const parentnode: ?*const Node = if (pos.ply >= 1) &searcher.nodes[pos.ply - 1] else null;
                     if (parentnode) |parent| {
                         if (!parent.current_move.move.is_empty() and parent.current_move.move.is_quiet()) {
                             score += searcher.hist.continuation.get_score(parent.current_move, ex.*);
+                            // TESTING #3
+                            // const grandparentnode: ?*const Node = if (pos.ply >= 2) &searcher.nodes[pos.ply - 2] else null;
+                            // if (grandparentnode) |grandparent| {
+                            //     if (!grandparent.current_move.move.is_empty() and grandparent.current_move.move.is_quiet()) {
+                            //         score += searcher.hist.continuation.get_score(grandparent.current_move, parent.current_move);
+                            //     }
+                            // }
                         }
                     }
                 },
                 Move.capture => {
+                    ex.captured = pos.board[m.to.u];
                     const see = hce.see_score(pos, m);
-                    score += capture + see;
-                    ex.is_bad_capture = see < 100;
-                    // score += searcher.hist.capture.get_score(ex.*);
+                    ex.is_bad_capture = see < -100;
+
+                    // TESTING
+                    //if (ex.is_bad_capture) {
+                    if (see < 0) {
+                        score += bad_capture + see * 100;
+                    }
+                    else {
+                        score += capture + see * 100;
+                    }
+
+                    // ORIGINAL
+                    // score += capture + see;
+
+                    score += searcher.hist.capture.get_score(ex.*);
                 },
                 Move.ep => {
+                    ex.captured = Piece.create(PieceType.PAWN, pos.stm.opp());
                     score += capture;
-                    //score += searcher.hist.capture.get_score(ex.*);
+                    score += searcher.hist.capture.get_score(ex.*);
                 },
                 Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
                     score += promotion + (m.promoted_to().value() * 10);
                 },
                 Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
-                    const capt: Piece = pos.board[m.to.u];
+                    ex.captured = pos.board[m.to.u];
                     score += promotion + (m.promoted_to().value() * 10);
-                    score += capt.value();
-                    // score += searcher.hist.capture.get_score(ex.*);
+                    score += ex.captured.value();
+                    score += searcher.hist.capture.get_score(ex.*);
                 },
                 else => {
                     unreachable;
@@ -1238,6 +1278,26 @@ pub const MovePicker = struct {
             ex.score = score;
         }
     }
+
+    // fn debug_move_exists(pos: *const Position, move: Move, comptime detail: []const u8) void {
+
+    //     var found: bool = false;
+    //     var storage: MovePicker = .empty;
+    //     pos.lazy_generate_moves(&storage);
+    //     for (storage.slice()) |m|{
+    //         if (m.move == move) {
+    //             found = true;
+    //             break;
+    //         }
+    //     }
+    //     if (!found) {
+    //         pos.draw();
+    //         io.debugprint("{t}{t}\n", .{ move.from.e, move.to.e});
+    //         io.debugprint("{any}\n", .{ move});
+    //         io.debugprint("{s}\n", .{ detail });
+    //         @panic("illegal tt or killer move");
+    //     }
+    // }
 
     /// Get the next best scoring move, putting it at current_idx, before we move on.
     fn extract_next(self: *MovePicker, current_idx: usize) *ExtMove {
@@ -1258,7 +1318,7 @@ pub const MovePicker = struct {
     }
 
     /// The slice of all the moves.
-    fn slice(self: *MovePicker) []ExtMove {
+    pub fn slice(self: *MovePicker) []ExtMove {
         return self.extmoves[0..self.count];
     }
 };

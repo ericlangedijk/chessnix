@@ -750,16 +750,17 @@ pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 
-pub const value_pawn: Value = 98;
-pub const value_knight: Value = 299;
+pub const value_pawn: Value = 100; //98;
+pub const value_knight: Value = 300; //299;
 pub const value_bishop: Value = 300;
-pub const value_rook: Value = 533;
-pub const value_queen: Value = 921;
+pub const value_rook: Value = 500; //533;
+pub const value_queen: Value = 900; //921;
 pub const value_king: Value = 0;
 
-const piece_values: [12]Value = .{
+const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
+    0, // no piece
 };
 
 pub const max_phase: u8 = 24;
