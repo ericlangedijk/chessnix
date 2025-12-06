@@ -245,7 +245,9 @@ pub const Square = packed union {
     }
 
     pub fn to_bitboard(self: Square) u64 {
-        return bitboards.square_bitboards[self.u];
+        // Shifting instead of lookup is a fraction faster.
+        return @as(u64, 1) << self.u;
+        //return bitboards.square_bitboards[self.u];
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -484,6 +486,10 @@ pub const Piece = packed union {
         return if (self.u < 6) Color.WHITE else Color.BLACK;
     }
 
+    pub fn is_white(self: Piece) bool {
+        return self.u < 6;
+    }
+
     /// Don't call for no_piece.
     pub fn piecetype(self: Piece) PieceType {
         if (comptime lib.is_paranoid) {
@@ -580,6 +586,9 @@ pub const Move = packed struct(u16) {
     pub const bishop_promotion_capture : u4 = 0b1101; // 13
     pub const rook_promotion_capture   : u4 = 0b1110; // 14
     pub const queen_promotion_capture  : u4 = 0b1111; // 15
+
+    // pub const unused_mask: u4 = 10;
+    // pub const unused_11: u4 = 11;
 
     const noisy_mask                   : u4 = 0b1100;
 
@@ -682,6 +691,36 @@ pub const Move = packed struct(u16) {
             io.print_buffered("{u}", .{ ch });
         }
     }
+
+    pub fn to_string(self: Move, is_960: bool) lib.BoundedArray(u8, 5) {
+        var result: lib.BoundedArray(u8, 5) = .{};
+        const from: Square = self.from;
+        var to: Square = self.to;
+
+        // Only in classic chess we need to decode our "king takes rook".
+        // In Chess960 this is default.
+        if (!is_960) {
+            if (self.flags == Move.castle_short) {
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u];
+            }
+            else if (self.flags == Move.castle_long) {
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
+            }
+        }
+
+        result.print_assume_capacity("{t}", .{ from.e});
+        result.print_assume_capacity("{t}", .{ to.e});
+
+        if (self.is_promotion()) {
+            const prom = self.promoted_to();
+            const ch: u8 = "?nbrq?"[prom.u];
+            result.print_assume_capacity("{u}", .{ ch });
+        }
+        return result;
+    }
+
 };
 
 pub const ScorePair = struct {
@@ -749,18 +788,19 @@ pub const mate: Value = 30000;
 pub const mate_threshold = mate - 256;
 pub const stalemate: Value = 0;
 pub const draw: Value = 0;
+pub const invalid_movescore: Value = std.math.minInt(Value);
 
 pub const value_pawn: Value = 100; //98;
 pub const value_knight: Value = 300; //299;
 pub const value_bishop: Value = 300;
-pub const value_rook: Value = 500; //533;
-pub const value_queen: Value = 900; //921;
+pub const value_rook: Value = 533;
+pub const value_queen: Value = 921;
 pub const value_king: Value = 0;
 
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
-    0, // no piece
+    0,
 };
 
 pub const max_phase: u8 = 24;

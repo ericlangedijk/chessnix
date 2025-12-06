@@ -194,11 +194,11 @@ pub fn pop_square(bitboard: *u64) Square {
     return first_square(bitboard.*);
 }
 
-/// I cannot make this function as fast as a manual loop.
-pub fn bit_loop(bitboard: *u64) ?Square {
+/// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
+pub fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
     defer bitboard.* &= (bitboard.* - 1);
-    return Square.from(@truncate(@ctz(bitboard.*)));
+    return .{ .u = @intCast(@ctz(bitboard.*)) };
 }
 
 pub fn clear_square(bitboard: *u64, sq: Square) void {

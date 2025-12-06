@@ -5,19 +5,21 @@ Currently finetuning the algorithms, speed, chess960 support. ELO target for the
 
 - A little stronger: probably somewhere around 2890 ELO.
 - Added: Chess960 support.
+- Added: Staged movepicking.
 - Added: Razoring.
 - Added: Continuation History.
 - Added: Correction History.
 - Added: Internal Iterative Reduction.
 - Added: CutNode reduction.
-- Added: Node inherits killers from 2 ply earlier.
+- Pending: Node inherits killers from 2 ply earlier. Not sure yet.
 - Changed: Transposition Table with 2 entries per bucket.
 - Changed: Aspiration Window strategy.
 - Changed: Late Move Reduction. Using a precomputed table now.
 - Changed: Quiescence search. Does not store bestmove anymore.
 - Changed: Node counting. Only incremented after doing a move.
-- Bug solved: invalid principal variation output.
+- Bug solved: Invalid principal variation output.
 - Bug solved: bishop pair evaluation bug. The mask for white / black squares was wrong.
+- Move generator 10% speedup.
 
 ### Version 1.1
 Does not exist. This was a local bugfix for pv output.
@@ -52,8 +54,9 @@ To be continued...
 ### Thanks to
 Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3).
 More thanks to Janez and Colin on Discord. The people on TalkChess. The people on the Zig Forum.
-And the authors of all the engines I used for testing: Bbc, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, Seawall, Shallow, Stockfish, Supernova, Teki.
+And the authors of the engines I used for testing: Bbc, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, Seawall, Shallow, Stockfish, Supernova, Teki.
 I also learned a lot from the source code of all these engines.
+And some extra thanks to these people who made their engine support chess960.
 
 ### Noob
 I am a github noob and only use the main branch as a backup of the current state on my PC.

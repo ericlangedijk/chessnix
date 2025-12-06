@@ -371,7 +371,7 @@ pub const BitBoardRanks = packed struct(u64) {
     h: u8,
 };
 
-pub const BitBoardBits = packed struct (u64) {
+pub const BitBoardSquares = packed struct (u64) {
     a1: u1,  b1: u1,  c1: u1,  d1: u1,  e1: u1,  f1: u1,  g1: u1,  h1: u1,
     a2: u1,  b2: u1,  c2: u1,  d2: u1,  e2: u1,  f2: u1,  g2: u1,  h2: u1,
     a3: u1,  b3: u1,  c3: u1,  d3: u1,  e3: u1,  f3: u1,  g3: u1,  h3: u1,
@@ -382,26 +382,50 @@ pub const BitBoardBits = packed struct (u64) {
     a8: u1,  b8: u1,  c8: u1,  d8: u1,  e8: u1,  f8: u1,  g8: u1,  h8: u1,
 };
 
-// TODO: squares.
+pub const BitBoardBools = packed struct (u64) {
+    a1: bool,  b1: bool,  c1: bool,  d1: bool,  e1: bool,  f1: bool,  g1: bool,  h1: bool,
+    a2: bool,  b2: bool,  c2: bool,  d2: bool,  e2: bool,  f2: bool,  g2: bool,  h2: bool,
+    a3: bool,  b3: bool,  c3: bool,  d3: bool,  e3: bool,  f3: bool,  g3: bool,  h3: bool,
+    a4: bool,  b4: bool,  c4: bool,  d4: bool,  e4: bool,  f4: bool,  g4: bool,  h4: bool,
+    a5: bool,  b5: bool,  c5: bool,  d5: bool,  e5: bool,  f5: bool,  g5: bool,  h5: bool,
+    a6: bool,  b6: bool,  c6: bool,  d6: bool,  e6: bool,  f6: bool,  g6: bool,  h6: bool,
+    a7: bool,  b7: bool,  c7: bool,  d7: bool,  e7: bool,  f7: bool,  g7: bool,  h7: bool,
+    a8: bool,  b8: bool,  c8: bool,  d8: bool,  e8: bool,  f8: bool,  g8: bool,  h8: bool,
+};
 
-pub const BitBoard = packed union { // u64
+pub const BitBoard = packed union {
     u: u64,
-    bits: BitBoardBits,
+    bools: BitBoardBools,
+    squares: BitBoardSquares,
     ranks: BitBoardRanks,
 
-    pub fn init(u: u64) BitBoard {
+    pub const zero: BitBoard = .{ .u = 0 };
+
+    pub fn set(u: u64) BitBoard {
         return .{ .u = u };
     }
 
-    // pub fn pop(self: *BitBoard) Square {
-    //     const
-    // }
-
-    pub fn iter(self: *BitBoard) ?Square {
-        if (self.u == 0) return null;
-        defer self.u &= (self.u - 1);
-        return .{ .u = @truncate(@ctz(self.u)) };
+    pub fn and_(self: BitBoard, other: BitBoard) BitBoard {
+        return .set(self.u & other.u);
     }
+
+    pub fn or_(self: BitBoard, other: BitBoard) BitBoard {
+        return .set(self.u | other.u);
+    }
+
+    pub fn pop(self: *BitBoard) ?Square {
+        if (self.u == 0) return null;
+        const lsb: u6 = @intCast(@ctz(self.u));
+        self.u &= (self.u - 1);
+        return .{ .u = lsb };
+    }
+
+    pub fn pop_unsafe(self: *BitBoard) Square {
+        const lsb: u6 = @intCast(@ctz(self.u));
+        self.u &= (self.u - 1);
+        return .{ .u = lsb };
+    }
+
 };
 
 pub fn bitboard(u: u64) BitBoard {

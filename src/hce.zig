@@ -90,7 +90,7 @@ fn compute_king_pawnstorm_areas_black() [64]u64 {
     return ps;
 }
 
-pub fn Evaluator(comptime tracing: bool) type {
+pub fn Evaluator(comptime debug_print_details: bool) type {
 
     return struct {
         const Self = @This();
@@ -142,48 +142,21 @@ pub fn Evaluator(comptime tracing: bool) type {
                 }
             }
 
-//            const use_hash: bool = hash != null;
-            // const tt_entry: ?*tt.Entry = if (hash != null) hash.?.get(pos.key) else null;
-
-            // if (tt_entry != null) {
-            //     READS += 1;
-            //     if (tt_entry.?.key == pos.key) {
-            //         if (tt_entry.?.get_static_eval()) |ev| {
-            //             HITS += 1;
-            //             return ev;
-            //         }
-            //     }
-            // }
-
             const has_pawns: bool = pos.all_pawns() != 0;
             const score: Value = switch(has_pawns) {
                 false => self.internal_evaluate(pos, false),
-                true => self.internal_evaluate(pos, true),
+                true  => self.internal_evaluate(pos, true),
             };
 
             if (evalhash) |hash| {
-                //WRITES += 1;
                 hash.store(pos.key, score);
             }
-
-            // if (tt_entry != null) {
-            //     WRITES += 1;
-            //     tt_entry.?.key = pos.key;
-            //     tt_entry.?.static_eval = @intCast(score);
-            // }
 
             return score;
         }
 
         /// Here and there the comptime has_pawns is there to boost a little speed.
-        //fn internal_evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable, comptime has_pawns: bool) Value {
         fn internal_evaluate(self: *Self, pos: *const Position, comptime has_pawns: bool) Value {
-            // // Eval TT Probe.
-            // if (evalhash) |hash| {
-            //     if (hash.probe(pos.key)) |ev| {
-            //         return ev;
-            //     }
-            // }
 
             // Init pos reference.
             self.pos = pos;
@@ -224,32 +197,32 @@ pub fn Evaluator(comptime tracing: bool) type {
             if (has_pawns) {
                 score.inc(self.eval_pawns(Color.WHITE));
                 score.dec(self.eval_pawns(Color.BLACK));
-                if (tracing) io.print("after P {any}\n", .{ score });
+                if (debug_print_details) io.debugprint("after P {any}\n", .{ score });
             }
 
             score.inc(self.eval_knights(Color.WHITE));
             score.dec(self.eval_knights(Color.BLACK));
-            if (tracing) io.print("after N {any}\n", .{ score });
+            if (debug_print_details) io.debugprint("after N {any}\n", .{ score });
 
             score.inc(self.eval_bishops(Color.WHITE));
             score.dec(self.eval_bishops(Color.BLACK));
-            if (tracing) io.print("after B {any}\n", .{ score });
+            if (debug_print_details) io.debugprint("after B {any}\n", .{ score });
 
             score.inc(self.eval_rooks(Color.WHITE));
             score.dec(self.eval_rooks(Color.BLACK));
-            if (tracing) io.print("after R {any}\n", .{ score });
+            if (debug_print_details) io.debugprint("after R {any}\n", .{ score });
 
             score.inc(self.eval_queens(Color.WHITE));
             score.dec(self.eval_queens(Color.BLACK));
-            if (tracing) io.print("after Q {any}\n", .{ score });
+            if (debug_print_details) io.debugprint("after Q {any}\n", .{ score });
 
             score.inc(self.eval_king(has_pawns, Color.WHITE));
             score.dec(self.eval_king(has_pawns, Color.BLACK));
-            if (tracing) io.print("after K {any}\n", .{ score });
+            if (debug_print_details) io.debugprint("after K {any}\n", .{ score });
 
             score.inc(self.eval_threats(has_pawns, Color.WHITE));
             score.dec(self.eval_threats(has_pawns, Color.BLACK));
-            if (tracing) io.print("after T {any}\n", .{ score });
+            if (debug_print_details) io.debugprint("after T {any}\n", .{ score });
 
             if (self.pos.stm.e == .black) {
                 score.mg = -score.mg;
@@ -257,13 +230,13 @@ pub fn Evaluator(comptime tracing: bool) type {
             }
 
             score.inc(hcetables.tempo_bonus);
-            if (tracing) trace(hcetables.tempo_bonus, self.pos.stm, null, "tempo", .{});
+            if (debug_print_details) trace(hcetables.tempo_bonus, self.pos.stm, null, "tempo", .{});
 
             const result: Value = sliding_score(pos, score);
 
-            if (tracing) {
-                io.print("pair {} {}\n", .{ score.mg, score.eg });
-                io.print("final result {}\n", .{ result });
+            if (debug_print_details) {
+                io.debugprint("pair {} {}\n", .{ score.mg, score.eg });
+                io.debugprint("final result {}\n", .{ result });
             }
 
             return result;
@@ -289,7 +262,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
                 sp = hcetables.pawn_phalanx_bonus[relative_rank];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "pawn phalanx", .{});
+                if (debug_print_details) trace(sp, us, sq, "pawn phalanx", .{});
             }
 
             // Loop through the pawns.
@@ -303,18 +276,18 @@ pub fn Evaluator(comptime tracing: bool) type {
 
                 // Material.
                 score.inc(hcetables.piece_value_table[PieceType.PAWN.u]);
-                if (tracing) trace(hcetables.piece_value_table[PieceType.PAWN.u], us, sq, "material P", .{});
+                if (debug_print_details) trace(hcetables.piece_value_table[PieceType.PAWN.u], us, sq, "material P", .{});
 
                 // Psqt.
                 sp = hcetables.piece_square_table[PieceType.PAWN.u][relative_sq.u];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "psqt P", .{});
+                if (debug_print_details) trace(sp, us, sq, "psqt P", .{});
 
                 // Protected pawn.
                 if (self.pawn_attacks[us.u] & sq_bb != 0) {
                     sp = hcetables.protected_pawn_bonus[relative_rank];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "protected pawn", .{});
+                    if (debug_print_details) trace(sp, us, sq, "protected pawn", .{});
                 }
 
                 // Doubled pawn.
@@ -323,7 +296,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 if (is_doubled) {
                     sp = hcetables.doubled_pawn_penalty[file];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "doubled pawn", .{});
+                    if (debug_print_details) trace(sp, us, sq, "doubled pawn", .{});
                 }
 
                 // Passed pawn.
@@ -332,7 +305,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     passed_pawns |= sq_bb;
                     sp = hcetables.passed_pawn_bonus[relative_rank];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "passed pawn", .{});
+                    if (debug_print_details) trace(sp, us, sq, "passed pawn", .{});
                 }
 
                 // Isolated pawn.
@@ -340,7 +313,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 if (pawns_on_adjacent_files == 0) {
                     sp = hcetables.isolated_pawn_penalty[file];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "isolated pawn", .{});
+                    if (debug_print_details) trace(sp, us, sq, "isolated pawn", .{});
                 }
             }
 
@@ -355,19 +328,19 @@ pub fn Evaluator(comptime tracing: bool) type {
 
                 sp = hcetables.king_passed_pawn_distance_table[dist_to_king];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "king dist to passed pawn, dist = {}", .{ dist_to_king });
+                if (debug_print_details) trace(sp, us, sq, "king dist to passed pawn, dist = {}", .{ dist_to_king });
 
                 const dist_to_enemy_king: u3 = funcs.square_distance(sq, their_king_sq);
                 sp = hcetables.enemy_king_passed_pawn_distance_table[dist_to_enemy_king];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "enemy king dist to passed pawn dist = {}", .{ dist_to_enemy_king });
+                if (debug_print_details) trace(sp, us, sq, "enemy king dist to passed pawn dist = {}", .{ dist_to_enemy_king });
 
                 // Square rule for pawn race.
                 const enemy_non_pawn_king_pieces: u64 = pos.by_color(them) & ~pos.kings(them) & ~pos.pawns(them);
                 const dist_to_promotion: u3 = (7 - relative_rank);
                 if (enemy_non_pawn_king_pieces == 0 and dist_to_promotion < dist_to_enemy_king - their_move) {
                     score.inc(hcetables.king_cannot_reach_passed_pawn_bonus);
-                    if (tracing) trace(hcetables.king_cannot_reach_passed_pawn_bonus, us, sq, "enemy king cannot reach pawn", .{});
+                    if (debug_print_details) trace(hcetables.king_cannot_reach_passed_pawn_bonus, us, sq, "enemy king cannot reach pawn", .{});
                 }
             }
             return score;
@@ -386,12 +359,12 @@ pub fn Evaluator(comptime tracing: bool) type {
 
                 // Material
                 score.inc(hcetables.piece_value_table[PieceType.KNIGHT.u]);
-                if (tracing) trace(hcetables.piece_value_table[PieceType.KNIGHT.u], us, sq, "material N", .{});
+                if (debug_print_details) trace(hcetables.piece_value_table[PieceType.KNIGHT.u], us, sq, "material N", .{});
 
                 // Psqt.
                 sp = hcetables.piece_square_table[PieceType.KNIGHT.u][relative_sq.u];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "psqt N", .{});
+                if (debug_print_details) trace(sp, us, sq, "psqt N", .{});
 
                 // Mobility.
                 const legal_moves: u64 = self.legalize_moves(PieceType.KNIGHT, us, sq, attacks.get_knight_attacks(sq));
@@ -399,7 +372,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const cnt: u7 = popcnt(mobility);
                 sp = hcetables.knight_mobility_table[cnt];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "knight mobility, popcnt = {}", .{ cnt });
+                if (debug_print_details) trace(sp, us, sq, "knight mobility, popcnt = {}", .{ cnt });
 
                 // Update.
                 self.knight_attacks[us.u] |= legal_moves;
@@ -410,14 +383,14 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                     sp = hcetables.attack_power[PieceType.KNIGHT.u][king_attack_count];
                     self.attack_power[us.u].inc(sp);
-                    if (tracing) trace(sp, us, sq, "attackpower kingarea knight, king_attack_count = {}", .{ king_attack_count });
+                    if (debug_print_details) trace(sp, us, sq, "attackpower kingarea knight, king_attack_count = {}", .{ king_attack_count });
                 }
 
                 // Outpost
                 if (self.is_outpost(sq, us)) {
                     sp = hcetables.knight_outpost_table[relative_sq.u];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "knight outpost", .{});
+                    if (debug_print_details) trace(sp, us, sq, "knight outpost", .{});
                 }
             }
             return score;
@@ -435,7 +408,7 @@ pub fn Evaluator(comptime tracing: bool) type {
             if ((our_bishops & bitboards.bb_black_squares != 0) and (our_bishops & bitboards.bb_white_squares != 0)) {
                 sp = hcetables.bishop_pair_bonus;
                 score.inc(sp);
-                if (tracing) trace(sp, us, null, "bishoppair", .{});
+                if (debug_print_details) trace(sp, us, null, "bishoppair", .{});
             }
 
             while (our_bishops != 0) {
@@ -444,12 +417,12 @@ pub fn Evaluator(comptime tracing: bool) type {
 
                 // Material
                 score.inc(hcetables.piece_value_table[PieceType.BISHOP.u]);
-                if (tracing) trace(hcetables.piece_value_table[PieceType.BISHOP.u], us, sq, "material B", .{});
+                if (debug_print_details) trace(hcetables.piece_value_table[PieceType.BISHOP.u], us, sq, "material B", .{});
 
                 // Psqt.
                 sp = hcetables.piece_square_table[PieceType.BISHOP.u][relative_sq.u];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "psqt B", .{});
+                if (debug_print_details) trace(sp, us, sq, "psqt B", .{});
 
                 // Mobility
                 const moves: u64 = self.legalize_moves(PieceType.BISHOP, us, sq, attacks.get_bishop_attacks(sq, occ));
@@ -457,7 +430,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const cnt: u7 = popcnt(mobility);
                 sp = hcetables.bishop_mobility_table[cnt];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "bishop mobility, popcnt = {}", .{ cnt });
+                if (debug_print_details) trace(sp, us, sq, "bishop mobility, popcnt = {}", .{ cnt });
 
                 // Update
                 self.bishop_attacks[us.u] |= moves;
@@ -469,14 +442,14 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                     sp = hcetables.attack_power[PieceType.BISHOP.u][king_attack_count];
                     self.attack_power[us.u].inc(sp);
-                    if (tracing) trace(sp, us, sq, "attackpower kingarea bishop, king_attack_count = {}", .{ king_attack_count });
+                    if (debug_print_details) trace(sp, us, sq, "attackpower kingarea bishop, king_attack_count = {}", .{ king_attack_count });
                 }
 
                 // Outpost
                 if (self.is_outpost(sq, us)) {
                     sp = hcetables.bishop_outpost_table[relative_sq.u];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "bishop outpost", .{});
+                    if (debug_print_details) trace(sp, us, sq, "bishop outpost", .{});
                 }
             }
             return score;
@@ -498,12 +471,12 @@ pub fn Evaluator(comptime tracing: bool) type {
 
                 // Material
                 score.inc(hcetables.piece_value_table[PieceType.ROOK.u]);
-                if (tracing) trace(hcetables.piece_value_table[PieceType.ROOK.u], us, sq, "material R", .{});
+                if (debug_print_details) trace(hcetables.piece_value_table[PieceType.ROOK.u], us, sq, "material R", .{});
 
                 // Psqt
                 sp = hcetables.piece_square_table[PieceType.ROOK.u][relative_sq.u];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "psqt R", .{});
+                if (debug_print_details) trace(sp, us, sq, "psqt R", .{});
 
                 // Mobility
                 const legal_moves: u64 = self.legalize_moves(PieceType.ROOK, us, sq, attacks.get_rook_attacks(sq, occ));
@@ -511,7 +484,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const cnt: u7 = popcnt(mobility);
                 sp = hcetables.rook_mobility_table[cnt];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "rook mobility, popcnt = {}", .{ cnt });
+                if (debug_print_details) trace(sp, us, sq, "rook mobility, popcnt = {}", .{ cnt });
 
                 // Update
                 self.rook_attacks[us.u] |= legal_moves;
@@ -522,7 +495,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                     sp = hcetables.attack_power[PieceType.ROOK.u][king_attack_count];
                     self.attack_power[us.u].inc(sp);
-                    if (tracing) trace(sp, us, sq, "attackpower kingarea rook, king_attack_count = {}", .{ king_attack_count });
+                    if (debug_print_details) trace(sp, us, sq, "attackpower kingarea rook, king_attack_count = {}", .{ king_attack_count });
                 }
 
                 // Open file.
@@ -532,7 +505,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const half_open: u1 = @intFromBool(their_pawns_on_file != 0);
                     sp = hcetables.rook_on_file_bonus[half_open][sq.coord.file];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "open file rook file = {} halfopen = {}", .{ sq.coord.file, half_open });
+                    if (debug_print_details) trace(sp, us, sq, "open file rook file = {} halfopen = {}", .{ sq.coord.file, half_open });
                 }
             }
             return score;
@@ -552,12 +525,12 @@ pub fn Evaluator(comptime tracing: bool) type {
 
                 // Material
                 score.inc(hcetables.piece_value_table[PieceType.QUEEN.u]);
-                if (tracing) trace(hcetables.piece_value_table[PieceType.QUEEN.u], us, sq, "material Q", .{});
+                if (debug_print_details) trace(hcetables.piece_value_table[PieceType.QUEEN.u], us, sq, "material Q", .{});
 
                 // Psqt
                 sp = hcetables.piece_square_table[PieceType.QUEEN.u][relative_sq.u];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "psqt Q", .{});
+                if (debug_print_details) trace(sp, us, sq, "psqt Q", .{});
 
                 // Mobility
                 const moves: u64 = self.legalize_moves(PieceType.QUEEN, us, sq, attacks.get_queen_attacks(sq, occupied));
@@ -565,7 +538,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const cnt: u7 = popcnt(mobility);
                 sp = hcetables.queen_mobility_table[cnt];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "queen mobility, cnt = {}", .{ cnt });
+                if (debug_print_details) trace(sp, us, sq, "queen mobility, cnt = {}", .{ cnt });
 
                 // Update
                 self.queen_attacks[us.u] |= moves;
@@ -576,7 +549,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                     sp = hcetables.attack_power[PieceType.QUEEN.u][king_attack_count];
                     self.attack_power[us.u].inc(sp);
-                    if (tracing) trace(sp, us, sq, "attackpower kingarea queen, king_attack_count = {}", .{ king_attack_count });
+                    if (debug_print_details) trace(sp, us, sq, "attackpower kingarea queen, king_attack_count = {}", .{ king_attack_count });
                 }
             }
             return score;
@@ -596,7 +569,7 @@ pub fn Evaluator(comptime tracing: bool) type {
             const relative_sq: Square = our_king_sq.relative(us);
             sp = hcetables.piece_square_table[PieceType.KING.u][relative_sq.u];
             score.inc(sp);
-            if (tracing) trace(sp, us, our_king_sq, "psqt K", .{});
+            if (debug_print_details) trace(sp, us, our_king_sq, "psqt K", .{});
 
             if (has_pawns) {
                 // Pawn protection
@@ -605,7 +578,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const sq: Square = pop(&pawn_protectors);
                     sp = get_pawn_protection_scorepair(us, our_king_sq, sq);
                     score.inc(sp);
-                    if (tracing) trace(sp, us, our_king_sq, "king pawn protection, pawn = {t}", .{ sq.e });
+                    if (debug_print_details) trace(sp, us, our_king_sq, "king pawn protection, pawn = {t}", .{ sq.e });
                 }
 
                 // Pawn storm to enemy king.
@@ -614,7 +587,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const sq: Square = pop(&storming_pawns);
                     sp = get_pawn_storm_scorepair(us, their_king_sq, sq);
                     score.inc(sp);
-                    if (tracing) trace(sp, us, their_king_sq, "king pawn storm, pawn = {t}", .{ sq.e });
+                    if (debug_print_details) trace(sp, us, their_king_sq, "king pawn storm, pawn = {t}", .{ sq.e });
                 }
             }
 
@@ -625,12 +598,12 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const half_open: u1 = if (their_pawns_on_file != 0) 1 else 0;
                 sp = hcetables.king_on_file_penalty[half_open][our_king_sq.coord.file];
                 score.inc(sp);
-                if (tracing) trace(sp, us, our_king_sq, "king on open file, halfopen = {}", .{ half_open });
+                if (debug_print_details) trace(sp, us, our_king_sq, "king on open file, halfopen = {}", .{ half_open });
             }
 
             // King danger.
             score.dec(self.attack_power[them.u]);
-            if (tracing) trace(self.attack_power[them.u], us, our_king_sq, "king danger (decrease)", .{});
+            if (debug_print_details) trace(self.attack_power[them.u], us, our_king_sq, "king danger (decrease)", .{});
 
             return score;
         }
@@ -653,7 +626,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
                     sp = hcetables.threatened_by_pawn_penalty[threatened_piece.u][is_defended];
                     score.inc(sp);
-                    if (tracing) trace(sp, us, sq, "{t} threatened by pawn, is_defended {}", .{ threatened_piece.e, is_defended });
+                    if (debug_print_details) trace(sp, us, sq, "{t} threatened by pawn, is_defended {}", .{ threatened_piece.e, is_defended });
                 }
             }
 
@@ -665,7 +638,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
                 sp = hcetables.threatened_by_knight_penalty[threatened_piece.u][is_defended];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "{t} threatened by knight, is_defended {}", .{ threatened_piece.e, is_defended });
+                if (debug_print_details) trace(sp, us, sq, "{t} threatened by knight, is_defended {}", .{ threatened_piece.e, is_defended });
             }
 
             // Their bishop threats.
@@ -676,7 +649,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
                 sp = hcetables.threatened_by_bishop_penalty[threatened_piece.u][is_defended];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "{t} threatened by bishop, is_defended {}", .{ threatened_piece.e, is_defended });
+                if (debug_print_details) trace(sp, us, sq, "{t} threatened by bishop, is_defended {}", .{ threatened_piece.e, is_defended });
             }
 
             // Their rook threats.
@@ -687,7 +660,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
                 sp = hcetables.threatened_by_rook_penalty[threatened_piece.u][is_defended];
                 score.inc(sp);
-                if (tracing) trace(sp, us, sq, "{t} threatened by rook, is_defended {}", .{ threatened_piece.e, is_defended });
+                if (debug_print_details) trace(sp, us, sq, "{t} threatened by rook, is_defended {}", .{ threatened_piece.e, is_defended });
             }
 
             // Pawn push threats.
@@ -696,7 +669,7 @@ pub fn Evaluator(comptime tracing: bool) type {
                 const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
                 const enemy_protected_squares: u64 = self.pawn_attacks[them.u] | (their_piece_attacks & ~self.pawn_attacks[us.u]);
                 const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~enemy_protected_squares;
-                // Which enenmy piece would be attacked is we push our pawn.
+                // Which enemy piece would be attacked if we push our pawn.
                 var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
                 while (pawn_push_threats != 0) {
                     const sq: Square = pop(&pawn_push_threats);
@@ -704,11 +677,11 @@ pub fn Evaluator(comptime tracing: bool) type {
                     const threatened: Piece = pos.board[sq.u];
                     sp = hcetables.pawn_push_threat_table[threatened.u];
                     score.inc(sp);
-                    if (tracing and threatened.e != .no_piece) trace(sp, us, sq, "pawn push threat {t}", .{ threatened.e });
+                    if (debug_print_details and threatened.e != .no_piece) trace(sp, us, sq, "pawn push threat {t}", .{ threatened.e });
                 }
             }
 
-            // Get the squares that our pieces can make to place the enemy king in check
+            // Get the squares that our pieces can reach to place the enemy king in check
             const occupied: u64 = pos.all();
             const not_us: u64 = ~pos.by_color(us);
             const their_king_sq: Square = self.king_squares[them.u];
@@ -729,24 +702,24 @@ pub fn Evaluator(comptime tracing: bool) type {
 
             sp = hcetables.safe_check_bonus[PieceType.KNIGHT.u].mul(popcnt(safe_knight_checks));
             score.inc(sp);
-            if (tracing) trace(sp, us, null, "safe knight checks popcnt {}", .{popcnt(safe_knight_checks)});
+            if (debug_print_details) trace(sp, us, null, "safe knight checks popcnt {}", .{popcnt(safe_knight_checks)});
 
             sp = hcetables.safe_check_bonus[PieceType.BISHOP.u].mul(popcnt(safe_bishop_checks));
             score.inc(sp);
-            if (tracing) trace(sp, us, null, "safe bishop checks popcnt {}", .{popcnt(safe_bishop_checks)});
+            if (debug_print_details) trace(sp, us, null, "safe bishop checks popcnt {}", .{popcnt(safe_bishop_checks)});
 
             sp = hcetables.safe_check_bonus[PieceType.ROOK.u].mul(popcnt(safe_rook_checks));
             score.inc(sp);
-            if (tracing) trace(sp, us, null, "safe rook checks popcnt {}", .{popcnt(safe_rook_checks)});
+            if (debug_print_details) trace(sp, us, null, "safe rook checks popcnt {}", .{popcnt(safe_rook_checks)});
 
             sp = hcetables.safe_check_bonus[PieceType.QUEEN.u].mul(popcnt(safe_queen_checks));
             score.inc(sp);
-            if (tracing) trace(sp, us, null, "safe queen checks popcnt {}", .{popcnt(safe_queen_checks)});
+            if (debug_print_details) trace(sp, us, null, "safe queen checks popcnt {}", .{popcnt(safe_queen_checks)});
 
             return score;
         }
 
-        /// Returns true if the square is not attacked by an enemy pawn and the square is protected by our own pawn.
+        /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn.
         fn is_outpost(self: *Self, sq: Square, comptime us: Color) bool {
             const them: Color = comptime us.opp();
             const sq_bb: u64 = sq.to_bitboard();
@@ -823,14 +796,14 @@ pub fn Evaluator(comptime tracing: bool) type {
         fn trace(sp: ScorePair, us: Color, sq: ?Square, comptime msg: []const u8, args: anytype) void {
             //const avg
             if (sq) |q| {
-                io.print("{t} {t} mg {d:>4} eg {d:>4} ", .{ us.e, q.e, sp.mg, sp.eg });
+                io.debugprint("{t} {t} mg {d:>4} eg {d:>4} ", .{ us.e, q.e, sp.mg, sp.eg });
             }
             else {
-                io.print("{t}    mg {d:>4} eg {d:>4} ", .{ us.e, sp.mg, sp.eg });
+                io.debugprint("{t}    mg {d:>4} eg {d:>4} ", .{ us.e, sp.mg, sp.eg });
             }
 
-            io.print(msg, args);
-            io.print("\n", .{});
+            io.debugprint(msg, args);
+            io.debugprint("\n", .{});
         }
     };
 }
@@ -840,23 +813,22 @@ pub fn Evaluator(comptime tracing: bool) type {
 /// TODO: threshold.
 pub fn see_score(pos: *const Position, m: Move) Value {
     //const st: *const StateInfo = pos.state;gi
-    // if (comptime lib.is_paranoid) {
-    //     assert(m.is_capture());
-    // }
+    if (comptime lib.is_paranoid) {
+        assert(m.is_capture());
+    }
 
-    // Ignore these.
-    if (m.is_ep() or m.is_castle()) {
+    // This will hit a no_piece square.
+    if (m.is_ep()) {
         return 0;
     }
 
-
     const from: Square = m.from;
     const to: Square = m.to;
-    const value_them = pos.get(to).value();// - if(m.is_promotion()) PieceType.PAWN.value() else 0;
-    const value_us = pos.get(from).value();// - if(m.is_promotion()) m.promoted_to().value() else 0;
+    const value_them = pos.get(to).value();
+    const value_us = pos.get(from).value();
 
     // if (m.is_promotion()) {
-    //      value_us += m.promoted_to().value() - PieceType.PAWN.value();
+    //     value_them += m.promoted_to().value(); // #testing
     // }
 
     // good capture: if (value_them - value_us > P.value()) return true;
@@ -868,10 +840,11 @@ pub fn see_score(pos: *const Position, m: Move) Value {
     const queens_bishops = pos.all_queens_bishops();
     const queens_rooks = pos.all_queens_rooks();
     var occupation = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
-    //var occupation = pos.all() ^ from.to_bitboard();
     var attackers: u64 = pos.get_combined_attacks_to_for_occupation(occupation, to);
-    var bb: u64 = 0;
     var side: Color = pos.stm;
+
+    // Reusable vars.
+    var bb: u64 = undefined;
 
     attackloop: while (true) {
         attackers &= occupation;
@@ -955,4 +928,101 @@ pub fn see_score(pos: *const Position, m: Move) Value {
         }
     }
     return gain[0];
+}
+
+
+pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
+    if (m.flags & (Move.castle_short | Move.castle_long | Move.ep) != 0) {
+        return 0;
+    }
+
+    const from: Square = m.from;
+    const to: Square = m.to;
+
+    // Set the score to how much we are allowed to lose.
+    var score: Value = pos.board[to.u].value() - threshold;
+
+    // TODO: promotion
+
+    if (score < 0) {
+        return false;
+    }
+
+    score = pos.board[from.u].value() - score;
+
+    // Equal or winning.
+    if (score <= 0) {
+        return true;
+    }
+
+    const queens_bishops = pos.all_queens_bishops();
+    const queens_rooks = pos.all_queens_rooks();
+
+    // Execute the move on a bitboard.
+    var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
+
+    // Get all attacks from both sides to square.
+    var all_attackers: u64 = pos.get_combined_attacks_to_for_occupation(occupied, to);
+    var us: Color = pos.stm;
+    var winner: Color = pos.stm;
+
+    attackloop: while (true) {
+        us = us.opp();
+        all_attackers &= occupied;
+        if (all_attackers == 0) {
+            break :attackloop;
+        }
+        winner = winner.opp();
+
+        var next_attacker_value: Value = 0;
+
+        find_next_attacker: inline for (PieceType.all) |piecetype|{
+            const next_attacker: u64 = all_attackers & pos.by_type(piecetype) & pos.by_color(us);
+            if (next_attacker == 0) {
+                break :attackloop;
+            }
+
+            // Clear this attacker.
+            funcs.clear_square(&occupied, funcs.first_square(next_attacker));
+            next_attacker_value = piecetype.value();
+
+            // Find Reveal next x-ray attacker on the bitboard.
+            switch (piecetype.e) {
+                .pawn => {
+                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
+                    break :find_next_attacker;
+                },
+                .knight => {
+                    // Do nothing. A knight cannot reveal new sliders.
+                    break :find_next_attacker;
+                },
+                .bishop => {
+                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
+                    break :find_next_attacker;
+                },
+                .rook => {
+                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_rooks);
+                    break :find_next_attacker;
+                },
+                .queen => {
+                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
+                    all_attackers |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
+                    break :find_next_attacker;
+                },
+                .king => {
+                    const them: Color = us.opp();
+                    // We can exit here: if the king captures and the opponent can then capture our king we lose othersize we win.
+                    return if (all_attackers & pos.by_color(them) != 0) pos.stm.u != winner.u else return pos.stm.u == winner;
+                },
+            }
+        }
+
+        score = -score + next_attacker_value;
+        // Quit early if the exchange is lost or neutral
+        if (score <= 0) {
+            break :attackloop;
+        }
+    }
+
+    return pos.stm.u == winner.u;
 }

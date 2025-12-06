@@ -258,17 +258,23 @@ const TTY = struct {
     }
 
     fn do_static_eval() void {
+
         //const e = eval.evaluate_with_tracking_absolute(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
         //io.print("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
 
         //const bb = engine.pos.all_except_pawns_and_kings();
         //funcs.print_bitboard(bb);
 
-        var ev: hce.Evaluator(true) = .init();
-        const e = ev.evaluate(&engine.pos, null);
-        // //_ = ev.evaluate(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
-        // //const e = ev.evaluate(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
-        io.print("do_static_evalcall result eval = {}\n", .{ e });
+        if (comptime lib.is_debug) {
+            var ev: hce.Evaluator(true) = .init();
+            const e = ev.evaluate(&engine.pos, null);
+            io.debugprint("eval: {}\n", .{ e });
+        }
+        else {
+            var ev: hce.Evaluator(false) = .init();
+            const e = ev.evaluate(&engine.pos, null);
+            io.print("eval: {}\n", .{ e });
+        }
 
         //const v = eval.tuned_eval(&engine.pos);
         //io.debugprint("e {} t {}\n", .{e, v});
@@ -279,21 +285,28 @@ const TTY = struct {
     fn print_state() void {
 
 
+        //io.print("{}\n", .{ engine.pos.threats});
         // @import("history.zig").debug_hist(&engine.searcher.history_heuristics, &engine.pos);
         // if (true) return;
 
 
-        if (true) return;
+        //if (true) return;
 
         // engine.set_position("1kr4r/1p1nnp2/1P1qb2p/p1pp4/P2P1NpN/2QBP1P1/5PP1/2R2RK1 w - - 0 24", null) catch return;
-        engine.set_position("1kr5/1p3p2/1P1qb2p/p1pp4/P2P2pN/2Q1P1P1/5PP1/2R3K1 w - - 0 24", null) catch return;
+        // engine.set_position("1kr5/1p3p2/1P1qb2p/p1pp4/P2P2pN/2Q1P1P1/5PP1/2R3K1 w - - 0 24", null) catch return;
 
-        const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
+        // engine.set_position("5k2/p2P2pp/8/1pb5/1Nn1P1n1/6Q1/PPP4P/R3K1NR w KQ -", null) catch return;
+
+        engine.set_position("r1b1kbnr/pppp1ppp/2n5/8/3PP2q/2N2N2/PPP1K1pP/R1BQ1B1R b kq - 1 7", null) catch return;
+
+        const m: types.Move = engine.pos.parse_move("g2h1q") catch return;
+
+        //const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
         const see = hce.see_score(&engine.pos, m);
         //const see2 = hce.see_score_phased(&engine.pos, m);
-        draw_position();
+        //draw_position();
 
-        io.print("see score {}", .{ see });
+        io.print("see score {}\n", .{ see });
         //io.print("see score phased {}", .{ see2 });
         if (true) return;
         //const t: *const tt.TranspositionTable = &engine.transpositiontable;

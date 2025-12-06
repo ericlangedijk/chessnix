@@ -5,8 +5,11 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
+const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
+
+const assert = std.debug.assert;
 
 const Value = types.Value;
 const SmallValue = types.SmallValue;
@@ -46,8 +49,11 @@ pub const History = struct {
         self.* = std.mem.zeroes(History);
     }
 
-    pub fn record_beta_cutoff(self: *History, parentnode: ?*const Node, node: *Node, depth: i32, prev_moves: []const ExtMove) void {
-        //assert(node.current_move.move == move)
+    pub fn record_beta_cutoff(self: *History, parentnode: ?*const Node, node: *Node, depth: i32, quiets: []const ExtMove, captures: []const ExtMove) void {
+        if (comptime lib.is_paranoid) {
+            assert(!node.current_move.move.is_empty());
+        }
+
         const current: ExtMove = node.current_move;
 
         if (current.move.is_quiet()) {
@@ -58,29 +64,27 @@ pub const History = struct {
                 node.killers[0] = current.move;
             }
 
-            // if (depth <= 1) { // TESTING #
-            //     return;
-            // }
+            if (depth <= 1) {
+                return; // #testing
+            }
 
             // Quiet history.
-            self.quiet.update(depth, current, prev_moves);
+            self.quiet.update(depth, current, quiets);
 
             // Continuation history.
             if (parentnode != null) {
                 const parent: ExtMove = parentnode.?.current_move;
                 if (!parent.move.is_empty() and parent.move.is_quiet()) {
-                    self.continuation.update(depth, parent, current, prev_moves);
+                    self.continuation.update(depth, parent, current, quiets);
+                    // Should we update grandparent?
                 }
             }
         }
         else if (current.move.is_capture()) {
             // Capture history.
-            self.capture.update(depth, current, prev_moves);
+            self.capture.update(depth, current, captures);
         }
     }
-
-    //pub fn get_quiet_score()
-    // pub fn get_capture_score()
 };
 
 /// Heuristics for quiet moves.
@@ -92,7 +96,7 @@ pub const QuietHistory = struct {
     /// Quiet move scores. Indexing: [piece][from-square][to-square]
     table: [12][64][64]SmallValue,
 
-    fn update(self: *QuietHistory, depth: i32, ex: ExtMove, prev_moves: []const ExtMove) void {
+    fn update(self: *QuietHistory, depth: i32, ex: ExtMove, quiets: []const ExtMove) void {
         const bonus: SmallValue = get_bonus(depth, max_bonus);
 
         // Increase score for this move.
@@ -100,13 +104,23 @@ pub const QuietHistory = struct {
         apply_bonus(v, bonus, max_score);
 
         // Decrease score of previous moves. These did not cause a beta cutoff.
-        for (prev_moves) |prev| {
-            if (prev.is_seen_by_search and prev.move.is_quiet()) {
-                const p: *SmallValue = self.get_score_ptr(prev);
-                apply_bonus(p, -bonus, max_score);
-            }
+        for (quiets) |prev| {
+            // if (comptime lib.is_paranoid) assert(!prev.move.is_empty() and prev)
+            const p: *SmallValue = self.get_score_ptr(prev);
+            apply_bonus(p, -bonus, max_score);
         }
     }
+
+    // fn threat_index(pos: *const Position, ex: ExtMove) u2 {
+    //     var result: u2 = 0;
+    //     if (funcs.contains_square(pos.threats, ex.move.from)) {
+    //         result += 2;
+    //     }
+    //     if (funcs.contains_square(pos.threats, ex.move.to)) {
+    //         result += 1;
+    //     }
+    //     return result;
+    // }
 
     fn get_score_ptr(self: *QuietHistory, ex: ExtMove) *SmallValue {
         return &self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
@@ -126,7 +140,7 @@ pub const CaptureHistory = struct {
     /// Capture move scores. Indexing: [piece][to-square][captured-piecetype]
     table: [12][64][6]SmallValue,
 
-    fn update(self: *CaptureHistory, depth: i32, ex: ExtMove, prev_moves: []const ExtMove) void {
+    fn update(self: *CaptureHistory, depth: i32, ex: ExtMove, captures: []const ExtMove) void {
         const bonus: SmallValue = get_bonus(depth, max_bonus);
 
         // Increase score for this move.
@@ -134,11 +148,17 @@ pub const CaptureHistory = struct {
         apply_bonus(v, bonus, max_bonus);
 
         // Decrease score of previous capture moves. These did not cause a beta cutoff.
-        for (prev_moves) |prev| {
-            if (prev.is_seen_by_search and prev.move.is_capture()) {
-                const p: *SmallValue = self.get_score_ptr(prev);
-                apply_bonus(p, -bonus, max_score);
-            }
+        for (captures) |prev| {
+            const p: *SmallValue = self.get_score_ptr(prev);
+            apply_bonus(p, -bonus, max_score);
+        }
+    }
+
+    pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
+        const bonus: SmallValue = get_bonus(depth, max_bonus);
+        for (captures) |prev| {
+            const p: *SmallValue = self.get_score_ptr(prev);
+            apply_bonus(p, -bonus, max_score);
         }
     }
 
@@ -155,7 +175,7 @@ pub const CaptureHistory = struct {
 pub const ContinuationHistory = struct {
 
     const max_bonus: SmallValue = 1300;
-    const max_score: SmallValue = 8000; //6000;
+    const max_score: SmallValue = 8000;
 
     // Move pair scores. Indexing: [prevpiece][to-square][piece][to-square]
     table: [12][64][12][64]SmallValue,
@@ -169,10 +189,8 @@ pub const ContinuationHistory = struct {
 
         // Decrease score of previous quiet moves. These did not cause a beta cutoff.
         for (prev_moves) |prev| {
-            if (prev.is_seen_by_search and prev.move.is_quiet()) {
-                const p: *SmallValue = self.get_score_ptr(parent, prev);
-                apply_bonus(p, -bonus, max_score);
-            }
+            const p: *SmallValue = self.get_score_ptr(parent, prev);
+            apply_bonus(p, -bonus, max_score);
         }
     }
 
@@ -220,11 +238,12 @@ pub const CorrectionHistory = struct {
     pub fn get_correction(self: *CorrectionHistory, pos: *const Position, comptime us: Color) SmallValue {
         const u: u1 = us.u;
         var corr_eval: Value = 0;
-        corr_eval += self.pawn_correction[u][pos.pawnkey % CORRECTION_HISTORY_SIZE] * 2;
-        corr_eval += self.non_pawn_white[u][pos.nonpawnkeys[0] % CORRECTION_HISTORY_SIZE] * 2;
-        corr_eval += self.non_pawn_black[u][pos.nonpawnkeys[1] % CORRECTION_HISTORY_SIZE] * 2;
+        corr_eval += @as(Value, self.pawn_correction[u][pos.pawnkey % CORRECTION_HISTORY_SIZE]) * 2;
+        corr_eval += @as(Value, self.non_pawn_white[u][pos.nonpawnkeys[0] % CORRECTION_HISTORY_SIZE]) * 2;
+        corr_eval += @as(Value, self.non_pawn_black[u][pos.nonpawnkeys[1] % CORRECTION_HISTORY_SIZE]) * 2;
         corr_eval >>= 9;
-        //corr_eval = std.math.clamp(corr_eval, -127, 127);
+        // corr_eval = std.math.clamp(corr_eval, -255, 255);
+        if (lib.is_paranoid) assert(corr_eval > -300 and corr_eval < 300);
         return @intCast(corr_eval);
     }
 };

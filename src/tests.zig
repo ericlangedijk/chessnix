@@ -2,8 +2,6 @@
 
 //! Collection of debug tests. Never used in release mode.
 
-// TODO: move to separate folder / files.
-
 const std = @import("std");
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");
@@ -13,7 +11,6 @@ const types = @import("types.zig");
 const position = @import("position.zig");
 const perft = @import("perft.zig");
 const tt = @import("tt.zig");
-const hce = @import("hce.zig");
 
 const Position = position.Position;
 const Storage = position.MoveStorage;
@@ -33,12 +30,11 @@ pub fn run_silent_debugmode_tests() !void
 
     const perfts: usize = try run_perfts(3);
     const perfts_960: usize = try run_perfts_960(3);
-    const flips: usize = try test_flip();
-    //const evals: usize = 0;//try test_eval();
-    const sees: usize = try test_see();
+    const flips: usize = 0; // try test_flip();
+    const evals: usize = 0; // try test_eval();
 
     const time = timer.read();
-    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, sees = {} (time {D})\n", .{ perfts, perfts_960, flips, sees, time });
+    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, evals = {} (time {D})\n", .{ perfts, perfts_960, flips, evals, time });
 }
 
 pub const Error = error {
@@ -67,7 +63,7 @@ fn run_perfts(max_depth: usize) !usize {
     for (testpositions, 0..) |str, index| {
         try pos.set(str, false);
 
-        // TEMP EVAL OUTPUT for later check
+        // TEMP EVAL OUTPUT for later test
         // const hce = @import("hce.zig");
         // var ev: hce.Evaluator(false) = .init();
         // const e = ev.evaluate(&pos, null, null);
@@ -159,31 +155,99 @@ fn test_flip() !usize {
     return done;
 }
 
-pub fn test_see() !usize {
+/// When optimizing hce evaluation, make sure the evals stay the same as we stored them earlier.
+pub fn test_eval_file() !usize {
     lib.not_in_release();
 
+    const hce = @import("hce.zig");
+    var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\fixed_evals_list.txt", ctx.galloc, 256);
+    defer reader.deinit();
     var pos: Position = .empty;
+    //var flipped_pos: Position = .empty;
     var done: usize = 0;
+    while (try reader.readline()) |line| {
+        try pos.set(line, false);
+        var tokenizer = std.mem.tokenizeScalar(u8, line, ',');
+        _ = tokenizer.next(); // fen
+        const eval_str = tokenizer.next() orelse @panic("wrong input for eval fen");
+        const stored_eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
+        var ev: hce.Evaluator(false) = .init();
+        const eval: types.Value = ev.evaluate(&pos, null);
+        if (eval != stored_eval) {
+            return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
+        }
+        // TODO CHECK OUT.
+        // flipped_pos = pos;
+        // flipped_pos.flip();
+        // const eval_flipped = ev.evaluate(&flipped_pos, null, null);
+        // if (eval_flipped != eval) {
+        //     pos.draw();
+        //     flipped_pos.draw();
+        //     var e = hce.Evaluator(true).init();
+        //     _ = e.evaluate(&pos, null, null);
+        //     _ = e.evaluate(&flipped_pos, null, null);
+        //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });
+        // }
 
-    for (see_positions, 0..) |str, index| {
-        lib.io.debugprint("#{} ", .{index + 1});
-        var tokenizer = std.mem.tokenizeScalar(u8, str, ';');
-        const fen: []const u8 = tokenizer.next() orelse @panic("invalid see fen");
-        try pos.set(fen, false);
-        const movestr: []const u8 = tokenizer.next() orelse @panic("invalid see move");
-        lib.io.debugprint("{s} {s} ", .{fen, movestr});
-        const move: types.Move = try pos.parse_move(trim(movestr));
-        const nr: []const u8 = tokenizer.next() orelse @panic("invalid see score");
-        const expected_see_score: types.Value = try std.fmt.parseInt(types.Value, trim(nr), 10);
-        const see: types.Value = hce.see_score(&pos, move);
-        lib.io.debugprint("expected {} found {}\n", .{expected_see_score, see });
         done += 1;
     }
     return done;
 }
 
-fn trim(str: []const u8) []const u8 {
-    return std.mem.trim(u8, str, &.{ ' '} );
+pub fn test_eval() !usize {
+    lib.not_in_release();
+
+    const hce = @import("hce.zig");
+    var pos: Position = .empty;
+    var flipped_pos: Position = .empty;
+
+    //var flipped_pos: Position = .empty;
+    var done: usize = 0;
+    for (testpositions) |str| {
+        try pos.set(str, false);
+        var ev: hce.Evaluator(false) = .init();
+        const eval1: types.Value = ev.evaluate(&pos, null);
+        // if (eval != stored_eval) {
+        //     return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
+        // }
+        flipped_pos = pos;
+        flipped_pos.flip();
+        const eval2: types.Value = ev.evaluate(&flipped_pos, null);
+
+        io.debugprint("{} ==? {}\n", .{ eval1, eval2 });
+
+        // TODO CHECK OUT.
+        // flipped_pos = pos;
+        // flipped_pos.flip();
+        // const eval_flipped = ev.evaluate(&flipped_pos, null, null);
+        // if (eval_flipped != eval) {
+        //     pos.draw();
+        //     flipped_pos.draw();
+        //     var e = hce.Evaluator(true).init();
+        //     _ = e.evaluate(&pos, null, null);
+        //     _ = e.evaluate(&flipped_pos, null, null);
+        //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });
+        // }
+
+        done += 1;
+    }
+    return done;
+}
+
+
+pub fn test_see() !usize {
+    // lib.not_in_release();
+    // var pos: Position = .empty;
+    // var done: usize = 0;
+
+    // for (testpositions, 0..) |str, index| {
+    //     var tokenizer = std.mem.tokenizeScalar(u8, str, ';');
+    //     const fen: []const u8 = tokenizer.next() orelse @panic("invalid see fen");
+    //     try pos.set(fen, false);
+    //     const move: []const u8 = tokenizer.next() orelse @panic("invalid see move");
+    // }
+
+    return 0;
 }
 
 pub const ParseDepthError = error
@@ -243,12 +307,6 @@ fn decode_depths(fen: []const u8) ParseDepthError!FenDepths {
 fn index_of(slice: []const u8, value:u8) ?usize {
     return std.mem.indexOfScalar(u8, slice, value);
 }
-
-
-
-pub const kiwi_fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
-
-// TODO: read testdata/perft_small.txt, remove array.
 
 pub const testpositions: [134][]const u8 = .{
 

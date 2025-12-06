@@ -116,7 +116,7 @@ fn compute_pawn_hits_white() [64]u64 {
     @setEvalBranchQuota(8000);
     var phw: [64]u64 = @splat(0);
     for (Square.all) |sq| {
-        // Pawn hits. Fake pawnhits are generated for the first and last rank (for pawn tricks).
+        // Pawn hits. Fake pawnhits are calculated for the first and last rank (for pawn tricks).
         if (sq.next(.north_east))|n| phw[sq.u] |= n.to_bitboard();
         if (sq.next(.north_west))|n| phw[sq.u] |= n.to_bitboard();
     }
@@ -127,7 +127,7 @@ fn compute_pawn_hits_black() [64]u64 {
     @setEvalBranchQuota(8000);
     var phb: [64]u64 = @splat(0);
     for (Square.all) |sq| {
-        // Pawn hits. Fake pawnhits are generated for the first and last rank (for pawn tricks).
+        // Pawn hits. Fake pawnhits are calculated for the first and last rank (for pawn tricks).
         if (sq.next(.south_east))|n| phb[sq.u] |= n.to_bitboard();
         if (sq.next(.south_west))|n| phb[sq.u] |= n.to_bitboard();
     }

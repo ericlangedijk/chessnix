@@ -43,8 +43,7 @@ pub fn qrun(pos: *const Position, depth: u8) void
 }
 
 /// No output. Just return node count.
-pub fn run_quick(pos: *const Position, depth: u8) u64
-{
+pub fn run_quick(pos: *const Position, depth: u8) u64 {
     switch (pos.stm.e) {
         .white => return do_run(false, true, Color.WHITE, depth, pos),
         .black => return do_run(false, true, Color.BLACK, depth, pos),
@@ -58,7 +57,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     var nodes: usize = 0;
 
     var storage: position.MoveStorage = .init();
-    pos.generate_moves(us, &storage);
+    pos.generate_all_moves(us, &storage);
     const moves = storage.slice();
 
     for (moves) |m| {
@@ -71,7 +70,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
             next_pos.do_move(us, m);
             if (is_leaf) {
                 var counter: JustCount = .init();
-                next_pos.generate_moves(them, &counter); // just count
+                next_pos.generate_all_moves(them, &counter); // just count
                 count = counter.moves;
                 nodes += count;
             }
