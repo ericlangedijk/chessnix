@@ -15,6 +15,7 @@ Currently finetuning the algorithms, speed, chess960 support. ELO target for the
 - Added: Correction History.
 - Added: Internal Iterative Reduction.
 - Added: CutNode reduction.
+- Added: SEE pruning.
 - Changed: Transposition Table with 2 entries per bucket.
 - Changed: Aspiration Window strategy.
 - Changed: Late Move Reduction. Using a precomputed table now.
