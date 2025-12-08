@@ -791,7 +791,8 @@ pub fn Evaluator(comptime debug_print_details: bool) type {
             const phase: u8 = @min(max, pos.phase);
             const mg: Value = score.mg;
             const eg: Value = score.eg;
-            return @divTrunc(mg * phase + eg * (max - phase), max);        }
+            return @divTrunc(mg * phase + eg * (max - phase), max);
+        }
 
         fn trace(sp: ScorePair, us: Color, sq: ?Square, comptime msg: []const u8, args: anytype) void {
             //const avg
@@ -808,17 +809,20 @@ pub fn Evaluator(comptime debug_print_details: bool) type {
     };
 }
 
+pub fn interpolate_score(phase: u8, score: ScorePair) Value {
+    const max: u8 = comptime types.max_phase;
+    const ph: u8 = @min(max, phase);
+    const mg: Value = score.mg;
+    const eg: Value = score.eg;
+    return @divTrunc(mg * ph + eg * (max - ph), max);
+}
+
 /// Static exchange evaluation. Get score of capture fest on square.
 /// TODO: perfect pins?
 /// TODO: threshold.
 pub fn see_score(pos: *const Position, m: Move) Value {
-    //const st: *const StateInfo = pos.state;gi
-    if (comptime lib.is_paranoid) {
-        assert(m.is_capture());
-    }
 
-    // This will hit a no_piece square.
-    if (m.is_ep()) {
+    if (m.is_ep() or m.is_castle()) {
         return 0;
     }
 
@@ -930,19 +934,21 @@ pub fn see_score(pos: *const Position, m: Move) Value {
     return gain[0];
 }
 
-
 pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
-    if (m.flags & (Move.castle_short | Move.castle_long | Move.ep) != 0) {
-        return 0;
+    if (m.is_castle() or m.is_ep()) {
+        return true;
     }
 
     const from: Square = m.from;
     const to: Square = m.to;
 
-    // Set the score to how much we are allowed to lose.
+    // Set the score to captured piece minus how much we are allowed to lose.
     var score: Value = pos.board[to.u].value() - threshold;
 
-    // TODO: promotion
+    // #testing
+    // if (m.is_promotion()) {
+    //     //score += m.promoted_to().value();// - PieceType.PAWN.value();
+    // }
 
     if (score < 0) {
         return false;
@@ -961,68 +967,209 @@ pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
     // Execute the move on a bitboard.
     var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
 
-    // Get all attacks from both sides to square.
-    var all_attackers: u64 = pos.get_combined_attacks_to_for_occupation(occupied, to);
+    // Get the initial attacks from both sides to the to-square.
+    var all_attacks: u64 = pos.get_combined_attacks_to_for_occupation(occupied, to);
     var us: Color = pos.stm;
     var winner: Color = pos.stm;
 
     attackloop: while (true) {
         us = us.opp();
-        all_attackers &= occupied;
-        if (all_attackers == 0) {
+        all_attacks &= occupied;
+
+        // Get our attackers.
+        const our_attackers: u64 = all_attacks & pos.by_color(us);
+
+        // No attackers left.
+        if (our_attackers == 0) {
             break :attackloop;
         }
         winner = winner.opp();
-
         var next_attacker_value: Value = 0;
 
-        find_next_attacker: inline for (PieceType.all) |piecetype|{
-            const next_attacker: u64 = all_attackers & pos.by_type(piecetype) & pos.by_color(us);
-            if (next_attacker == 0) {
-                break :attackloop;
-            }
+        // Get the least valuable next piece.
+        get_next_attacker: inline for (PieceType.all) |piecetype| {
+            const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
+            if (next_attacker != 0) {
 
-            // Clear this attacker.
-            funcs.clear_square(&occupied, funcs.first_square(next_attacker));
-            next_attacker_value = piecetype.value();
-
-            // Find Reveal next x-ray attacker on the bitboard.
-            switch (piecetype.e) {
-                .pawn => {
-                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    break :find_next_attacker;
-                },
-                .knight => {
-                    // Do nothing. A knight cannot reveal new sliders.
-                    break :find_next_attacker;
-                },
-                .bishop => {
-                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    break :find_next_attacker;
-                },
-                .rook => {
-                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_rooks);
-                    break :find_next_attacker;
-                },
-                .queen => {
-                    all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    all_attackers |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    break :find_next_attacker;
-                },
-                .king => {
-                    const them: Color = us.opp();
-                    // We can exit here: if the king captures and the opponent can then capture our king we lose othersize we win.
-                    return if (all_attackers & pos.by_color(them) != 0) pos.stm.u != winner.u else return pos.stm.u == winner;
-                },
+                // Clear this attacker.
+                const sq: Square = funcs.first_square(next_attacker);
+                funcs.clear_square(&occupied, sq);
+                // Reveal next x-ray attacker on the attacks bitboard.
+                switch (piecetype.e) {
+                    .pawn   => {
+                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
+                    },
+                    .knight => {
+                        // Do nothing: a knight move cannot reveal a new slider.
+                    },
+                    .bishop => {
+                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
+                    },
+                    .rook   => {
+                        all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
+                    },
+                    .queen  => {
+                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
+                        all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
+                    },
+                    .king   => {
+                        // We can exit here: if the king captures and the opponent can capture our king we lose othersize we win.
+                        return if (all_attacks & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
+                    },
+                }
+                next_attacker_value = piecetype.value();
+                break :get_next_attacker;
             }
         }
 
-        score = -score + next_attacker_value;
-        // Quit early if the exchange is lost or neutral
+        score = -score + 1 + next_attacker_value;
+
+        // Quit if the exchange is lost or equal
         if (score <= 0) {
             break :attackloop;
         }
     }
-
     return pos.stm.u == winner.u;
 }
+
+
+
+
+
+
+
+// const phased_piece_values: [25][13]Value = compute_phased_piece_values();
+
+// fn compute_phased_piece_values() [25][13]Value {
+//     @setEvalBranchQuota(8000);
+//     var table: [25][13]Value = @splat(@splat(0));
+//     for (0..25) |phase| {
+//         for (0..12) |p| {
+//             const piece: Piece = .from_usize(p);
+//             const v: Value = interpolate_score(phase, hcetables.piece_value_table[piece.piecetype().u]);
+//             table[phase][p] = v;
+//         }
+//     }
+//     return table;
+// }
+
+// /// EXPERIMENTAL
+// pub fn see_score_phased(pos: *const Position, m: Move) Value {
+//     //const st: *const StateInfo = pos.state;gi
+//     if (comptime lib.is_paranoid) {
+//         assert(m.is_capture());
+//     }
+
+//     // This will hit a no_piece square.
+//     if (m.is_ep()) {
+//         return 0;
+//     }
+
+//     const phase: u8 = @min(pos.phase, types.max_phase);
+//     const from: Square = m.from;
+//     const to: Square = m.to;
+//     const value_them = phased_piece_values[phase][pos.board[to.u].u];
+//     const value_us = phased_piece_values[phase][pos.board[from.u].u]; //pos.get(from).value();
+
+//     // if (m.is_promotion()) {
+//     //     value_them += m.promoted_to().value(); // #testing
+//     // }
+
+//     // good capture: if (value_them - value_us > P.value()) return true;
+//     var gain: [24]Value = @splat(0);
+//     gain[0] = value_them;
+//     gain[1] = value_us - value_them;
+
+//     var depth: u8 = 1;
+//     const queens_bishops = pos.all_queens_bishops();
+//     const queens_rooks = pos.all_queens_rooks();
+//     var occupation = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
+//     var attackers: u64 = pos.get_combined_attacks_to_for_occupation(occupation, to);
+//     var side: Color = pos.stm;
+
+//     // Reusable vars.
+//     var bb: u64 = undefined;
+
+//     attackloop: while (true) {
+//         attackers &= occupation;
+//         if (attackers == 0) break;
+//         side = side.opp();
+
+//         // Pawn.
+//         bb = attackers & pos.pawns(side);
+//         if (bb != 0) {
+//             depth += 1;
+//             gain[depth] = phased_piece_values[phase][PieceType.PAWN.u] - gain[depth - 1];
+//             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 pawn.
+//             attackers |= (attacks.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
+//             continue :attackloop;
+//         }
+
+//         // Knight.
+//         bb = attackers & pos.knights(side);
+//         if (bb != 0) {
+//             depth += 1;
+//             gain[depth] = phased_piece_values[phase][PieceType.KNIGHT.u] - gain[depth - 1];
+//             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 knight (cannot reveal more sliding attackers).
+//             continue :attackloop;
+//         }
+
+//         // Bishop.
+//         bb = attackers & pos.bishops(side);
+//         if (bb != 0) {
+//             depth += 1;
+//             gain[depth] = phased_piece_values[phase][PieceType.BISHOP.u] - gain[depth - 1];
+//             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 bishop.
+//             attackers |= (attacks.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
+//             continue :attackloop;
+//         }
+
+//         // Rook.
+//         bb = attackers & pos.rooks(side);
+//         if (bb != 0) {
+//             depth += 1;
+//             gain[depth] = phased_piece_values[phase][PieceType.ROOK.u] - gain[depth - 1];
+//             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 rook.
+//             attackers |= (attacks.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
+//             continue :attackloop;
+//         }
+
+//         // Queen.
+//         bb = attackers & pos.queens(side);
+//         if (bb != 0) {
+//             depth += 1;
+//             gain[depth] = phased_piece_values[phase][PieceType.QUEEN.u] - gain[depth - 1];
+//             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 queen.
+//             attackers |= (attacks.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
+//             attackers |= (attacks.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
+//             continue :attackloop;
+//         }
+
+//         // King.
+//         bb = attackers & pos.kings(side);
+//         if (bb != 0) {
+//             side = side.opp();
+//             funcs.clear_square(&occupation, funcs.first_square(bb)); // clear 1 king.
+//             attackers |= (attacks.get_bishop_attacks(to, occupation) & queens_bishops); // reveal next diagonal attacker.
+//             attackers |= (attacks.get_rook_attacks(to, occupation) & queens_rooks); // reveal next straight attacker.
+//             attackers &= occupation & pos.by_color(side);
+//             // King can take the next.
+//             if (attackers == 0) {
+//                 depth += 1;
+//                 gain[depth] = PieceType.KING.value() - gain[depth - 1];
+//                 break :attackloop;
+//             }
+//             break :attackloop;
+//         }
+//         break :attackloop;
+//     }
+
+//     // Bubble up the score
+//     depth -= 1;
+//     while (depth > 0) : (depth -= 1) {
+//         if (gain[depth] > -gain[depth - 1]) {
+//             gain[depth - 1] = -gain[depth];
+//         }
+//     }
+//     return gain[0];
+// }

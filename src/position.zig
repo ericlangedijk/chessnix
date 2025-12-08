@@ -1060,10 +1060,12 @@ pub const Position = struct {
 
     /// Gives a bitboard of attackers which attack `to` for both colors.
     pub fn get_combined_attacks_to_for_occupation(self: *const Position, occ: u64, to: Square) u64 {
+        // Uses pawn inversion trick.
         return
             (attacks.get_knight_attacks(to) & self.all_knights()) |
             (attacks.get_king_attacks(to) & self.all_kings()) |
-            (attacks.get_pawn_attacks_combined(to)) |
+            (attacks.get_pawn_attacks(to, Color.BLACK) & self.pawns(Color.WHITE)) |
+            (attacks.get_pawn_attacks(to, Color.WHITE) & self.pawns(Color.BLACK)) |
             (attacks.get_rook_attacks(to, occ) & self.all_queens_rooks()) |
             (attacks.get_bishop_attacks(to, occ) & self.all_queens_bishops());
     }

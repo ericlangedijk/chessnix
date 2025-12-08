@@ -40,4 +40,4 @@ bench output
 - Total nodes: 18999768562 23.081s 823.1575 Mnodes/s (823157451) - After speedup update_state
 - Total nodes: 18999768562 22.35s  850.0811 Mnodes/s (850081065) - After removing history list from position.
 - Total nodes: 18999768562 15.086s 1259.4035 Mnodes/s (1259403529) - After removing state pointers.
-- Total nodes: 18999768562 14.022s 1354.9611 Mnodes/s (1354961059) - After implementing a bitloop function.
+- Total nodes: 18999768562 14.022s 1354.9611 Mnodes/s (1360961059) - After implementing a bitloop function.

@@ -9,6 +9,7 @@ const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
+const hce = @import("hce.zig");
 const perft = @import("perft.zig");
 const tt = @import("tt.zig");
 
@@ -20,8 +21,7 @@ const search = @import("search.zig");
 const ctx = lib.ctx;
 const io = lib.io;
 
-pub fn run_silent_debugmode_tests() !void
-{
+pub fn run_silent_debugmode_tests() !void {
     lib.not_in_release();
     //var perft_tests: usize = 0;
 
@@ -159,7 +159,6 @@ fn test_flip() !usize {
 pub fn test_eval_file() !usize {
     lib.not_in_release();
 
-    const hce = @import("hce.zig");
     var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\fixed_evals_list.txt", ctx.galloc, 256);
     defer reader.deinit();
     var pos: Position = .empty;
@@ -197,7 +196,6 @@ pub fn test_eval_file() !usize {
 pub fn test_eval() !usize {
     lib.not_in_release();
 
-    const hce = @import("hce.zig");
     var pos: Position = .empty;
     var flipped_pos: Position = .empty;
 
@@ -234,20 +232,26 @@ pub fn test_eval() !usize {
     return done;
 }
 
-
 pub fn test_see() !usize {
-    // lib.not_in_release();
-    // var pos: Position = .empty;
-    // var done: usize = 0;
+    lib.not_in_release();
+    var pos: Position = .empty;
+    var done: usize = 0;
 
-    // for (testpositions, 0..) |str, index| {
-    //     var tokenizer = std.mem.tokenizeScalar(u8, str, ';');
-    //     const fen: []const u8 = tokenizer.next() orelse @panic("invalid see fen");
-    //     try pos.set(fen, false);
-    //     const move: []const u8 = tokenizer.next() orelse @panic("invalid see move");
-    // }
+    for (see_positions, 0..) |str, index| {
+        var tokenizer = std.mem.tokenizeScalar(u8, str, ';');
+        const fen: []const u8 = tokenizer.next() orelse @panic("invalid see fen");
+        try pos.set(fen, false);
+        const move: []const u8 = tokenizer.next() orelse @panic("invalid see move");
+        const m: types.Move = try pos.parse_move(std.mem.trimEnd(u8, move, &.{' '}));
+        const s1 = hce.see_score(&pos, m);
+        const s2 = hce.see(&pos, m, -55);
+        //if ((s1 >= 0 and !s2) or (s1 < 0 and s2))
+            io.debugprint("#{} {s} {s} s1 = {} s2 = {}\n", .{ index + 1, str, move, s1, s2 });
+        done += 1;
+        //break;
+    }
 
-    return 0;
+    return done;
 }
 
 pub const ParseDepthError = error
@@ -1414,7 +1418,13 @@ pub const testpositions_960: [960][]const u8 = .{
 
 // SEE tests.
 
-const see_positions: [71][]const u8 = .{
+const see_debug_positions: [1][]const u8 = .{
+    "1k3r2/8/8/7B/8/8/8/1K2R3 w - - 0 1 ;e1e8 ;0",
+};
+
+const see_positions: [71 + 1][]const u8 = .{
+    "1r5k/p4pp1/2p1p2p/qpQP3P/2P2P2/1P1R4/P4rP1/1K1R4 b - - ;a5a2 ;100 ;P",
+
     "6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - - ;f1f4 ;-100 ;P - R + B",
     "5rk1/1pp2q1p/p1pb4/8/3P1NP1/2P5/1P1BQ1P1/5RK1 b - - ;d6f4 ;0 ;-N + B",
     "4R3/2r3p1/5bk1/1p1r3p/p2PR1P1/P1BK1P2/1P6/8 b - - ;h5g4 ;0",

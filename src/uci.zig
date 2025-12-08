@@ -76,6 +76,7 @@ fn uci_loop() !void {
 
         // Terminal only commands.
         else if (is_tty) {
+
             if (eql(cmd, "d")) {
                 TTY.draw_position();
             }
@@ -94,6 +95,9 @@ fn uci_loop() !void {
             else if (eql(cmd, "state")) {
                 TTY.print_state();
             }
+            // else  if (eql(cmd, "cls")) {
+            //     io.print("{}", .{ "\x1B[2J\x1B[H" });
+            // }
         }
     }
 }

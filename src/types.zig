@@ -454,6 +454,7 @@ pub const Piece = packed union {
         return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
     }
 
+    /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
     pub fn value(self: Piece) Value {
         return piece_values[self.u];
     }
@@ -586,9 +587,6 @@ pub const Move = packed struct(u16) {
     pub const bishop_promotion_capture : u4 = 0b1101; // 13
     pub const rook_promotion_capture   : u4 = 0b1110; // 14
     pub const queen_promotion_capture  : u4 = 0b1111; // 15
-
-    // pub const unused_mask: u4 = 10;
-    // pub const unused_11: u4 = 11;
 
     const noisy_mask                   : u4 = 0b1100;
 
@@ -761,7 +759,7 @@ pub fn pair(mg: SmallValue, eg: SmallValue) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
-pub const GamePhase = enum { Opening, Midgame, Endgame };
+pub const GamePhase = enum { opening, midgame, endgame };
 
 pub const ParsingError = error {
     /// Garbage piece inside fen string.
@@ -780,7 +778,7 @@ pub const megabyte: usize = 1024 * 1024;
 
 pub const max_game_length: usize = 1024;
 pub const max_move_count: usize = 224;
-pub const max_search_depth: u8 = 128; // TOOD: maybe 256 for egtb
+pub const max_search_depth: u8 = 128; // TODD: maybe 256 for egtb
 pub const max_threads: u16 = 32;
 
 pub const infinity: Value = 32000;
@@ -790,12 +788,30 @@ pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 pub const invalid_movescore: Value = std.math.minInt(Value);
 
-pub const value_pawn: Value = 100; //98;
-pub const value_knight: Value = 300; //299;
-pub const value_bishop: Value = 300;
-pub const value_rook: Value = 533;
-pub const value_queen: Value = 921;
+// #original
+// pub const value_pawn: Value = 100;
+// pub const value_knight: Value = 300;
+// pub const value_bishop: Value = 300;
+// pub const value_rook: Value = 533;
+// pub const value_queen: Value = 921;
+// pub const value_king: Value = 0;
+
+// #testing 2
+// pub const value_pawn: Value = 98;
+// pub const value_knight: Value = 299;
+// pub const value_bishop: Value = 300;
+// pub const value_rook: Value = 533;
+// pub const value_queen: Value = 921;
+// pub const value_king: Value = 0;
+
+// #testing 3
+pub const value_pawn: Value = 90;
+pub const value_knight: Value = 290;
+pub const value_bishop: Value = 310;
+pub const value_rook: Value = 570;
+pub const value_queen: Value = 1000;
 pub const value_king: Value = 0;
+
 
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
@@ -807,17 +823,6 @@ pub const max_phase: u8 = 24;
 
 /// Game phase table. Indexing by [piece]
 pub const phase_table: [12]u8 = .{
-    0, // w_pawn
-    1, // w_knight
-    1, // w_bishop
-    2, // w_rook
-    4, // w_queen
-    0, // w_king
-
-    0, // b_pawn
-    1, // b_knight
-    1, // b_bishop
-    2, // b_rook
-    4, // b_queen
-    0, // b_king
+    0, 1, 1, 2, 4, 0,
+    0, 1, 1, 2, 4, 0,
 };

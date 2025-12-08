@@ -26,39 +26,39 @@ const Searcher = search.Searcher;
 const ExtMoveList = search.ExtMoveList;
 const History = history.History;
 
-/// Depending on the search callsite we generate all or captures (or evasions).
+/// Depending on the search callsite we generate all moves or quiescence moves.
 pub const GenType = enum {
-    Search,
-    Quiescence,
+    search,
+    quiescence,
 };
 
 // The current stage of the movepicker.
-const Stage = enum {
+pub const Stage = enum {
     /// Stage 1: generate all moves, putting them in the correct list.
-    Gen,
+    generate,
     /// Stage 2: the first move to consider is a tt-move.
-    TTMove,
+    tt,
     /// Stage 3: score the noisy moves.
-    ScoreNoisy,
+    score_noisy,
     /// Stage 4: extract the noisy moves.
-    Noisy,
+    noisy,
     /// Stage 5: extract killer 1.
-    FirstKiller,
+    first_killer,
     /// Stage 6: extract killer 2.
-    SecondKiller,
+    second_killer,
     /// Stage 7: score the quiet moves.
-    ScoreQuiet,
+    score_quiet,
     /// Stage 8: Extract the quiet moves.
-    Quiet,
+    quiet,
     /// Stage 9: Extract the bad noisy moves.
-    BadNoisy,
+    bad_noisy,
 };
 
 /// Depending on the stage we have to select a list.
 const ListMode = enum {
-    Noisies,
-    Quiets,
-    BadNoisies,
+    noisies,
+    quiets,
+    bad_noisies,
 };
 
 const Scores = struct {
@@ -86,8 +86,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         node: *const Node,
         input_tt_move: Move,
         tt_move: ?ExtMove,
-        first_killer: ?ExtMove,
-        second_killer: ?ExtMove,
+        first_killer_move: ?ExtMove,
+        second_killer_move: ?ExtMove,
+        move_count: u8,
         move_idx: u8,
         noisies: ExtMoveList(80),
         quiets: ExtMoveList(224),
@@ -95,14 +96,15 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         pub fn init(pos: *const Position, searcher: *const Searcher, node: *const Node, tt_move: Move) Self {
             return .{
-                .stage = .Gen,
+                .stage = .generate,
                 .pos = pos,
                 .searcher = searcher,
                 .node = node,
                 .input_tt_move = tt_move,
                 .tt_move = null,
-                .first_killer = null,
-                .second_killer = null,
+                .first_killer_move = null,
+                .second_killer_move = null,
+                .move_count = 0,
                 .move_idx = 0,
                 .noisies = .init(),
                 .quiets = .init(),
@@ -113,66 +115,66 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         pub fn next(self: *Self) ?ExtMove {
             const st: Stage = self.stage;
             sw: switch (st) {
-                .Gen => {
-                    self.stage = .TTMove;
+                .generate => {
+                    self.stage = .tt;
                     self.generate_moves();
-                    continue :sw .TTMove;
+                    continue :sw .tt;
                 },
-                .TTMove => {
-                    self.stage = .ScoreNoisy;
+                .tt => {
+                    self.stage = .score_noisy;
                     if (self.tt_move != null) {
                         self.set_single_move_details(&self.tt_move.?);
                         return self.tt_move.?;
                     }
-                    continue :sw .ScoreNoisy;
+                    continue :sw .score_noisy;
                 },
-                .ScoreNoisy => {
-                    self.stage = .Noisy;
+                .score_noisy => {
+                    self.stage = .noisy;
                     self.move_idx = 0;
-                    self.score_moves(.Noisies);
-                    continue :sw .Noisy;
+                    self.score_moves(.noisies);
+                    continue :sw .noisy;
                 },
-                .Noisy => {
-                    if (self.extract_next(self.move_idx, .Noisies)) |ex| {
+                .noisy => {
+                    if (self.extract_next(self.move_idx, .noisies)) |ex| {
                         self.move_idx += 1;
                         return ex;
                     }
-                    self.stage = .FirstKiller;
-                    continue :sw .FirstKiller;
+                    self.stage = .first_killer;
+                    continue :sw .first_killer;
                 },
-                .FirstKiller => {
-                    self.stage = .SecondKiller;
-                    if (self.first_killer != null) {
-                        self.set_single_move_details(&self.first_killer.?);
-                        return self.first_killer.?;
+                .first_killer => {
+                    self.stage = .second_killer;
+                    if (self.first_killer_move != null) {
+                        self.set_single_move_details(&self.first_killer_move.?);
+                        return self.first_killer_move.?;
                     }
-                    continue :sw .SecondKiller;
+                    continue :sw .second_killer;
                 },
-                .SecondKiller => {
-                    self.stage = .ScoreQuiet;
-                    if (self.second_killer != null) {
-                        self.set_single_move_details(&self.second_killer.?);
-                        return self.second_killer.?;
+                .second_killer => {
+                    self.stage = .score_quiet;
+                    if (self.second_killer_move != null) {
+                        self.set_single_move_details(&self.second_killer_move.?);
+                        return self.second_killer_move.?;
                     }
-                    continue :sw .ScoreQuiet;
+                    continue :sw .score_quiet;
                 },
-                .ScoreQuiet => {
-                    self.stage = .Quiet;
+                .score_quiet => {
+                    self.stage = .quiet;
                     self.move_idx = 0;
-                    self.score_moves(.Quiets);
-                    continue :sw .Quiet;
+                    self.score_moves(.quiets);
+                    continue :sw .quiet;
                 },
-                .Quiet => {
-                    if (self.extract_next(self.move_idx, .Quiets)) |ex| {
+                .quiet => {
+                    if (self.extract_next(self.move_idx, .quiets)) |ex| {
                         self.move_idx += 1;
                         return ex;
                     }
-                    self.stage = .BadNoisy;
+                    self.stage = .bad_noisy;
                     self.move_idx = 0;
-                    continue :sw .BadNoisy;
+                    continue :sw .bad_noisy;
                 },
-                .BadNoisy => {
-                    if (self.extract_next(self.move_idx, .BadNoisies)) |ex| {
+                .bad_noisy => {
+                    if (self.extract_next(self.move_idx, .bad_noisies)) |ex| {
                         self.move_idx += 1;
                         return ex;
                     }
@@ -183,6 +185,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         /// Required function for movgen.
         pub fn reset(self: *Self) void {
+            self.move_count = 0;
             self.move_idx = 0;
             self.noisies.count = 0;
             self.quiets.count = 0;
@@ -191,20 +194,21 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         /// Required function movgen.
         pub fn store(self: *Self, move: Move) ?void {
+            self.move_count += 1;
             if (move == self.input_tt_move) {
                 self.tt_move = .init(move);
                 self.tt_move.?.is_tt_move = true;
                 self.tt_move.?.score = Scores.tt; // not strictly needed
             }
             else if (move == self.node.killers[0]) {
-                self.first_killer = .init(move);
-                self.first_killer.?.is_killer = true;
-                self.first_killer.?.score = Scores.killer1; // not strictly needed
+                self.first_killer_move = .init(move);
+                self.first_killer_move.?.is_killer = true;
+                self.first_killer_move.?.score = Scores.killer1; // not strictly needed
             }
             else if (move == self.node.killers[1]) {
-                self.second_killer = .init(move);
-                self.second_killer.?.is_killer = true;
-                self.second_killer.?.score = Scores.killer2; // not strictly needed
+                self.second_killer_move = .init(move);
+                self.second_killer_move.?.is_killer = true;
+                self.second_killer_move.?.score = Scores.killer2; // not strictly needed
             }
             else if (move.is_noisy()) {
                 self.noisies.add(.init(move));
@@ -216,22 +220,22 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         /// Called during search.
         pub fn skip_quiets(self: *Self) void {
-            if (self.stage == .Quiet) {
-                self.stage = .BadNoisy;
+            if (self.stage == .quiet) {
+                self.stage = .bad_noisy;
                 self.move_idx = 0;
             }
         }
 
         fn generate_moves(self: *Self) void {
             switch (gentype) {
-                .Search => self.pos.generate_all_moves(us, self),
-                .Quiescence => self.pos.generate_quiescence_moves(us, self),
+                .search => self.pos.generate_all_moves(us, self),
+                .quiescence => self.pos.generate_quiescence_moves(us, self),
             }
         }
 
         fn score_moves(self: *Self, comptime listmode: ListMode) void {
             if (comptime lib.is_paranoid) {
-                assert(listmode != .BadNoisies);
+                assert(listmode != .bad_noisies);
             }
             const extmoves: []ExtMove = self.select_slice(listmode);
             for (extmoves) |*ex| {
@@ -269,9 +273,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
             // Some paranoid checks.
             if (comptime lib.is_paranoid) {
-                assert(listmode != .BadNoisies);
-                if (listmode == .Noisies) { assert(ex.move.is_noisy()); }
-                else if (listmode == .Quiets) { assert(ex.move.is_quiet()); }
+                assert(listmode != .bad_noisies);
+                if (listmode == .noisies) { assert(ex.move.is_noisy()); }
+                else if (listmode == .quiets) { assert(ex.move.is_quiet()); }
             }
 
             const pos: *const Position = self.pos;
@@ -280,19 +284,31 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             ex.piece = self.pos.board[ex.move.from.u];
 
             // Handle a noisy move
-            if (listmode == .Noisies) {
+            if (listmode == .noisies) {
                 switch (ex.move.flags) {
                     Move.capture => {
                         ex.captured = pos.board[ex.move.to.u];
+
+                        // #testing old see
                         const see = hce.see_score(pos, ex.move);
-                        // #testing
-                        ex.is_bad_capture = see < 0; // -100;
+                        ex.is_bad_capture = see < 0;
                         if (see < 0) {
-                            ex.score = Scores.bad_capture + see * 10; // 10
+                            ex.score = Scores.bad_capture + see * 10;
                         }
                         else {
-                            ex.score = Scores.capture + see * 10; // 10
+                            ex.score = Scores.capture + see * 10;
                         }
+
+                        // // #testing new see
+                        // const is_bad: bool = !hce.see(pos, ex.move, 0);
+                        // ex.is_bad_capture = is_bad; // 100                 -20000000 - 100
+                        // if (is_bad) {
+                        //     ex.score = Scores.bad_capture - ex.piece.value() * 10; // testing minus
+                        // }
+                        // else {
+                        //     ex.score = Scores.capture + ex.piece.value() * 10; // 10
+                        // }
+
                         ex.score += hist.capture.get_score(ex.*);
                         // Right here, when scoring is complete, we add to the bad noisy moves.
                         if (see < 0) {
@@ -318,10 +334,15 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 }
             }
             // Handle a quiet move.
-            else if (listmode == .Quiets) {
+            else if (listmode == .quiets) {
                 switch (ex.move.flags) {
                     Move.silent, Move.double_push, Move.castle_short, Move.castle_long => {
                         ex.score = hist.quiet.get_score(ex.*);
+
+                        // #testing
+                        // const see: bool = hce.see(pos, ex.move, 0);
+                        // if (see) ex.score += 10 else ex.score -= 10;
+
                         const parentnode: ?*const Node = if (pos.ply >= 1) &self.searcher.nodes[pos.ply - 1] else null;
                         if (parentnode) |parent| {
                             if (!parent.current_move.move.is_empty() and parent.current_move.move.is_quiet()) {
@@ -366,7 +387,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
 
             // If the best noisy score is a bad capture, we are done and skip to the next stage (quiets).
-            if (listmode == .Noisies and extmoves[best_idx].is_bad_capture) {
+            if (listmode == .noisies and extmoves[best_idx].is_bad_capture) {
                 return null;
             }
 
@@ -379,9 +400,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         fn select_slice(self: *Self, comptime listmode: ListMode) []ExtMove {
             return switch(listmode) {
-                .Noisies => self.noisies.slice(),
-                .Quiets => self.quiets.slice(),
-                .BadNoisies => self.bad_noisies.slice(),
+                .noisies => self.noisies.slice(),
+                .quiets => self.quiets.slice(),
+                .bad_noisies => self.bad_noisies.slice(),
             };
         }
     };

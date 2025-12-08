@@ -12,16 +12,9 @@ pub fn main() !void
     // Debug tests.
     if (comptime lib.is_debug) {
         try @import("tests.zig").run_silent_debugmode_tests();
+        // try @import("tests/enginetests.zig").lichess_puzzles();
+        //_ = try @import("tests.zig").test_see();
     }
 
     uci.run();
 }
-
-const Ext = packed struct {
-    op: u6,
-    d: u1,
-    w: u1,
-    mod: u2,
-    reg: u3,
-    rm: u3,
-};
