@@ -7,7 +7,7 @@ A testversion named chessnix_bot can be played against on lichess.org.
 ### Version 1.2 Still Work in Progress
 Currently finetuning the algorithms, speed, chess960 support. ELO target for the 1.2 version is 3100.
 
-- Stronger: now around 2950 ELO.
+- Stronger: probably around 3000 ELO.
 - Added: Chess960 support.
 - Added: Staged movepicking.
 - Added: Razoring.
