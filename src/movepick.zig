@@ -289,7 +289,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.captured = pos.board[ex.move.to.u];
 
-                        // #testing old see
+                        // #testing see score.
                         const see = hce.see_score(pos, ex.move);
                         ex.is_bad_capture = see < 0;
                         if (see < 0) {
@@ -301,7 +301,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
                         // // #testing new see
                         // const is_bad: bool = !hce.see(pos, ex.move, 0);
-                        // ex.is_bad_capture = is_bad; // 100                 -20000000 - 100
+                        // ex.is_bad_capture = is_bad;
                         // if (is_bad) {
                         //     ex.score = Scores.bad_capture - ex.piece.value() * 10; // testing minus
                         // }

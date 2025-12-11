@@ -274,6 +274,10 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
     return s;
 }
 
+// pub fn float(i: comptime_int) comptime_float {
+//     return @floatFromInt(i);
+// }
+
 pub fn float(i: Value) f32 {
     return @floatFromInt(i);
 }

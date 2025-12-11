@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 pub fn initialize() !void {
     if (lib_is_initialized) return;
 
-    // If no timer available, the program is useless.
+    // If no timer available, the program is useless. In the rest of the code we use utils.Timer which assumes a timer is available.
     _ = try std.time.Timer.start();
 
     memory_context = .init();
@@ -30,11 +30,27 @@ pub const BoundedArray = @import("utils.zig").BoundedArray;
 
 // Globals.
 pub const version = "1.2";
+
+// Crash guard logic.
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-pub const is_paranoid: bool = if (is_debug) true else false; // Set paranoid to false to speedup debugging.
-pub const crash_guard: bool = false; // For local testing only. When doing batch tests with for example CuteChess.
 
+const Safety = enum {
+    none,
+    guarded,
+    paranoid,
+};
+
+const safety: Safety = switch (builtin.mode) {
+    .Debug => .guarded, // Change to paranoid if needed during debug for insane bugs.
+    .ReleaseSafe => .guarded, // Do not change: build mode decides safety.
+    .ReleaseFast, .ReleaseSmall => .none, // Do not change.
+};
+
+pub const is_paranoid: bool = safety == .paranoid;
+pub const is_guarded: bool = safety == .guarded;
+
+// Input output
 pub const ctx: *const MemoryContext = &memory_context;
 pub const io: *IoContext = &io_context;
 var memory_context: MemoryContext = undefined;
@@ -61,8 +77,8 @@ pub const MemoryContext = struct {
 };
 
 // TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
-var in_buffer: [8192]u8 = undefined;
-var out_buffer: [4096]u8 = undefined;
+var in_buffer: [8192]u8 = @splat(0);
+var out_buffer: [4096]u8 = @splat(0);
 var stdin: std.fs.File.Reader = undefined;
 var stdout: std.fs.File.Writer = undefined;
 
@@ -86,7 +102,7 @@ const IoContext = struct {
         return if (input.len >= 0) input else null;
     }
 
-    /// uci only. By default print and flush.
+    /// By default print and flush.
     pub fn print(self: *const IoContext, comptime str: []const u8, args: anytype) void {
         self.out.print(str, args) catch wtf();
         self.out.flush() catch wtf();
@@ -100,6 +116,17 @@ const IoContext = struct {
     /// If `print_buffered` was used.
     pub fn flush(self: *const IoContext) void {
         self.out.flush() catch wtf();
+    }
+
+    /// Output depends on debug or releasesafe mode
+    pub fn printerror(self: *const IoContext, comptime str: []const u8, args: anytype) void {
+        not_in_release();
+        if (is_debug) {
+            std.debug.print(str, args);
+        }
+        else {
+            self.print(str, args);
+        }
     }
 
     /// Debug only.
@@ -125,11 +152,28 @@ pub fn is_tty() bool {
     return std.fs.File.stdin().isTty();
 }
 
+/// Call this anywhere where we do not want this in a release version.
 pub fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }
 
-/// TODO: add comptime code.
 pub fn wtf() noreturn {
     @panic("wtf");
+}
+
+pub fn crash(comptime str: []const u8, args: anytype) noreturn {
+    io.printerror(str, args);
+    // Force linefeed.
+    if (str.len > 0 and str[str.len - 1] != '\n') {
+        io.printerror("\n", .{});
+    }
+    wtf();
+}
+
+/// Not in releasemode fast.
+pub fn guard(ok: bool, comptime str: []const u8, args: anytype) void {
+    not_in_release();
+    if (!ok) {
+        crash(str, args);
+    }
 }

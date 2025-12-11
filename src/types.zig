@@ -96,6 +96,10 @@ pub const Color = packed union {
     pub fn idx(self: Color) usize {
         return self.u;
     }
+
+    pub fn from_bool(black_to_move: bool) Color {
+        return if (black_to_move) Color.BLACK else Color.WHITE;
+    }
 };
 
 pub const Coord = packed struct {
