@@ -42,12 +42,15 @@ const Safety = enum {
 };
 
 const safety: Safety = switch (builtin.mode) {
-    .Debug => .guarded, // Change to paranoid if needed during debug for insane bugs.
+    .Debug => .paranoid, // Change to paranoid if needed during debug for insane bugs.
     .ReleaseSafe => .guarded, // Do not change: build mode decides safety.
     .ReleaseFast, .ReleaseSmall => .none, // Do not change.
 };
 
+/// Use this for time consuming debug guards.
 pub const is_paranoid: bool = safety == .paranoid;
+
+/// Use this for releasesafe guards
 pub const is_guarded: bool = safety == .guarded;
 
 // Input output
@@ -162,6 +165,7 @@ pub fn wtf() noreturn {
 }
 
 pub fn crash(comptime str: []const u8, args: anytype) noreturn {
+    not_in_release();
     io.printerror(str, args);
     // Force linefeed.
     if (str.len > 0 and str[str.len - 1] != '\n') {

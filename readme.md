@@ -3,6 +3,7 @@ A testversion named chessnix_bot can be played against on lichess.org.
 ### UCI Chess Engine
 - Needs Zig 0.15.2.
 - On Windows run chessnix terminal in administrator mode for better performance.
+- chessnix is a windows 64 bits exe for modern computers.
 
 ### Version 1.2 Still Work in Progress
 Currently finetuning the algorithms, speed, chess960 support. ELO target for the 1.2 version is 3100.
@@ -23,8 +24,8 @@ Currently finetuning the algorithms, speed, chess960 support. ELO target for the
 - Changed: Quiescence search. Does not store bestmove anymore.
 - Changed: Node counting. Only incremented after doing a move.
 - Changed: Finetuned search in general.
-- Move generator refactor.
-- Position always storing pins for both sides.
+- Move generation refactor.
+- Position always storing pins for both sides. For future perfect SEE.
 - Bug solved: Invalid principal variation output.
 - Bug solved: Bishop pair evaluation bug. The mask for white / black squares was wrong.
 - Bug solved: A terrible 'get all attacks' bug affecting evaluation, SEE and move ordering.

@@ -32,9 +32,10 @@ pub fn run_silent_debugmode_tests() !void {
     const perfts_960: usize = try run_perfts_960(3);
     const flips: usize = 0; // try test_flip();
     const evals: usize = 0; // try test_eval();
+    const evals_file: usize = try test_eval_file();
 
     const time = timer.read();
-    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, evals = {} (time {D})\n", .{ perfts, perfts_960, flips, evals, time });
+    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, evals = {}, evals_file {}, (time {D})\n", .{ perfts, perfts_960, flips, evals, evals_file, time });
 }
 
 pub const Error = error {
@@ -64,9 +65,8 @@ fn run_perfts(max_depth: usize) !usize {
         try pos.set(str, false);
 
         // TEMP EVAL OUTPUT for later test
-        // const hce = @import("hce.zig");
-        // var ev: hce.Evaluator(false) = .init();
-        // const e = ev.evaluate(&pos, null, null);
+        // var ev: hce.Evaluator = .init();
+        // const e = ev.evaluate(&pos, null);
         // io.debugprint("{f} ,{}\n", .{ pos, e });
 
         const depths: FenDepths = try decode_depths(str);
@@ -159,7 +159,7 @@ fn test_flip() !usize {
 pub fn test_eval_file() !usize {
     lib.not_in_release();
 
-    var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\fixed_evals_list.txt", ctx.galloc, 256);
+    var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\evals2.txt", ctx.galloc, 256);
     defer reader.deinit();
     var pos: Position = .empty;
     //var flipped_pos: Position = .empty;
@@ -170,7 +170,7 @@ pub fn test_eval_file() !usize {
         _ = tokenizer.next(); // fen
         const eval_str = tokenizer.next() orelse @panic("wrong input for eval fen");
         const stored_eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
-        var ev: hce.Evaluator(false) = .init();
+        var ev: hce.Evaluator = .init();
         const eval: types.Value = ev.evaluate(&pos, null);
         if (eval != stored_eval) {
             return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
@@ -182,7 +182,7 @@ pub fn test_eval_file() !usize {
         // if (eval_flipped != eval) {
         //     pos.draw();
         //     flipped_pos.draw();
-        //     var e = hce.Evaluator(true).init();
+        //     var e = hce.Evaluator.init();
         //     _ = e.evaluate(&pos, null, null);
         //     _ = e.evaluate(&flipped_pos, null, null);
         //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });
@@ -203,7 +203,7 @@ pub fn test_eval() !usize {
     var done: usize = 0;
     for (testpositions) |str| {
         try pos.set(str, false);
-        var ev: hce.Evaluator(false) = .init();
+        var ev: hce.Evaluator = .init();
         const eval1: types.Value = ev.evaluate(&pos, null);
         // if (eval != stored_eval) {
         //     return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
@@ -221,7 +221,7 @@ pub fn test_eval() !usize {
         // if (eval_flipped != eval) {
         //     pos.draw();
         //     flipped_pos.draw();
-        //     var e = hce.Evaluator(true).init();
+        //     var e = hce.Evaluator.init();
         //     _ = e.evaluate(&pos, null, null);
         //     _ = e.evaluate(&flipped_pos, null, null);
         //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });

@@ -269,16 +269,9 @@ const TTY = struct {
         //const bb = engine.pos.all_except_pawns_and_kings();
         //funcs.print_bitboard(bb);
 
-        if (comptime lib.is_debug) {
-            var ev: hce.Evaluator(true) = .init();
-            const e = ev.evaluate(&engine.pos, null);
-            io.debugprint("eval: {}\n", .{ e });
-        }
-        else {
-            var ev: hce.Evaluator(false) = .init();
-            const e = ev.evaluate(&engine.pos, null);
-            io.print("eval: {}\n", .{ e });
-        }
+        var ev: hce.Evaluator = .init();
+        const e = ev.evaluate(&engine.pos, null);
+        io.print("eval: {}\n", .{ e });
 
         //const v = eval.tuned_eval(&engine.pos);
         //io.debugprint("e {} t {}\n", .{e, v});

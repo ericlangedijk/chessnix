@@ -235,6 +235,8 @@ pub const Engine = struct {
 };
 
 pub const Stats = struct {
+    /// The total amount of search / quiescence_search calls.
+    calls: u64 = 0,
     /// The total amount of nodes.
     nodes: u64 = 0,
     /// The total amount of quiescent search nodes.
@@ -259,7 +261,7 @@ pub const Searcher = struct {
     /// Copied from mgr, for direct access.
     evaltranspositiontable: *tt.EvalTranspositionTable,
     /// The evaluator
-    evaluator: hce.Evaluator(false),
+    evaluator: hce.Evaluator,
     /// Copied from mgr, for direct access.
     termination: Termination,
     /// Position stack during search.
@@ -334,7 +336,6 @@ pub const Searcher = struct {
         pos.* = engine.pos;
         pos.ply = 0;
 
-        // TODO: maybe we can do a very very shallow search instead of generating here.
         var rootmoves: position.MoveStorage = .init();
         pos.lazy_generate_all_moves(&rootmoves);
 
@@ -441,10 +442,11 @@ pub const Searcher = struct {
                 const elapsed_nanos = self.timer.read();
                 const ms = elapsed_nanos / 1_000_000;
                 const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
+                const fps: u64 = funcs.nps(self.stats.calls, elapsed_nanos);
 
                 io.print_buffered(
-                    "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} eff {}% pv",
-                    .{ self.stats.depth, self.stats.seldepth, pvnode.score, self.stats.nodes, qnodes, ms, nps, search_efficiency }
+                    "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} fps {} eff {}% pv",
+                    .{ self.stats.depth, self.stats.seldepth, pvnode.score, self.stats.nodes, qnodes, ms, nps, fps, search_efficiency }
                 );
 
                 for (pvnode.pv.slice()) |move| {
@@ -475,6 +477,8 @@ pub const Searcher = struct {
             lib.guard(!is_root or is_root == is_pvs, "search wrong is_root vs is_pvs", .{});
             lib.guard(is_pvs or input_beta - input_alpha == 1, "search wrong is_pvs vs alphabeta", .{});
         }
+
+        self.stats.calls += 1;
 
         const node: *Node = &self.nodes[pos.ply];
         const childnode: *Node = &self.nodes[pos.ply + 1];
@@ -637,8 +641,6 @@ pub const Searcher = struct {
                 assert(ex.is_ok(pos));
             }
 
-            // if (is_root) { io.debugprint("{t}{t} score {} tt {} killer {}\n", .{ ex.move.from.e, ex.move.to.e, ex.score, ex.is_tt_move, ex.is_killer }); }
-
             // Skip this move if we are inside singular extensions.
             if (ex.move == node.excluded_tt_move) {
                 continue :moveloop;
@@ -647,7 +649,7 @@ pub const Searcher = struct {
             const is_quiet: bool = ex.move.is_quiet();
             const is_capture: bool = ex.move.is_capture();
 
-            // Move Pruning before we execute the move.
+            // Pruning before we execute the move.
             if (!is_root and best_score > -mate_threshold) {
 
                 // Late Move Pruning.
@@ -667,12 +669,12 @@ pub const Searcher = struct {
 
                 // SEE pruning.
                 const see_threshold: Value = if (is_quiet) -64 * depth else -119 * depth;
-                //if (pos.pins == 0 and depth <= 8 and !is_check and moves_seen >= 1 and !hce.see(pos, ex.move, see_threshold)) {
-                if (!is_check and depth <= 8 and pos.all_pins() == 0 and moves_seen >= 1 and !hce.see(pos, ex.move, see_threshold)) { // #testing without pins.
+                //if (!is_check and depth <= 8 and pos.all_pins() == 0 and moves_seen >= 1 and !hce.see(pos, ex.move, see_threshold)) { // #testing without pins.
+                if (!is_check and depth <= 8 and moves_seen >= 1 and !hce.see(pos, ex.move, see_threshold)) { // #testing without pins.
                     continue :moveloop;
                 }
 
-                // TODO: History heuristic pruning.
+                // TODO: History Pruning.
             }
 
             // Determine extension + reduction.
@@ -731,6 +733,7 @@ pub const Searcher = struct {
             // Late Move Reduction.
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
             if (!is_check and depth >= 3 and moves_seen >= lmr_move_threshold) {
+            //if (depth >= 3 and moves_seen >= lmr_move_threshold) {
                 const is_quiet_idx: usize = @intFromBool(is_quiet);
                 reduction = lmr_depth_reduction_table[is_quiet_idx][depth_idx][moves_seen];
 
@@ -837,6 +840,8 @@ pub const Searcher = struct {
             assert(pos.stm.e == us.e);
             assert(pos.ply > 0);
         }
+
+        self.stats.calls += 1;
 
         const node: *Node = &self.nodes[pos.ply];
         const childnode: *Node = &self.nodes[pos.ply + 1];
@@ -1341,7 +1346,7 @@ pub fn calculate_improvementrate(prev_improvementrate: f32, prev_eval: Value, cu
 /// LMP. Returns a moves_seen threshold from improvementrate and depth.
 pub fn calculate_lmp_threshold(improvementrate: f32, depth: i32) u8 {
     const r: f32 = (5.0 + float(depth * depth)) / (3.0 - @max(0.0, improvementrate));
-    return if (r >= max_search_depth) max_search_depth else @intCast(funcs.int(@abs(r)));
+    return if (r >= max_move_count) max_move_count else @intCast(funcs.int(@abs(r)));
 }
 
 /// LMR. Indexing: [quiet][depth][moves_seen]
