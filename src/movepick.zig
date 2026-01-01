@@ -289,29 +289,28 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.captured = pos.board[ex.move.to.u];
 
-                        // #testing see score.
                         const see = hce.see_score(pos, ex.move);
                         ex.is_bad_capture = see < 0;
-                        if (see < 0) {
+                        if (ex.is_bad_capture) {
                             ex.score = Scores.bad_capture + see * 10;
                         }
                         else {
                             ex.score = Scores.capture + see * 10;
                         }
 
-                        // // #testing new see
-                        // const is_bad: bool = !hce.see(pos, ex.move, 0);
-                        // ex.is_bad_capture = is_bad;
-                        // if (is_bad) {
-                        //     ex.score = Scores.bad_capture - ex.piece.value() * 10; // testing minus
+                        // #testing 1.3 new see score
+                        // ex.is_bad_capture = !hce.see(pos, ex.move, 0);
+                        // if (ex.is_bad_capture) {
+                        //     ex.score = Scores.bad_capture + ex.captured.value() * 100; //
                         // }
                         // else {
-                        //     ex.score = Scores.capture + ex.piece.value() * 10; // 10
+                        //     ex.score = Scores.capture + ex.captured.value() * 100; // 10
                         // }
 
                         ex.score += hist.capture.get_score(ex.*);
-                        // Right here, when scoring is complete, we add to the bad noisy moves.
-                        if (see < 0) {
+
+                        // Right here, when scoring is complete, we add the move to the bad noisy moves.
+                        if (ex.is_bad_capture) {
                             self.bad_noisies.add(ex.*);
                         }
                     },
@@ -347,7 +346,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         if (parentnode) |parent| {
                             if (!parent.current_move.move.is_empty() and parent.current_move.move.is_quiet()) {
                                 ex.score += hist.continuation.get_score(parent.current_move, ex.*);
-                                // #testing
+                                // Include the grandparent in the score.
                                 const grandparentnode: ?*const Node = if (pos.ply >= 2) &self.searcher.nodes[pos.ply - 2] else null;
                                 if (grandparentnode) |grandparent| {
                                     if (!grandparent.current_move.move.is_empty() and grandparent.current_move.move.is_quiet()) {

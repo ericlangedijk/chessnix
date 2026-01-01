@@ -123,25 +123,12 @@ pub const Evaluator = struct {
         };
     }
 
-    pub fn evaluate(self: *Self, pos: *const Position, evalhash: ?*tt.EvalTranspositionTable) Value {
-
-        // Eval TT Probe.
-        if (evalhash) |hash| {
-            if (hash.probe(pos.key)) |ev| {
-                return ev;
-            }
-        }
-
+    pub fn evaluate(self: *Self, pos: *const Position) Value {
         const has_pawns: bool = pos.all_pawns() != 0;
         const score: Value = switch(has_pawns) {
             false => self.internal_evaluate(pos, false),
             true  => self.internal_evaluate(pos, true),
         };
-
-        if (evalhash) |hash| {
-            hash.store(pos.key, score);
-        }
-
         return score;
     }
 
@@ -695,11 +682,6 @@ pub fn see_score(pos: *const Position, m: Move) Value {
     const value_them = pos.get(to).value();
     const value_us = pos.get(from).value();
 
-    // if (m.is_promotion()) {
-    //     value_them += m.promoted_to().value(); // #testing
-    // }
-
-    // good capture: if (value_them - value_us > P.value()) return true;
     var gain: [24]Value = @splat(0);
     gain[0] = value_them;
     gain[1] = value_us - value_them;
@@ -904,6 +886,7 @@ pub fn see_perfect(pos: *const Position, m: Move, threshold: Value) bool {
     var score: Value = pos.board[to.u].value() - threshold;
 
     if (score < 0) {
+        io.debugprint("early exit false\n", .{});
         return false;
     }
 
@@ -911,6 +894,7 @@ pub fn see_perfect(pos: *const Position, m: Move, threshold: Value) bool {
 
     // Equal or winning.
     if (score <= 0) {
+        io.debugprint("early exit true\n", .{});
         return true;
     }
 
@@ -944,7 +928,9 @@ pub fn see_perfect(pos: *const Position, m: Move, threshold: Value) bool {
             if (our_attackers & pos.by_type(pt) != 0) {
                 break :find_next pt;
             }
-            // TODO: sanity check here: if king and not found crash.
+            if (pt.e == .king) {
+                unreachable;
+            }
         };
 
         io.debugprint("next piece {t}\n", .{ piecetype.e });
@@ -970,6 +956,7 @@ pub fn see_perfect(pos: *const Position, m: Move, threshold: Value) bool {
         if (piecetype.e == .rook or piecetype.e == .queen) {
             all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
         }
+        //if (piecetype == .king)
     }
 
     return pos.stm.u == winner.u;

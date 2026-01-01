@@ -65,16 +65,6 @@ pub const rook_castle_destination_squares: [2][2]Square = .{ .{ .F1, .D1 }, .{ .
 /// Hard constant. Indexing [color][castletype].
 pub const castle_flags: [2][2]u4 = .{ .{ cf_white_short, cf_white_long }, .{ cf_black_short, cf_black_long } };
 
-/// Bitboards with squares that are covered by the enemy.
-pub const Threats = struct {
-    pawns: u64,
-    knights: u64,
-    bishops: u64,
-    rooks: u64,
-    queens: u64,
-    king: u64,
-};
-
 pub const Position = struct {
     pub const empty: Position = .init_empty();
     pub const empty_classic: Position = .init_empty_classic();
@@ -992,8 +982,7 @@ pub const Position = struct {
         self.update_state(them);
     }
 
-    /// Update checks and pins.
-    /// TODO: now we are using 2 sides pins try optimize this? with an inline loop?
+    /// Update checks and pins. `us` must be the side to move.
     fn update_state(self: *Position, comptime us: Color) void {
         const them: Color = comptime us.opp();
         const bb_all: u64 = self.all();
@@ -1029,6 +1018,7 @@ pub const Position = struct {
                 }
             }
         }
+        self.checkers = self.checkmask & bb_all;
 
         // Their pins.
         const their_king_sq: Square = self.king_square(them);
@@ -1040,10 +1030,8 @@ pub const Position = struct {
         while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
             const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
             const bb_ray: u64 = pair.ray & bb_us;
-            if (comptime lib.is_paranoid) {
-                assert(bb_ray != 0);
-            }
-            if (bb_ray != 0 and bb_ray & (bb_ray - 1) == 0) {
+            assert(bb_ray != 0); // This should never happen.
+            if (bb_ray & (bb_ray - 1) == 0) {
                 switch (pair.axis) {
                     .orth => self.pins_orthogonal[them.u] |= pair.ray,
                     .diag => self.pins_diagonal[them.u] |= pair.ray,
@@ -1051,7 +1039,6 @@ pub const Position = struct {
                 }
             }
         }
-        self.checkers = self.checkmask & bb_all;
     }
 
     pub fn lazy_do_move(self: *Position, move: Move) void {
@@ -1077,6 +1064,7 @@ pub const Position = struct {
 
     /// Returns true if square `to` is attacked by any piece of `attacker`.
     pub fn is_square_attacked_by(self: *const Position, to: Square, comptime attacker: Color) bool {
+        // Uses pawn inversion trick.
         const inverted = comptime attacker.opp();
         return
             (attacks.get_knight_attacks(to) & self.knights(attacker)) |
@@ -1088,6 +1076,7 @@ pub const Position = struct {
 
     /// Returns true if square `to` is attacked by any piece of `attacker` for a certain occupation `occ`.
     pub fn is_square_attacked_by_for_occupation(self: *const Position, occ: u64, to: Square, comptime attacker: Color) bool {
+        // Uses pawn inversion trick.
         const inverted = comptime attacker.opp();
         return
             (attacks.get_knight_attacks(to) & self.knights(attacker)) |
@@ -1227,7 +1216,6 @@ pub const Position = struct {
         // In fact we do not need the reset function, because we always use the storage only once.
         // However: when not using it, move generation is much slower! Some unknown magical compiler optimization?
         storage.reset();
-
 
         const doublecheck: bool = check and popcnt(self.checkers) > 1;
         const bb_all: u64 = self.all();

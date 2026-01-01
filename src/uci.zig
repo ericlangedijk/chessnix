@@ -105,12 +105,11 @@ fn uci_loop() !void {
 /// Just a simple wrapper.
 const UCI = struct {
 
-
     // option name Hash type spin default 16 min 1 max 33554432
     fn respond_uciok() void {
         io.print
         (
-            \\id chessnix {s}
+            \\id name chessnix {s}
             \\id author eric langedijk
             \\option name Hash type spin default {} min {} max {}
             \\option name UCI_Chess960 type check default false
@@ -192,49 +191,51 @@ const UCI = struct {
         var result: Go = .empty;
 
         while (tokenizer.next()) |next| {
-            if (eql(next, "ponder")) {
-                result.ponder = true;
-            }
-            else if (eql(next, "wtime")) {
-                result.wtime = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+            if (eql(next, "wtime")) {
+                result.time[0] = try parse_64(tokenizer.next());
             }
             else if (eql(next, "btime")) {
-                result.btime = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+                result.time[1] = try parse_64(tokenizer.next());
             }
             else if (eql(next, "winc")) {
-                result.winc = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+                result.increment[0] = try parse_64(tokenizer.next());
             }
             else if (eql(next, "binc")) {
-                result.binc = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+                result.increment[1] = try parse_64(tokenizer.next());
             }
             else if (eql(next, "movestogo")) {
-                result.movestogo = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+                result.movestogo = try parse_64(tokenizer.next());
             }
             else if (eql(next, "movetime")) {
-                result.movetime = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+                result.movetime = try parse_64(tokenizer.next());
             }
             else if (eql(next, "nodes")) {
-                result.nodes = parse_64(tokenizer.next()) orelse return Error.ParsingError;
+                result.nodes = try parse_64(tokenizer.next());
             }
             else if (eql(next, "depth")) {
-                result.depth = parse_32(tokenizer.next()) orelse return Error.ParsingError;
+                result.depth = try parse_64(tokenizer.next());
             }
             else if (eql(next, "infinite")) {
                 result.infinite = true;
+            }
+            else if (eql(next, "ponder")) {
+                result.ponder = true;
             }
         }
         return result;
     }
 
-    fn parse_64(str: ?[]const u8) ?u64 {
-        if (str == null) return null;
-        return std.fmt.parseInt(u64, str.?, 10) catch null;
+    fn parse_64(str: ?[]const u8) Error!u64 {
+        if (str == null) {
+            return Error.ParsingError;
+        }
+        return std.fmt.parseInt(u64, str.?, 10) catch Error.ParsingError;
     }
 
-    fn parse_32(str: ?[]const u8) ?u32 {
-        if (str == null) return null;
-        return std.fmt.parseInt(u32, str.?, 10) catch null;
-    }
+    // fn parse_32(str: ?[]const u8) ?u32 {
+    //     if (str == null) return null;
+    //     return std.fmt.parseInt(u32, str.?, 10) catch null;
+    // }
 };
 
 /// Just a simple wrapper.
@@ -270,7 +271,7 @@ const TTY = struct {
         //funcs.print_bitboard(bb);
 
         var ev: hce.Evaluator = .init();
-        const e = ev.evaluate(&engine.pos, null);
+        const e = ev.evaluate(&engine.pos);
         io.print("eval: {}\n", .{ e });
 
         //const v = eval.tuned_eval(&engine.pos);
@@ -281,6 +282,7 @@ const TTY = struct {
 
     fn print_state() void {
 
+        // io.print("evals: {}, evalhits: {}\n", .{ search.EVALS, search.EVAL_HITS });
 
         //io.print("{}\n", .{ engine.pos.threats});
         // @import("history.zig").debug_hist(&engine.searcher.history_heuristics, &engine.pos);
@@ -294,18 +296,21 @@ const TTY = struct {
 
         // engine.set_position("5k2/p2P2pp/8/1pb5/1Nn1P1n1/6Q1/PPP4P/R3K1NR w KQ -", null) catch return;
 
-        engine.set_position("r1b1kbnr/pppp1ppp/2n5/8/3PP2q/2N2N2/PPP1K1pP/R1BQ1B1R b kq - 1 7", null) catch return;
+        // engine.set_position("r1b1kbnr/pppp1ppp/2n5/8/3PP2q/2N2N2/PPP1K1pP/R1BQ1B1R b kq - 1 7", null) catch return;
 
-        const m: types.Move = engine.pos.parse_move("g2h1q") catch return;
+        // const m: types.Move = engine.pos.parse_move("g2h1q") catch return;
 
-        //const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
-        const see = hce.see_score(&engine.pos, m);
-        //const see2 = hce.see_score_phased(&engine.pos, m);
-        //draw_position();
+        // //const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
+        // const see = hce.see_score(&engine.pos, m);
+        // //const see2 = hce.see_score_phased(&engine.pos, m);
+        // //draw_position();
 
-        io.print("see score {}\n", .{ see });
-        //io.print("see score phased {}", .{ see2 });
-        if (true) return;
+        // io.print("see score {}\n", .{ see });
+        // //io.print("see score phased {}", .{ see2 });
+        // if (true) return;
+
+
+
         //const t: *const tt.TranspositionTable = &engine.transpositiontable;
 
         // position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8
@@ -329,7 +334,7 @@ const TTY = struct {
         //io.debugprint("tt permille {}\n", .{t.permille()});
         //io.debugprint("tt age {}\n", .{t.age});
 
-       const s = engine;
+//       const s = engine;
 
         //io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
         //io.print("is draw {}\n", .{ engine.pos.is_draw_by_insufficient_material() });
@@ -338,16 +343,16 @@ const TTY = struct {
         //io.print("sizeof evalentry {}\n", .{ @sizeOf(tt.EvalEntry) });
         //io.print("sizeof pawnentry {}\n", .{ @sizeOf(tt.PawnEntry) });
 
-        //io.debugprint("{}\n", .{});
-        io.print("tt len {}\n", .{ s.transpositiontable.hash.data.len });
-        io.print("eval tt len {}\n", .{ s.evaltranspositiontable.hash.data.len });
-        //io.print("pawneval len {}\n", .{ s.pawntranspositiontable.hash.data.len });
+        // //io.debugprint("{}\n", .{});
+        // io.print("tt len {}\n", .{ s.transpositiontable.hash.data.len });
+        // io.print("eval tt len {}\n", .{ s.evaltranspositiontable.hash.data.len });
+        // //io.print("pawneval len {}\n", .{ s.pawntranspositiontable.hash.data.len });
 
-        const a = s.transpositiontable.hash.percentage_filled();
-        const b = s.evaltranspositiontable.hash.percentage_filled();
-        //const c = s.pawntranspositiontable.hash.percentage_filled();
+        // const a = s.transpositiontable.hash.percentage_filled();
+        // const b = s.evaltranspositiontable.hash.percentage_filled();
+        // //const c = s.pawntranspositiontable.hash.percentage_filled();
 
-        io.print("filled tt {}% eval {}%\n", .{ a, b });
+        // io.print("filled tt {}% eval {}%\n", .{ a, b });
 
         //s.searcher.history_heuristics.print_state();
         // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
@@ -361,29 +366,35 @@ const TTY = struct {
     }
 };
 
+/// The possible parameters for the go command.
 pub const Go = struct {
-    /// Not used (yet).
-    ponder: ?bool = null,
-    /// Not used (yet).
-    wtime: ?u32 = null,
-    /// Not used (yet).
-    btime: ?u32 = null,
-    /// Not used (yet).
-    winc: ?u32 = null,
-    /// Not used (yet).
-    binc: ?u32 = null,
-    /// Not used (yet).
-    movestogo: ?u32 = null,
+    /// The white and black time left.
+    time: [2]u64,
+    /// The white and black increment per move.
+    increment: [2]u64,
+    /// The number of moves until the next time control.
+    movestogo: u64,
     /// The maximum depth to search.
-    depth: ?u32 = null,
+    depth: u64,
     /// The maximum nodes to search.
-    nodes: ?u64 = null,
+    nodes: u64,
     /// The maximum time to search in milliseconds.
-    movetime: ?u32 = null,
+    movetime: u64,
     /// Infinite search. Overwrites the other limiting fields.
-    infinite: ?bool = null,
+    infinite: bool = false,
+    /// Not supported yet.
+    ponder: bool = false,
 
-    pub const empty: Go = .{};
+    pub const empty: Go = .{
+        .time = .{ 0, 0, },
+        .increment = .{ 0, 0, },
+        .movestogo = 0,
+        .depth = 0,
+        .nodes = 0,
+        .movetime = 0,
+        .infinite = false,
+        .ponder = false,
+    };
 };
 
 /// Error parsing UCI string.

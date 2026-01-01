@@ -194,8 +194,7 @@ pub const pawn_push_threat_table: [13]ScorePair = .{
 
 /// By [piecetype]
 pub const safe_check_bonus: [6]ScorePair = .{
-    // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0), // original
-    pair(0, 0), pair(47, 7), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // adjusted because of bug.
+    pair(0, 0), pair(47, 7), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0),
 };
 
 /// By [piecetype][square]
@@ -261,3 +260,4 @@ pub const piece_square_table: [6][64]ScorePair = .{
         pair(74, -91), pair(82, -49), pair(60, -27), pair(-46, 9), pair(-19, -7), pair(-91, 11), pair(-24, -7), pair(101, -114), // rank 8
     }
 };
+

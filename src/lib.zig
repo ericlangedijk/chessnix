@@ -13,9 +13,6 @@ pub fn initialize() !void {
     memory_context = .init();
     io_context = .init();
 
-    // Then initialize chess. These are computed. The rest of the tables is comptime computed.
-    @import("zobrist.zig").initialize();
-
     lib_is_initialized = true;
 }
 
@@ -42,7 +39,7 @@ const Safety = enum {
 };
 
 const safety: Safety = switch (builtin.mode) {
-    .Debug => .paranoid, // Change to paranoid if needed during debug for insane bugs.
+    .Debug => .paranoid, // Set to paranoid if needed during debug for insane bugs. Set to guarded for faster debugging.
     .ReleaseSafe => .guarded, // Do not change: build mode decides safety.
     .ReleaseFast, .ReleaseSmall => .none, // Do not change.
 };

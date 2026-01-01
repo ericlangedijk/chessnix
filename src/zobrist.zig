@@ -4,93 +4,68 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const rnd = @import("rnd.zig");
+const utils = @import("utils.zig");
 const types = @import("types.zig");
-
-const assert = std.debug.assert;
 
 const Piece = types.Piece;
 const Square = types.Square;
 
+ /// piece-square + ep + castling + btm.
+const rnd_count: usize = 768 + 64 + 16 + 1;
 
-pub fn initialize() void {
-    var random: rnd.Random = .init(1);
+/// We use one flat array for all.
+const all_randoms: [rnd_count]u64 = compute_all_randoms();
 
-    // First
-    for (Piece.all) |pc| {
-        for (Square.all) |sq| {
-            piece_square_keys[pc.idx() * 64 + sq.idx()] = random.next_u64();
-        }
+const keys: Keys = compute_keys();
+
+const Keys = struct {
+    piece_square: [12 * 64]u64,
+    enpassant: [64]u64,
+    castling: [16]u64,
+    btm: u64,
+};
+
+fn compute_keys() Keys {
+    @setEvalBranchQuota(8000);
+    var randoms: utils.Random = .init(1);
+    var result: Keys = undefined;
+    const flattened: *[rnd_count]u64 = @bitCast(keys);
+    for (0..rnd_count) |i| {
+        flattened[i] = randoms.next_u64();
     }
-
-    // Second
-    for (Square.all) |sq| {
-        ep_keys[sq.u] = random.next_u64();
-    }
-
-    // For safe XOR invalid ep square.
-    ep_keys[0] = 0;
-
-    for (0..16) |i| {
-        castling_keys[i] = random.next_u64();
-    }
-
-    btm_key = random.next_u64();
+    // For safe xor of an invalid ep square (a1).
+    result.enpassant[0] = 0;
+    return result;
 }
 
-
-
-pub var piece_square_keys: [12 * 64]u64 = @splat(0);
-pub var ep_keys: [64]u64 = @splat(0);
-pub var castling_keys: [16]u64 = @splat(0);
-pub var btm_key: u64 = 0;
-
-const ptr_piece_square_keys: [*]const u64 = &piece_square_keys;
-const ptr_ep_keys: [*]const u64 = &ep_keys;
-pub const ptr_castling_keys: [*]const u64 = &castling_keys;
-
-/// Don't call for no_piece.
-pub fn piece_square(pc: Piece, sq: Square) u64
-{
-    if (comptime lib.is_paranoid) {
-        assert(pc.e != .no_piece);
+fn compute_all_randoms() [rnd_count]u64 {
+    @setEvalBranchQuota(8000);
+    var table: [rnd_count] u64 = undefined;
+    var randoms: utils.Random = .init(1);
+    for (0..rnd_count) |i| {
+        table[i] = randoms.next_u64();
     }
+    // For safe xor of an invalid ep square (a1).
+    table[768] = 0;
+    return table;
+}
+
+pub fn piece_square(pc: Piece, sq: Square) u64 {
     const idx: usize = pc.idx() * 64 + sq.u;
-    return ptr_piece_square_keys[idx];
+    return all_randoms[idx];
 }
 
-pub fn enpassant(sq: Square) u64
-{
-    return ptr_ep_keys[sq.u];
+pub fn enpassant(sq: Square) u64 {
+    const idx: usize = @as(usize, 768) + sq.u;
+    return all_randoms[idx];
 }
 
 pub fn castling(castling_rights: u4) u64 {
-    return ptr_castling_keys[castling_rights];
+    const idx: usize = @as(usize, 768) + 64 + castling_rights;
+    return all_randoms[idx];
 }
 
 pub fn btm() u64 {
-    return btm_key;
+    const idx: usize = @as(usize, 768) + 64 + 16;
+    return all_randoms[idx];
 }
-
-// // for (z.piece_square_keys, 0..) |k, i| {
-// //     lib.io.debugprint("0x{x:0>16},\n", .{k});
-// //     std.debug.assert(k == z.pc_sq[i]);
-// // }
-
-// // for (z.ep_keys, 0..) |k, i| {
-// //     lib.io.debugprint("0x{x:0>16},\n", .{k});
-// //     // _ = i;
-// //     std.debug.assert(k == z.ee[i]);
-// // }
-
-// // for (z.castling_keys, 0..) |k, i| {
-// //     lib.io.debugprint("0x{x:0>16},\n", .{k});
-// //      _ = i;
-// //     //std.debug.assert(k == z.ee[i]);
-// // }
-
-
-// // lib.io.debugprint("0x{x:0>16}  0x{x:0>16},\n", .{z.btm(), z.black_tm});
-// // for (p.Layouts.all, 0..) |backrow, i| {
-// //     lib.io.debugprint("{} {any}\n", .{i, backrow});
-// // }

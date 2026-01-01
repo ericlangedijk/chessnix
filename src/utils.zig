@@ -10,7 +10,7 @@ const io = lib.io;
 const assert = std.debug.assert;
 const wtf = lib.wtf;
 
-/// A little wrapper around the std times.
+/// A little wrapper around the std timer.
 pub const Timer = struct {
     pub const empty: Timer = std.mem.zeroes(Timer);
 
@@ -50,8 +50,42 @@ pub const Timer = struct {
     }
 };
 
-/// A little convenient line reader.
-/// * Max linesize must be known.
+/// My predictable random.
+pub const Random = struct {
+    pub const empty: Random = .{};
+
+    const OFFSET: u64 = 0x7f7110ba7879ea6a;
+    seed: u64 = 0,
+
+    pub fn init(seed: u64) Random {
+        return .{ .seed = OFFSET *% seed };
+    }
+
+    pub fn init_randomized() Random {
+        return .{ .seed = OFFSET *% generate_timeseed() };
+    }
+
+    fn generate_timeseed() u64 {
+        const t: i64 = std.time.microTimestamp();
+        const u: u64 = @bitCast(t);
+        return u;
+    }
+
+    pub fn reset_seed(self: *Random, seed: u64) void {
+        self.seed = OFFSET *% seed;
+    }
+
+    pub fn next_u64(self: *Random) u64 {
+        self.seed = self.seed +% 0x9e3779b97f4a7c15;
+        var z: u64 = self.seed;
+        z = (z ^ (z >> 30)) *% 0xbf58476d1ce4e5b9;
+        z = (z ^ (z >> 27)) *% 0x94d049bb133111eb;
+        z = (z ^ (z >> 31));
+        return z;
+    }
+};
+
+/// A little convenient line reader. Max linesize must be known.
 pub const TextFileReader = struct {
     allocator: std.mem.Allocator,
     buffer: []u8,
@@ -84,7 +118,7 @@ pub const TextFileReader = struct {
     }
 };
 
-/// A little convenient writer.
+/// A little convenient line writer.
 pub const TextFileWriter = struct {
     allocator: std.mem.Allocator,
     buffer: []u8,

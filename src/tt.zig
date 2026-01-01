@@ -26,14 +26,10 @@ pub const TTSizes = struct {
     eval: usize,
 };
 
-/// We need to divide the total hash space over the 2 used hash tables. Minimum is 16 MB.
-pub fn compute_tt_sizes(megabytes: usize) TTSizes {
+/// Returns number of bytes. Minimum is 16 MB.
+pub fn compute_tt_size(megabytes: usize) usize {
     const required_mb: usize = @max(16, megabytes);
-    const size: f64 = @floatFromInt(required_mb * types.megabyte);
-    var sizes: TTSizes = undefined;
-    sizes.tt = @intFromFloat(size * 0.80);
-    sizes.eval = @intFromFloat(size * 0.20);
-    return sizes;
+    return required_mb * types.megabyte;
 }
 
 /// Adjust score for mate in X when storing.
@@ -50,10 +46,19 @@ pub fn get_adjusted_score_for_tt_probe(tt_score: Value, ply: u16) Value {
     return tt_score;
 }
 
-pub const Bound = enum(u2) { None, Exact, Alpha, Beta };
+pub const Bound = enum(u2) {
+    /// Empty or static eval only.
+    none,
+    /// Exact score.
+    exact,
+    /// Upper bound.
+    alpha,
+    /// Lower bound.
+    beta
+};
 
 /// 16 bytes, 123 bits. We could still stuff a 5 bits age in here.
-pub const Entry = struct {
+pub const Entry = packed struct {
     /// The kind (exact, alpha or beta) with which this entry was stored.
     bound: Bound,
     /// The position hash key.
@@ -64,38 +69,47 @@ pub const Entry = struct {
     move: Move,
     /// The evaluation according to search.
     score: SmallValue,
-    /// Stored during principal variation search?
+    /// Indicates wether this entry stored during principal variation search.
     was_pv: bool,
+    /// The raw static eval of the evaluation function. Never when in check.
+    raw_static_eval: SmallValue,
 
     pub const empty: Entry = .{
-        .bound = .None,
+        .bound = .none,
         .key = 0,
         .depth = 0,
         .move = .empty,
         .score = -types.infinity,
-        // .raw_static_eval = -types.infinity,
+        .raw_static_eval = -types.infinity,
         .was_pv = false
     };
 
     pub fn is_score_usable_for_depth(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
-        if (self.depth < depth) {
+        if (self.score == -types.infinity or self.depth < depth) {
             return false;
         }
-        switch (self.bound) {
-            .None  => return false,
-            .Exact => return true,
-            .Alpha => return self.score <= alpha,
-            .Beta  => return self.score >= beta,
-        }
+        return switch (self.bound) {
+            .none  => false,
+            .exact => true,
+            .alpha => self.score <= alpha,
+            .beta  => self.score >= beta,
+        };
     }
 
     pub fn is_score_usable(self: *const Entry, alpha: Value, beta: Value) bool {
-        switch (self.bound) {
-            .None  => return false,
-            .Exact => return true,
-            .Alpha => return self.score <= alpha,
-            .Beta  => return self.score >= beta,
+        if (self.score == -types.infinity) {
+            return false;
         }
+        return switch (self.bound) {
+            .none  => false,
+            .exact => true,
+            .alpha => self.score <= alpha,
+            .beta  => self.score >= beta,
+        };
+    }
+
+    pub fn is_raw_static_eval_usable(self: *const Entry) bool {
+        return self.raw_static_eval != -types.infinity;
     }
 };
 
@@ -129,10 +143,11 @@ pub const TranspositionTable = struct {
     }
 
     /// Store the search score. Does not overwrite the static_eval.
-    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool) void {
+    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool, raw_static_eval: ?Value) void {
         if (comptime lib.is_paranoid) {
             assert(depth >= 0 and depth <= 128);
             assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
+            assert(raw_static_eval == null or (raw_static_eval.? < std.math.maxInt(i16) and raw_static_eval.? > std.math.minInt(i16)));
         }
 
         const bucket: *Bucket = self.hash.get(key);
@@ -153,9 +168,9 @@ pub const TranspositionTable = struct {
                 entry = &bucket.e1;
             }
             else {
-                // Same depth → prefer replacing a non-exact bound
-                const v0_cost: u1 = if (bucket.e0.bound == .Exact) 1 else 0;
-                const v1_cost: u1 = if (bucket.e1.bound == .Exact) 1 else 0;
+                // Same depth: prefer replacing a non-exact bound
+                const v0_cost: u1 = if (bucket.e0.bound == .exact) 1 else 0;
+                const v1_cost: u1 = if (bucket.e1.bound == .exact) 1 else 0;
                 entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1;
             }
         }
@@ -166,6 +181,7 @@ pub const TranspositionTable = struct {
         entry.move = move;
         entry.score = @intCast(get_adjusted_score_for_tt_store(score, ply));
         entry.was_pv = pv;
+        entry.raw_static_eval = if (raw_static_eval != null) @intCast(raw_static_eval.?) else -types.infinity;
     }
 
     pub fn probe(self: *TranspositionTable, key: u64) ?*const Entry {
@@ -180,61 +196,7 @@ pub const TranspositionTable = struct {
     }
 };
 
-pub const EvalEntry = packed struct {
-    /// The position key.
-    key: u64,
-    /// The evaluation according to search.
-    score: i16,
-
-    const empty: EvalEntry = .{ .key = 0, .score = 0 };
-};
-
-/// A simple cache for evaluation speedup.
-pub const EvalTranspositionTable = struct {
-    /// Array on heap.
-    hash: HashTable(EvalEntry),
-
-    pub fn init(size_in_bytes: u64) !EvalTranspositionTable {
-        return .{
-            .hash = try .init(size_in_bytes),
-        };
-    }
-
-    pub fn deinit(self: *EvalTranspositionTable) void {
-        self.hash.deinit();
-    }
-
-    pub fn resize(self: *EvalTranspositionTable, size_in_bytes: usize) !void {
-        try self.hash.resize(size_in_bytes);
-    }
-
-    pub fn clear(self: *EvalTranspositionTable) void {
-        self.hash.clear();
-    }
-
-    pub fn store(self: *EvalTranspositionTable, key: u64, score: Value) void {
-        if (comptime lib.is_paranoid) {
-            assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-        }
-        const entry: *EvalEntry = self.get(key);
-        entry.key = key;
-        entry.score = @truncate(score);
-    }
-
-    pub fn probe(self: *EvalTranspositionTable, key: u64) ?Value {
-        const entry: *const EvalEntry = self.get(key);
-        if (entry.key != key) {
-            return null;
-        }
-        return entry.score;
-    }
-
-    pub fn get(self: *EvalTranspositionTable, key: u64) *EvalEntry {
-        return self.hash.get(key);
-    }
-};
-
-/// Simple internal generic hash.
+/// Simple internal generic hash. TODO: maybe we do not need this generic thing anymore.
 fn HashTable(Element: type) type {
     return struct {
         const Self = @This();
@@ -256,7 +218,7 @@ fn HashTable(Element: type) type {
             ctx.galloc.free(self.data);
         }
 
-        /// Slow! just for state output.
+        /// Slow! just for state debug output.
         pub fn percentage_filled(self: *const Self) usize {
             var filled: usize = 0;
             for (self.data) |e| {

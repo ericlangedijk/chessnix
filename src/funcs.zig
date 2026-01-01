@@ -238,7 +238,6 @@ pub fn mate_to_dtm(mv: Value, stm: Color) Value {
     return (if (white_wins) mv * 2 else -mv * 2) - @intFromBool(white_wins == white_to_move);
 }
 
-
 pub fn eql(input: []const u8, comptime line: []const u8) bool {
     return std.mem.eql(u8, input, line);
 }
@@ -278,10 +277,12 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
 //     return @floatFromInt(i);
 // }
 
+// TODO: make i anytype
 pub fn float(i: Value) f32 {
     return @floatFromInt(i);
 }
 
+// TODO: make result anytype
 pub fn int(f: Float) Value {
     return @intFromFloat(f);
 }

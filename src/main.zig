@@ -4,6 +4,11 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const uci = @import("uci.zig");
 
+const types = @import("types.zig");
+const funcs = @import("funcs.zig");
+const position = @import("position.zig");
+const hce = @import("hce.zig");
+
 pub fn main() !void
 {
     try lib.initialize();

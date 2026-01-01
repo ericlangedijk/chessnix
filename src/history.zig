@@ -91,7 +91,7 @@ pub const History = struct {
 pub const QuietHistory = struct {
 
     const max_bonus: SmallValue = 1300;
-    const max_score: SmallValue = 8000;
+    const max_score: SmallValue = 7000;
 
     /// Quiet move scores. Indexing: [piece][from-square][to-square]
     table: [12][64][64]SmallValue,
@@ -135,7 +135,7 @@ pub const QuietHistory = struct {
 pub const CaptureHistory = struct {
 
     const max_bonus: SmallValue = 1300;
-    const max_score: SmallValue = 8000;
+    const max_score: SmallValue = 7000;
 
     /// Capture move scores. Indexing: [piece][to-square][captured-piecetype]
     table: [12][64][6]SmallValue,
@@ -175,7 +175,7 @@ pub const CaptureHistory = struct {
 pub const ContinuationHistory = struct {
 
     const max_bonus: SmallValue = 1300;
-    const max_score: SmallValue = 8000;
+    const max_score: SmallValue = 7000;
 
     // Move pair scores. Indexing: [prevpiece][to-square][piece][to-square]
     table: [12][64][12][64]SmallValue,

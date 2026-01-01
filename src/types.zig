@@ -663,6 +663,10 @@ pub const Move = packed struct(u16) {
         return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
+    pub fn from_to(self: Move) u12 {
+        return @truncate(bitcast(self));
+    }
+
     /// Prints uci move to stdout.
     pub fn print_buffered(self: Move, is_960: bool) void {
         if (self.is_empty()) {
@@ -792,7 +796,7 @@ pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 pub const invalid_movescore: Value = std.math.minInt(Value);
 
-// #original
+// #old
 // pub const value_pawn: Value = 100;
 // pub const value_knight: Value = 300;
 // pub const value_bishop: Value = 300;
@@ -800,21 +804,21 @@ pub const invalid_movescore: Value = std.math.minInt(Value);
 // pub const value_queen: Value = 921;
 // pub const value_king: Value = 0;
 
-// #testing 2
-// pub const value_pawn: Value = 98;
-// pub const value_knight: Value = 299;
-// pub const value_bishop: Value = 300;
-// pub const value_rook: Value = 533;
-// pub const value_queen: Value = 921;
-// pub const value_king: Value = 0;
-
-// #testing 3
-pub const value_pawn: Value = 90;
-pub const value_knight: Value = 290;
-pub const value_bishop: Value = 310;
-pub const value_rook: Value = 570;
-pub const value_queen: Value = 1000;
+// #testing 1.3
+pub const value_pawn: Value = 98;
+pub const value_knight: Value = 299;
+pub const value_bishop: Value = 300;
+pub const value_rook: Value = 533;
+pub const value_queen: Value = 921;
 pub const value_king: Value = 0;
+
+// #testing
+// pub const value_pawn: Value = 90;
+// pub const value_knight: Value = 290;
+// pub const value_bishop: Value = 310;
+// pub const value_rook: Value = 570;
+// pub const value_queen: Value = 1000;
+// pub const value_king: Value = 0;
 
 
 const piece_values: [13]Value = .{

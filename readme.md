@@ -60,7 +60,7 @@ To be continued...
 - quit -> stop the program.
 
 ### Thanks
-Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3).
+Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3) to get me started (from chessnix 2.0 onwards I will do my own tuning).
 Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
 The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, OpenCritter, PlentyChess, Seawall, Shallow, Shallowguess, Stockfish, Supernova, Teki.
 Some extra thanks to these people who made their engine support chess960.
