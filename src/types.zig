@@ -13,12 +13,12 @@ const wtf = lib.wtf();
 const io = lib.io;
 
 // Much used, we shorten.
-pub const P = PieceType.PAWN;
-pub const N = PieceType.KNIGHT;
-pub const B = PieceType.BISHOP;
-pub const R = PieceType.ROOK;
-pub const Q = PieceType.QUEEN;
-pub const K = PieceType.KING;
+// pub const P = PieceType.PAWN;
+// pub const N = PieceType.KNIGHT;
+// pub const B = PieceType.BISHOP;
+// pub const R = PieceType.ROOK;
+// pub const Q = PieceType.QUEEN;
+// pub const K = PieceType.KING;
 
 /// Used for evaluation and hashtables and scorepair.
 pub const SmallValue = i16;
@@ -495,6 +495,10 @@ pub const Piece = packed union {
         return self.u < 6;
     }
 
+    pub fn is_color(self: Piece, comptime us: Color) bool {
+        return if (us.e == .white) self.u < 6 else self.u >= 6 and self.u <= 11;
+    }
+
     /// Don't call for no_piece.
     pub fn piecetype(self: Piece) PieceType {
         if (comptime lib.is_paranoid) {
@@ -663,6 +667,7 @@ pub const Move = packed struct(u16) {
         return .{ .u = (self.flags & 0b0111) - 3 };
     }
 
+    /// Returns a 12 bit indexer for the from / to squares.
     pub fn from_to(self: Move) u12 {
         return @truncate(bitcast(self));
     }
@@ -789,6 +794,7 @@ pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128; // TODD: maybe 256 for egtb
 pub const max_threads: u16 = 32;
 
+// TODO: infinity, no_score, draw, win, mate_found, mate
 pub const infinity: Value = 32000;
 pub const mate: Value = 30000;
 pub const mate_threshold = mate - 256;
@@ -796,30 +802,12 @@ pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 pub const invalid_movescore: Value = std.math.minInt(Value);
 
-// #old
-// pub const value_pawn: Value = 100;
-// pub const value_knight: Value = 300;
-// pub const value_bishop: Value = 300;
-// pub const value_rook: Value = 533;
-// pub const value_queen: Value = 921;
-// pub const value_king: Value = 0;
-
-// #testing 1.3
 pub const value_pawn: Value = 98;
 pub const value_knight: Value = 299;
 pub const value_bishop: Value = 300;
 pub const value_rook: Value = 533;
 pub const value_queen: Value = 921;
 pub const value_king: Value = 0;
-
-// #testing
-// pub const value_pawn: Value = 90;
-// pub const value_knight: Value = 290;
-// pub const value_bishop: Value = 310;
-// pub const value_rook: Value = 570;
-// pub const value_queen: Value = 1000;
-// pub const value_king: Value = 0;
-
 
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,

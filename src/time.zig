@@ -3,210 +3,166 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
+const position = @import("position.zig");
+const hce = @import("hce.zig");
+const funcs = @import("funcs.zig");
 const utils = @import("utils.zig");
 const uci = @import("uci.zig");
 
+const Value = types.Value;
 const Color = types.Color;
 const Move = types.Move;
+const Position = position.Position;
 
-/// The amount of time for gui-engine communication and the few milliseconds to start threads after the go command.
-const move_overhead: u32 = 10;
+const float = funcs.float;
 
 const max_search_depth = types.max_search_depth;
 
 /// Criterium for ending the search.
 pub const Termination = enum {
-    /// No limit, except max_search_depth.
+    /// No limit, except the maximum search depth.
     infinite,
-    /// Hard limit by nodecount.
-    nodes,
-    /// Hard limit by uci movetime.
-    movetime,
-    /// Hard limit by depth (iterations).
+    /// Limited by depth.
     depth,
+    /// Hard limit by nodes.
+    nodes,
+    /// Hard limit by movetime.
+    movetime,
     /// Limit by wtime / btime / winc / binc / movestogo.
     clock,
 };
 
-/// TODO: maybe use times in nanoseconds. then we do not have to calculate milliseconds.
-pub const TimeMgr = struct {
-    /// Indicates how we terminate the search.
+// go wtime 300000 btime 300000 winc 3000 binc 3000 movestogo 40
+pub const TimeManager = struct {
     termination: Termination,
-    /// Limiting the depth (iterations).
-    max_depth: u8,
-    /// Restrict search on number of nodes.
-    max_nodes: u64,
-
-    // Restrict search on milliseconds, depending on uci input (movetime or wtime / btime).
-    max_movetime: u64,
-
-    //hard_time_limit: u64,
-    //soft_time_limit: u64,
-
-
-    // Table to keep track of how many nodes were spent for each move at root search. Indexing: [move.from_to]
-    //nodes_spent: [4096]u64,
-
-    // Current best move
-    // best_move: Move,
-    // Move stability. Count how much times - after each iteration - this has been the best move. Maximum = 4.
-    // best_move_stability: u3,
-
     timer: utils.Timer,
+    max_movetime: u64,
+    opt_movetime_base: u64,
+    opt_movetime: u64,
+    max_nodes: u64,
+    max_depth: u8,
 
-    pub const default: TimeMgr = .{
+    pub const empty: TimeManager = .{
         .termination = .infinite,
-        .max_depth = 0,
-        .max_nodes = 0,
-        .max_movetime = 0,
-
-        //.hard_time_limit = 0,
-        //.soft_time_limit = 0,
-
-
-        // .nodes_spent = @splat(0),
-        // .best_move = .empty,
-        // .best_move_stability = 0,
         .timer = .empty,
+        .max_movetime = 0,
+        .opt_movetime_base = 0,
+        .opt_movetime = 0,
+        .max_nodes = 0,
+        .max_depth = 0,
     };
 
-    /// Create time manager from the uci go params and starts the timer.
-    pub fn init(go: *const uci.Go, us: Color) TimeMgr {
-        var mgr: TimeMgr = .default;
-        mgr.timer = .start();
+    pub fn set(self: *TimeManager, go: *const uci.Go, us: Color) void {
+        self.* = .empty;
+        self.timer = .start();
+        //self.starttime = self.timer.read() / std.time.ns_per_ms;
 
-        // Infinite.
         if (go.infinite) {
-            return mgr;
+            self.termination = .infinite;
+            return;
         }
 
-        // Depth.
         if (go.depth > 0) {
-            mgr.termination = .depth;
-            mgr.max_depth = @truncate(@min(go.depth, max_search_depth));
-            return mgr;
+            self.termination = .depth;
+            // Cap the max depth.
+            self.max_depth = @min(max_search_depth, @as(u8, @truncate(go.depth)));
+            return;
         }
 
-        // Nodes.
         if (go.nodes > 0) {
-            mgr.termination = .nodes;
-            mgr.max_nodes = go.nodes;
-            return mgr;
+            self.termination = .nodes;
+            self.max_nodes = go.nodes;
+            return;
         }
 
-        // Movetime.
+        const time: u64 = go.time[us.u];
+        const inc: u64 = go.increment[us.u];
+
+        const move_overhead: u64 = @min(25, time / 2);
+
         if (go.movetime > 0) {
-            mgr.termination = .movetime;
-            //mgr.max_movetime = movetime;
-            if (go.movetime > move_overhead) {
-                mgr.max_movetime = go.movetime - move_overhead;
-            }
-            else {
-                mgr.max_movetime = 1;
-            }
-
-            return mgr;
+            self.termination = .movetime;
+            self.max_movetime = time - move_overhead; // TODO: this can maybe underflow?
+            self.max_movetime = time - move_overhead;
+            return;
         }
 
-        // Clock.
-        if (go.time[0] > 0 or go.time[1] > 0) {
-            mgr.termination = .clock;
-            const time: u64 = go.time[us.u];
-            const increment: u64 = go.increment[us.u];
-            const movestogo: u64 = if (go.movestogo > 0) go.movestogo else 50;
+        // From here we are in a tournament situation and need smart timing.
+        self.termination = .clock;
 
-            // original
-            mgr.max_movetime = (time / movestogo) + if (movestogo > 1) increment else 0;
-            //lib.io.debugprint("maxtime 1 {}\n", .{ mgr.max_movetime });
+        const cyclic_timecontrol: bool = go.movestogo > 0;
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50;
 
-            // Add all increments to the time. #testing 1.3
-            //const totaltime: u64 = time + movestogo * increment - increment;
-            //mgr.max_movetime = (totaltime / movestogo) + if (movestogo > 1) increment else 0;
+        const timeleft = @max(1, time + inc * (movestogo - 1) - move_overhead * (2 + movestogo));
 
-            //lib.io.debugprint("maxtime 2 {}\n", .{ mgr.max_movetime });
+        var optscale: f32 = 0;
+        const m: f32 = float(movestogo);
+        const t: f32 = float(time);
+        const tl: f32 = float(timeleft);
+        const mo: f32 = float(move_overhead);
 
-            if (mgr.max_movetime > move_overhead) {
-                mgr.max_movetime -= move_overhead;
-            }
-            else {
-                mgr.max_movetime = 1;
-            }
-
-            // const base_time: u64 = mul(time, base_time_scale) + mul(increment, increment_scale) - move_overhead;
-            // const maximum_time: u64 = mul(time, percent_limit);
-            // const scaled_hard_limit: u64 = @min(mul(base_time, hard_limit_scale), maximum_time);
-            // const scaled_soft_limit: u64 = @min(mul(base_time, soft_limit_scale), maximum_time);
-            // mgr.hard_time_limit = @max(5, scaled_hard_limit);
-            // mgr.soft_time_limit = @max(1, scaled_soft_limit);
-            // lib.io.debugprint("h {} s {}\n", .{ mgr.hard_time_limit, mgr.soft_time_limit });
-            // Do not flag on the last move before time control.
-
-            return mgr;
+        if (cyclic_timecontrol) {
+            optscale = @min(0.90 / m, 0.88 * t / tl);
+        }
+        else {
+            optscale = @min(optscale_fixed, optscale_time_left * t / tl);
         }
 
-        return mgr;
+        const optime: f32 =  optscale * tl;
+        self.opt_movetime_base = @intFromFloat(optime);
+        self.opt_movetime = self.opt_movetime_base;
 
-
-        // reserve = max(1500, remaining_time / 25)
-        // usable   = remaining_time − reserve + increment * 70 / 100
-        // maximum  = usable * 45 / 100
+        // Absolute limit for a move is 75% of the total time.
+        const maxtime: f32 = 0.75 * t - mo;
+        self.max_movetime = @intFromFloat(maxtime);
     }
 
-    // pub fn nodes_spent_ptr(self: *TimeMgr, move: Move) *u64 {
-    //     return &self.nodes_spent[move.from_to()];
-    // }
+    /// When in clockmode we should call this function after each search iteration.
+    pub fn update_optimal_stoptime(self: *TimeManager, nodes_spent_on_move: u64, total_nodes: u64, best_move_stability: u3, eval_stability: u3) void {
+        const best_move_nodes_fraction: f32 = float(nodes_spent_on_move) / float(total_nodes);
+        const node_scaling_factor: f32 = (node_tm_base - best_move_nodes_fraction) * node_tm_multiplier;
+        const best_move_scaling_factor: f32 = bestmove_stability_scales[best_move_stability];
+        const eval_scaling_factor: f32 = eval_stability_scales[eval_stability];
+        const base: f32 = @floatFromInt(self.opt_movetime_base);
+        const opt: f32 = base * node_scaling_factor * best_move_scaling_factor * eval_scaling_factor;
+        self.opt_movetime = @intFromFloat(opt);
+        self.opt_movetime = @min(self.max_movetime, self.opt_movetime);
+    }
 
-    // /// TODO: use the ptr
-    // pub fn update_nodes_spent(self: *TimeMgr, move: Move, spent: u64) void {
-    //     self.nodes_spent[move.from_to()] += spent;
-    // }
+    pub fn max_time_reached(self: *TimeManager) bool {
+        return self.timer.elapsed_ms() >= self.max_movetime;
+    }
 
-    // pub fn check_stop_early(self: *TimeMgr, best_move: Move, depth: i32, nodes: u64) bool {
-    //     if (self.termination != .clock) {
-    //         return false;
-    //     }
+    pub fn optimal_time_reached(self: *TimeManager) bool {
+        return self.timer.elapsed_ms() >= self.opt_movetime;
+    }
+};
 
-    //     if (depth < 7) {
-    //         return self.timer.elapsed_ms() >= self.soft_time_limit;
-    //     }
+/// The amount of time for gui-engine communication and the few milliseconds to start threads after the go command.
+//const move_overhead: u32 = 10;
 
-    //     if (self.best_move != best_move) {
-    //         self.best_move = best_move;
-    //         self.best_move_stability = 0;
-    //     }
-    //     else {
-    //         if (self.best_move_stability < 4) {
-    //             self.best_move_stability += 1;
-    //         }
-    //     }
+const node_tm_base: f32 = 1.53;
+const node_tm_multiplier: f32 = 1.74;
 
-    //     const spent: f32 = @floatFromInt(self.nodes_spent_ptr(best_move).*);
-    //     const total: f32 = @floatFromInt(@max(1, nodes));
-    //     const percent_searched: f32 = spent / total;
-    //     const percent_scale_factor: f32 = (node_fraction_base - percent_searched) * node_fraction_scale;
-    //     const stability_scale: f32 = move_stability_scale[self.best_move_stability];
-    //     const optimal_limit: u32 = @min(mul(self.soft_time_limit, percent_scale_factor * stability_scale), self.hard_time_limit);
+const optscale_fixed = 0.025;
+const optscale_time_left = 0.20;
 
-    //     return self.timer.elapsed_ms() >= optimal_limit; // self.max_movetime;
-    // }
+const bestmove_stability_scales: [5]f32 = .{
+    2.38,
+    1.29,
+    1.07,
+    0.91,
+    0.71,
+};
+
+const eval_stability_scales: [5]f32 = .{
+    1.25,
+    1.15,
+    1.05,
+    0.92,
+    0.87,
 };
 
 
-// const base_time_scale: f32 = 0.055;
-// const increment_scale: f32 = 0.91;
-// const percent_limit: f32 = 0.77;
-// const hard_limit_scale: f32 = 3.25;
-// const soft_limit_scale: f32 = 0.83;
-// const node_fraction_base: f32 = 1.49;
-// const node_fraction_scale: f32 = 1.56;
-// const move_stability_scale: [5]f32 = .{ 2.32, 1.22, 1.07, 0.79, 0.68 };
-
-// fn mul(u: u64, f: f32) u32 {
-//     return @intFromFloat(float(u) * f);
-// }
-
-// pub fn float(u: u64) f32 {
-//     return @floatFromInt(u);
-// }
 
 

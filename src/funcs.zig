@@ -277,8 +277,8 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
 //     return @floatFromInt(i);
 // }
 
-// TODO: make i anytype
-pub fn float(i: Value) f32 {
+/// Convert any int to f32.
+pub fn float(i: anytype) f32 {
     return @floatFromInt(i);
 }
 

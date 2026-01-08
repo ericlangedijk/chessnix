@@ -1,7 +1,6 @@
 // zig fmt: off
 
 //! Lots of bitboards.
-//! NOTE: initialize *after* attacks.zig.
 
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");

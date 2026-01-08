@@ -48,6 +48,11 @@ pub const isolated_pawn_penalty: [8]ScorePair = .{
     pair(-8, 12), pair(-1, -12), pair(-11, -4), pair(-7, -13), pair(-11, -15), pair(-4, -6), pair(1, -12), pair(-7, 8),
 };
 
+/// By [rank]. EXPERIMENTAL
+pub const backward_pawn_penalty: [8]ScorePair = .{
+    pair(0, 0), pair(-1, -12), pair(-11, -15), pair(-1, -5), pair(-1, -5), pair(0, 0), pair(0, 0), pair(0, 0)
+};
+
 pub const king_cannot_reach_passed_pawn_bonus = pair(-344, 199);
 
 pub const bishop_pair_bonus: ScorePair = pair(18, 58);
@@ -144,6 +149,10 @@ pub const king_on_file_penalty: [2][8]ScorePair = .{
     .{ pair(-3, 45), pair(-31, 19), pair(-17, 12), pair(3, -5), pair(-2, -7), pair(-3, 3), pair(-27, 23), pair(-15, 34) }, // half open
 };
 
+// pub const king_on_open_diagonal_penalty: [2][8]ScorePair = .{
+
+//pub const space:
+
 /// By [threatened piecetype][is_protected]
 pub const threatened_by_pawn_penalty: [6][2]ScorePair = .{
     .{ pair(-17, 13), pair(-11, 17) }, // pawn threatens pawn
@@ -194,7 +203,8 @@ pub const pawn_push_threat_table: [13]ScorePair = .{
 
 /// By [piecetype]
 pub const safe_check_bonus: [6]ScorePair = .{
-    pair(0, 0), pair(47, 7), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0),
+    // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0), // original #testing 1.3
+    pair(0, 0), pair(47, 7), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // alternative
 };
 
 /// By [piecetype][square]

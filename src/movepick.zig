@@ -38,7 +38,7 @@ pub const Stage = enum {
     generate,
     /// Stage 2: the first move to consider is a tt-move.
     tt,
-    /// Stage 3: score the noisy moves.
+    /// Stage 3: score the noisy moves. Fill the bad noisy list.
     score_noisy,
     /// Stage 4: extract the noisy moves.
     noisy,
@@ -289,22 +289,23 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.captured = pos.board[ex.move.to.u];
 
+                        // // original scoring
                         const see = hce.see_score(pos, ex.move);
-                        ex.is_bad_capture = see < 0;
+                        ex.is_bad_capture = see < 0; // #testing bad score.
                         if (ex.is_bad_capture) {
-                            ex.score = Scores.bad_capture + see * 10;
+                            ex.score = Scores.bad_capture + see * 10; // #testing * 100 instead of 10
                         }
                         else {
                             ex.score = Scores.capture + see * 10;
                         }
 
-                        // #testing 1.3 new see score
+                        // // #testing 1.3 new see score (disaster)
                         // ex.is_bad_capture = !hce.see(pos, ex.move, 0);
                         // if (ex.is_bad_capture) {
-                        //     ex.score = Scores.bad_capture + ex.captured.value() * 100; //
+                        //     ex.score = ex.captured.value() * 10 + Scores.bad_capture;
                         // }
                         // else {
-                        //     ex.score = Scores.capture + ex.captured.value() * 100; // 10
+                        //     ex.score = ex.captured.value() * 10 + Scores.capture;
                         // }
 
                         ex.score += hist.capture.get_score(ex.*);
@@ -338,9 +339,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.silent, Move.double_push, Move.castle_short, Move.castle_long => {
                         ex.score = hist.quiet.get_score(ex.*);
 
-                        // #testing
-                        // const see: bool = hce.see(pos, ex.move, 0);
-                        // if (see) ex.score += 10 else ex.score -= 10;
+                        // #testing 1.3 (disaster)
+                        // const see: bool = hce.see(pos, ex.move, -100);
+                        // //if (see) ex.score += 50 else ex.score -= 50;
+                        // if (!see) ex.score -= 100;
 
                         const parentnode: ?*const Node = if (pos.ply >= 1) &self.searcher.nodes[pos.ply - 1] else null;
                         if (parentnode) |parent| {

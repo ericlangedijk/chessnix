@@ -36,6 +36,8 @@ pub const cf_black_short: u4 = 0b0100;
 pub const cf_black_long: u4 = 0b1000;
 pub const cf_all: u4 = 0b1111;
 
+pub const classic_startpos_fen: []const u8 = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
 // gen flags.
 const gf_black: u4 = 0b0001;
 const gf_check: u4 = 0b0010;
@@ -101,9 +103,9 @@ pub const Position = struct {
     key: u64,
     /// The hashkey of pawns. Used for correction history.
     pawnkey: u64,
-    /// Key for each side for non pawns.  Used for correction history.
+    /// Key for each side for non pawns. Used for correction history.
     nonpawnkeys: [2]u64,
-    /// Bitboard of the pieces that currently give check. TODO: we could contemplate delete this and use masking with checkmask.
+    /// Bitboard of the pieces that currently give check.
     checkers: u64,
     /// The paths from the enemy slider checkers to the king (excluding the king, including the checker). Pawns and knights also included.
     checkmask: u64,
@@ -1734,7 +1736,6 @@ pub const MoveStorage = struct {
     /// Required function.
     pub fn reset(self: *MoveStorage) void {
         self.count = 0;
-        // assert(self.count == 0); // TODO: is there any explanation...
     }
 
     /// Required function.

@@ -263,6 +263,21 @@ pub const Evaluator = struct {
             if (pawns_on_adjacent_files == 0) {
                 score.inc(hcetables.isolated_pawn_penalty[file]);
             }
+
+            // Backward pawn. #testing 1.3
+            // if (pawns_on_adjacent_files != 0 and relative_rank < 7) {
+            //     const backward_mask: u64 = (bitboards.get_passed_pawn_mask(them, sq) | bitboards.rank_bitboards[sq.coord.rank]) & ~bitboards.file_bitboards[file] & our_pawns;
+            //     if (backward_mask == 0) {
+            //         const square_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
+            //         const piece_in_front: Piece = pos.board[square_in_front.u];
+            //         const covered: u64 = attacks.get_pawn_attacks(square_in_front, us);
+            //         if (piece_in_front.is_pawn_of_color(them) or covered & pos.pawns(them) != 0) {
+            //             score.inc(hcetables.backward_pawn_penalty[relative_rank]);
+            //             //io.debugprint("backward pawn on {t}\n", .{ sq.e });
+            //         }
+            //     }
+            // }
+
         }
 
         // Pawn - king stuff.
@@ -485,8 +500,9 @@ pub const Evaluator = struct {
         // Open files to our king.
         const our_pawns_on_file: u64 = our_pawns & bitboards.file_bitboards[our_king_sq.coord.file];
         if (our_pawns_on_file == 0) {
-            const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[our_king_sq.coord.file]; // TODO: correct?
+            const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[our_king_sq.coord.file];
             const half_open: u1 = if (their_pawns_on_file != 0) 1 else 0;
+            // assert(half_open == @intFromBool(their_pawns_on_file != 0));
             score.inc(hcetables.king_on_file_penalty[half_open][our_king_sq.coord.file]);
         }
 

@@ -64,9 +64,9 @@ pub const History = struct {
                 node.killers[0] = current.move;
             }
 
-            if (depth <= 1) {
-                return; // #testing
-            }
+            // if (depth <= 1) {
+            //     return; // #testing 1.3
+            // }
 
             // Quiet history.
             self.quiet.update(depth, current, quiets);
@@ -111,17 +111,6 @@ pub const QuietHistory = struct {
         }
     }
 
-    // fn threat_index(pos: *const Position, ex: ExtMove) u2 {
-    //     var result: u2 = 0;
-    //     if (funcs.contains_square(pos.threats, ex.move.from)) {
-    //         result += 2;
-    //     }
-    //     if (funcs.contains_square(pos.threats, ex.move.to)) {
-    //         result += 1;
-    //     }
-    //     return result;
-    // }
-
     fn get_score_ptr(self: *QuietHistory, ex: ExtMove) *SmallValue {
         return &self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
@@ -148,14 +137,6 @@ pub const CaptureHistory = struct {
         apply_bonus(v, bonus, max_bonus);
 
         // Decrease score of previous capture moves. These did not cause a beta cutoff.
-        for (captures) |prev| {
-            const p: *SmallValue = self.get_score_ptr(prev);
-            apply_bonus(p, -bonus, max_score);
-        }
-    }
-
-    pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
-        const bonus: SmallValue = get_bonus(depth, max_bonus);
         for (captures) |prev| {
             const p: *SmallValue = self.get_score_ptr(prev);
             apply_bonus(p, -bonus, max_score);
@@ -242,8 +223,7 @@ pub const CorrectionHistory = struct {
         corr_eval += @as(Value, self.non_pawn_white[u][pos.nonpawnkeys[0] % CORRECTION_HISTORY_SIZE]) * 2;
         corr_eval += @as(Value, self.non_pawn_black[u][pos.nonpawnkeys[1] % CORRECTION_HISTORY_SIZE]) * 2;
         corr_eval >>= 9;
-        // corr_eval = std.math.clamp(corr_eval, -255, 255);
-        if (lib.is_paranoid) assert(corr_eval > -300 and corr_eval < 300);
+        corr_eval = std.math.clamp(corr_eval, -300, 300);
         return @intCast(corr_eval);
     }
 };

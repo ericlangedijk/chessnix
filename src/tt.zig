@@ -172,6 +172,7 @@ pub const TranspositionTable = struct {
                 const v0_cost: u1 = if (bucket.e0.bound == .exact) 1 else 0;
                 const v1_cost: u1 = if (bucket.e1.bound == .exact) 1 else 0;
                 entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1;
+                // TODO: if this equal use age.
             }
         }
 
@@ -196,7 +197,7 @@ pub const TranspositionTable = struct {
     }
 };
 
-/// Simple internal generic hash. TODO: maybe we do not need this generic thing anymore.
+/// Simple internal generic hash.
 fn HashTable(Element: type) type {
     return struct {
         const Self = @This();

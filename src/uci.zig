@@ -105,7 +105,7 @@ fn uci_loop() !void {
 /// Just a simple wrapper.
 const UCI = struct {
 
-    // option name Hash type spin default 16 min 1 max 33554432
+    // option name Hash type spin default 16 min 1 max 33_554_432
     fn respond_uciok() void {
         io.print
         (
@@ -169,19 +169,21 @@ const UCI = struct {
         }
     }
 
-    /// Parce UCI command after "position"
+    /// Parce UCI command after "position" (startpos or fen + optional moves).
     fn set_position(tokenizer: *Tokenizer) !void {
         const next = tokenizer.next() orelse return;
         if (eql(next, "fen")) {
             var fen_and_moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
-            try engine.set_position(fen_and_moves.next(), fen_and_moves.next());
+            try engine.set_position(fen_and_moves.next() orelse wtf(), fen_and_moves.next());
         }
         else if (eql(next, "startpos")) {
             if (tokenizer.next()) |n| {
-                if (eql(n, "moves")) try engine.set_startpos_with_optional_moves(tokenizer.rest());
+                if (eql(n, "moves")) {
+                    try engine.set_position(position.classic_startpos_fen, tokenizer.rest());
+                }
             }
             else {
-                engine.set_startpos();
+                try engine.set_position(position.classic_startpos_fen, null);
             }
         }
     }
@@ -366,7 +368,7 @@ const TTY = struct {
     }
 };
 
-/// The possible parameters for the go command.
+/// The possible parameters for the go command. All fields not present in the go command are zero / false.
 pub const Go = struct {
     /// The white and black time left.
     time: [2]u64,
