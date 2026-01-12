@@ -87,7 +87,7 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
-        stdin = std.fs.File.stdin().reader(&in_buffer);
+        stdin = std.fs.File.stdin().readerStreaming(&in_buffer);
         stdout = std.fs.File.stdout().writer(&out_buffer);
         return .{
             .in = &stdin.interface,
