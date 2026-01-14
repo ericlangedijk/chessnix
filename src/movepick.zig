@@ -38,14 +38,12 @@ pub const Stage = enum {
     generate,
     /// Stage 2: the first move to consider is a tt-move.
     tt,
-    /// Stage 3: score the noisy moves. Fill the bad noisy list.
+    /// Stage 3: score the noisy moves. Also updata the bad noisy list.
     score_noisy,
     /// Stage 4: extract the noisy moves.
     noisy,
-    /// Stage 5: extract killer 1.
-    first_killer,
-    /// Stage 6: extract killer 2.
-    second_killer,
+    /// Stage 5: extract killer.
+    killer,
     /// Stage 7: score the quiet moves.
     score_quiet,
     /// Stage 8: Extract the quiet moves.
@@ -63,8 +61,8 @@ const ListMode = enum {
 
 const Scores = struct {
     const tt           : Value = 8_000_000;
-    const killer1      : Value = 7_000_000;
-    const killer2      : Value = 6_000_000;
+    const killer      : Value = 7_000_000;
+    //const killer2      : Value = 6_000_000;
     const promotion    : Value = 4_000_000;
     const capture      : Value = 2_000_000;
     const bad_capture  : Value = -2_000_000;
@@ -86,8 +84,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         node: *const Node,
         input_tt_move: Move,
         tt_move: ?ExtMove,
-        first_killer_move: ?ExtMove,
-        second_killer_move: ?ExtMove,
+        killer_move: ?ExtMove,
         move_count: u8,
         move_idx: u8,
         noisies: ExtMoveList(80),
@@ -102,8 +99,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 .node = node,
                 .input_tt_move = tt_move,
                 .tt_move = null,
-                .first_killer_move = null,
-                .second_killer_move = null,
+                .killer_move = null,
                 .move_count = 0,
                 .move_idx = 0,
                 .noisies = .init(),
@@ -139,22 +135,14 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         self.move_idx += 1;
                         return ex;
                     }
-                    self.stage = .first_killer;
-                    continue :sw .first_killer;
+                    self.stage = .killer;
+                    continue :sw .killer;
                 },
-                .first_killer => {
-                    self.stage = .second_killer;
-                    if (self.first_killer_move != null) {
-                        self.set_single_move_details(&self.first_killer_move.?);
-                        return self.first_killer_move.?;
-                    }
-                    continue :sw .second_killer;
-                },
-                .second_killer => {
+                .killer => {
                     self.stage = .score_quiet;
-                    if (self.second_killer_move != null) {
-                        self.set_single_move_details(&self.second_killer_move.?);
-                        return self.second_killer_move.?;
+                    if (self.killer_move != null) {
+                        self.set_single_move_details(&self.killer_move.?);
+                        return self.killer_move.?;
                     }
                     continue :sw .score_quiet;
                 },
@@ -200,15 +188,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 self.tt_move.?.is_tt_move = true;
                 self.tt_move.?.score = Scores.tt; // not strictly needed
             }
-            else if (move == self.node.killers[0]) {
-                self.first_killer_move = .init(move);
-                self.first_killer_move.?.is_killer = true;
-                self.first_killer_move.?.score = Scores.killer1; // not strictly needed
-            }
-            else if (move == self.node.killers[1]) {
-                self.second_killer_move = .init(move);
-                self.second_killer_move.?.is_killer = true;
-                self.second_killer_move.?.score = Scores.killer2; // not strictly needed
+            else if (move == self.node.killer) {
+                self.killer_move = .init(move);
+                self.killer_move.?.is_killer = true;
+                self.killer_move.?.score = Scores.killer; // not strictly needed
             }
             else if (move.is_noisy()) {
                 self.noisies.add(.init(move));
@@ -289,24 +272,13 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.captured = pos.board[ex.move.to.u];
 
-                        // // original scoring
-                        const see = hce.see_score(pos, ex.move);
-                        ex.is_bad_capture = see < 0; // #testing bad score.
+                        ex.is_bad_capture = !hce.see(pos, ex.move, 0);
                         if (ex.is_bad_capture) {
-                            ex.score = Scores.bad_capture + see * 10; // #testing * 100 instead of 10
+                            ex.score = Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value();
                         }
                         else {
-                            ex.score = Scores.capture + see * 10;
+                            ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value();
                         }
-
-                        // // #testing 1.3 new see score (disaster)
-                        // ex.is_bad_capture = !hce.see(pos, ex.move, 0);
-                        // if (ex.is_bad_capture) {
-                        //     ex.score = ex.captured.value() * 10 + Scores.bad_capture;
-                        // }
-                        // else {
-                        //     ex.score = ex.captured.value() * 10 + Scores.capture;
-                        // }
 
                         ex.score += hist.capture.get_score(ex.*);
 
@@ -316,17 +288,28 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                     },
                     Move.ep => {
-                        ex.captured = Piece.create(PieceType.PAWN, them);
-                        ex.score = Scores.capture + hist.capture.get_score(ex.*);
+                        ex.captured = comptime Piece.create(PieceType.PAWN, them);
+                        ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value();
+                        ex.score += hist.capture.get_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
-                        ex.score = Scores.promotion + (ex.move.promoted_to().value() * 10);
+                        const prom: PieceType = ex.move.promoted_to();
+                        switch (prom.e) {
+                            .queen => ex.score = Scores.promotion + 2,
+                            .knight => ex.score = Scores.promotion + 1,
+                            .bishop, .rook => ex.score = Scores.promotion,
+                            else => unreachable,
+                        }
                     },
                     Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
                         ex.captured = pos.board[ex.move.to.u];
-                        ex.score = Scores.promotion + (ex.move.promoted_to().value() * 10);
-                        ex.score += ex.captured.value();
-                        ex.score += hist.capture.get_score(ex.*);
+                        const prom: PieceType = ex.move.promoted_to();
+                        switch (prom.e) {
+                            .queen => ex.score = Scores.promotion + 2,
+                            .knight => ex.score = Scores.promotion + 1,
+                            .bishop, .rook => ex.score = Scores.promotion,
+                            else => unreachable,
+                        }
                     },
                     else => {
                         unreachable;
@@ -338,11 +321,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 switch (ex.move.flags) {
                     Move.silent, Move.double_push, Move.castle_short, Move.castle_long => {
                         ex.score = hist.quiet.get_score(ex.*);
-
-                        // #testing 1.3 (disaster)
-                        // const see: bool = hce.see(pos, ex.move, -100);
-                        // //if (see) ex.score += 50 else ex.score -= 50;
-                        // if (!see) ex.score -= 100;
 
                         const parentnode: ?*const Node = if (pos.ply >= 1) &self.searcher.nodes[pos.ply - 1] else null;
                         if (parentnode) |parent| {
@@ -357,6 +335,38 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                                 }
                             }
                         }
+
+                        // #discarded for now -> worse results.
+                        // if (!ex.move.is_castle()) {
+                        //     const bb_from: u64 = ex.move.from.to_bitboard();
+                        //     const bb_to: u64 = ex.move.to.to_bitboard();
+
+                        //     const pawn_threats: u64 = pos.threats[PieceType.PAWN.u];
+                        //     const minor_threats: u64 = pawn_threats | pos.threats[PieceType.KNIGHT.u] | pos.threats[PieceType.BISHOP.u];
+                        //     const rook_threats: u64 = minor_threats | pos.threats[PieceType.ROOK.u];
+
+                        //     switch (ex.piece.piecetype().e) {
+                        //         .pawn => {
+                        //             // do nothing
+                        //         },
+                        //         .knight, .bishop => {
+                        //             if (pawn_threats & bb_from != 0) ex.score += 7728;
+                        //             if (pawn_threats & bb_to != 0) ex.score -= 8293;
+                        //         },
+                        //         .rook => {
+                        //             if (minor_threats & bb_from != 0) ex.score += 12809;
+                        //             if (minor_threats & bb_to != 0) ex.score -= 13027;
+                        //         },
+                        //         .queen => {
+                        //             if (rook_threats & bb_from != 0) ex.score += 20004;
+                        //             if (rook_threats & bb_to != 0) ex.score -= 18629;
+                        //         },
+                        //         .king => {
+                        //             // do nothing
+                        //         },
+                        //     }
+                        // }
+
                     },
                     else => {
                         unreachable;

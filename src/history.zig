@@ -49,7 +49,9 @@ pub const History = struct {
         self.* = std.mem.zeroes(History);
     }
 
-    pub fn record_beta_cutoff(self: *History, parentnode: ?*const Node, node: *Node, depth: i32, quiets: []const ExtMove, captures: []const ExtMove) void {
+    /// Increase the score of the node move.
+    /// If the node move is quiet, punish the quiets.
+    pub fn record_beta_cutoff(self: *History, parentnode: ?*const Node, node: *Node, depth: i32, quiets: []const ExtMove) void {        
         if (comptime lib.is_paranoid) {
             assert(!node.current_move.move.is_empty());
         }
@@ -59,14 +61,7 @@ pub const History = struct {
         if (current.move.is_quiet()) {
 
             // Update killers of this node.
-            if (node.killers[0] != current.move) {
-                node.killers[1] = node.killers[0];
-                node.killers[0] = current.move;
-            }
-
-            // if (depth <= 1) {
-            //     return; // #testing 1.3
-            // }
+            node.killer = current.move;
 
             // Quiet history.
             self.quiet.update(depth, current, quiets);
@@ -76,13 +71,12 @@ pub const History = struct {
                 const parent: ExtMove = parentnode.?.current_move;
                 if (!parent.move.is_empty() and parent.move.is_quiet()) {
                     self.continuation.update(depth, parent, current, quiets);
-                    // Should we update grandparent?
                 }
             }
         }
         else if (current.move.is_capture()) {
             // Capture history.
-            self.capture.update(depth, current, captures);
+            self.capture.update(depth, current);
         }
     }
 };
@@ -129,13 +123,16 @@ pub const CaptureHistory = struct {
     /// Capture move scores. Indexing: [piece][to-square][captured-piecetype]
     table: [12][64][6]SmallValue,
 
-    fn update(self: *CaptureHistory, depth: i32, ex: ExtMove, captures: []const ExtMove) void {
+    fn update(self: *CaptureHistory, depth: i32, ex: ExtMove) void {
         const bonus: SmallValue = get_bonus(depth, max_bonus);
 
         // Increase score for this move.
         const v: *SmallValue = self.get_score_ptr(ex);
         apply_bonus(v, bonus, max_bonus);
+    }
 
+    pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
+        const bonus: SmallValue = get_bonus(depth, max_bonus);
         // Decrease score of previous capture moves. These did not cause a beta cutoff.
         for (captures) |prev| {
             const p: *SmallValue = self.get_score_ptr(prev);
@@ -152,7 +149,7 @@ pub const CaptureHistory = struct {
     }
 };
 
-/// Heuristics for quiet continuation moves.
+/// Heuristics for quiet continuations.
 pub const ContinuationHistory = struct {
 
     const max_bonus: SmallValue = 1300;
@@ -181,6 +178,11 @@ pub const ContinuationHistory = struct {
 
     pub fn get_score(self: *const ContinuationHistory, parent: ExtMove, current: ExtMove) SmallValue {
         return self.table[parent.piece.u][parent.move.to.u][current.piece.u][current.move.to.u];
+    }
+
+    /// Returns a pointer to the "possible next moves" as stored in node.
+    pub fn get_node_entry_ptr(self: *const ContinuationHistory, ex: ExtMove) *[12][64]SmallValue {
+        return &self.table[ex.piece.u][ex.move.to.u];
     }
 
 };

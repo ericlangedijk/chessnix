@@ -249,9 +249,7 @@ pub const Square = packed union {
     }
 
     pub fn to_bitboard(self: Square) u64 {
-        // Shifting instead of lookup is a fraction faster.
         return @as(u64, 1) << self.u;
-        //return bitboards.square_bitboards[self.u];
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -794,7 +792,9 @@ pub const max_move_count: usize = 224;
 pub const max_search_depth: u8 = 128; // TODD: maybe 256 for egtb
 pub const max_threads: u16 = 32;
 
-// TODO: infinity, no_score, draw, win, mate_found, mate
+// A score which means "nothing" and should be treated as such or discarded during search.
+pub const no_score: Value = -32002;
+
 pub const infinity: Value = 32000;
 pub const mate: Value = 30000;
 pub const mate_threshold = mate - 256;
@@ -802,12 +802,21 @@ pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 pub const invalid_movescore: Value = std.math.minInt(Value);
 
-pub const value_pawn: Value = 98;
-pub const value_knight: Value = 299;
+// pub const value_pawn: Value = 98;
+// pub const value_knight: Value = 299;
+// pub const value_bishop: Value = 300;
+// pub const value_rook: Value = 533;
+// pub const value_queen: Value = 921;
+// pub const value_king: Value = 0;
+
+// Simple scores for SEE and move ordering.
+pub const value_pawn: Value = 100;
+pub const value_knight: Value = 300;
 pub const value_bishop: Value = 300;
-pub const value_rook: Value = 533;
-pub const value_queen: Value = 921;
+pub const value_rook: Value = 500;
+pub const value_queen: Value = 900;
 pub const value_king: Value = 0;
+
 
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,

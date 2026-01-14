@@ -1,3 +1,5 @@
+// zig fmt: off
+
 //! Time management for search.
 
 const std = @import("std");
@@ -33,6 +35,7 @@ pub const Termination = enum {
 };
 
 // go wtime 300000 btime 300000 winc 3000 binc 3000 movestogo 40
+// go wtime 30000 btime 30000 winc 10 binc 10 movestogo 200
 pub const TimeManager = struct {
     termination: Termination,
     timer: utils.Timer,
@@ -55,10 +58,15 @@ pub const TimeManager = struct {
     pub fn set(self: *TimeManager, go: *const uci.Go, us: Color) void {
         self.* = .empty;
         self.timer = .start();
-        //self.starttime = self.timer.read() / std.time.ns_per_ms;
 
         if (go.infinite) {
             self.termination = .infinite;
+            return;
+        }
+
+        if (go.movetime > 0) {
+            self.termination = .movetime;
+            self.max_movetime = go.movetime; // TODO: move overhead
             return;
         }
 
@@ -75,45 +83,46 @@ pub const TimeManager = struct {
             return;
         }
 
+        // From here we are in a tournament situation and need smart timing.
+        self.termination = .clock;
+
         const time: u64 = go.time[us.u];
         const inc: u64 = go.increment[us.u];
 
         const move_overhead: u64 = @min(25, time / 2);
 
-        if (go.movetime > 0) {
-            self.termination = .movetime;
-            self.max_movetime = time - move_overhead; // TODO: this can maybe underflow?
-            self.max_movetime = time - move_overhead;
-            return;
-        }
-
-        // From here we are in a tournament situation and need smart timing.
-        self.termination = .clock;
 
         const cyclic_timecontrol: bool = go.movestogo > 0;
-        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50;
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 100) else 50; // TODO: more stable.
 
-        const timeleft = @max(1, time + inc * (movestogo - 1) - move_overhead * (2 + movestogo));
+        var timeleft = @max(1, time + inc * (movestogo - 1)); // - move_overhead * (2 + movestogo));
+        const minus: u64 = move_overhead * (2 + movestogo);
+        if (minus < timeleft)
+             timeleft -= minus
+         else 
+             timeleft = 1;
+
+
 
         var optscale: f32 = 0;
-        const m: f32 = float(movestogo);
+        const mtg: f32 = float(movestogo);
         const t: f32 = float(time);
         const tl: f32 = float(timeleft);
         const mo: f32 = float(move_overhead);
 
         if (cyclic_timecontrol) {
-            optscale = @min(0.90 / m, 0.88 * t / tl);
-        }
-        else {
+            optscale = @min(0.90 / mtg, 0.88 * t / tl);
+        } else {
             optscale = @min(optscale_fixed, optscale_time_left * t / tl);
         }
 
-        const optime: f32 =  optscale * tl;
+        const optime: f32 = optscale * tl;
         self.opt_movetime_base = @intFromFloat(optime);
         self.opt_movetime = self.opt_movetime_base;
 
-        // Absolute limit for a move is 75% of the total time.
-        const maxtime: f32 = 0.75 * t - mo;
+        // TODO: stabilize?
+        const max_factor: f32 = 0.75;
+        const maxtime: f32 = max_factor * t - mo;
         self.max_movetime = @intFromFloat(maxtime);
     }
 
@@ -125,6 +134,9 @@ pub const TimeManager = struct {
         const eval_scaling_factor: f32 = eval_stability_scales[eval_stability];
         const base: f32 = @floatFromInt(self.opt_movetime_base);
         const opt: f32 = base * node_scaling_factor * best_move_scaling_factor * eval_scaling_factor;
+
+        //td->info.stoptimeOpt = std::min<uint64_t>(td->info.starttime + td->info.stoptimeBaseOpt * nodeScalingFactor * bestMoveScalingFactor * evalScalingFactor, td->info.stoptimeMax);
+
         self.opt_movetime = @intFromFloat(opt);
         self.opt_movetime = @min(self.max_movetime, self.opt_movetime);
     }
@@ -137,9 +149,6 @@ pub const TimeManager = struct {
         return self.timer.elapsed_ms() >= self.opt_movetime;
     }
 };
-
-/// The amount of time for gui-engine communication and the few milliseconds to start threads after the go command.
-//const move_overhead: u32 = 10;
 
 const node_tm_base: f32 = 1.53;
 const node_tm_multiplier: f32 = 1.74;
@@ -162,7 +171,3 @@ const eval_stability_scales: [5]f32 = .{
     0.92,
     0.87,
 };
-
-
-
-

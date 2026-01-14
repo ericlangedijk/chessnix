@@ -264,20 +264,19 @@ pub const Evaluator = struct {
                 score.inc(hcetables.isolated_pawn_penalty[file]);
             }
 
-            // Backward pawn. #testing 1.3
-            // if (pawns_on_adjacent_files != 0 and relative_rank < 7) {
-            //     const backward_mask: u64 = (bitboards.get_passed_pawn_mask(them, sq) | bitboards.rank_bitboards[sq.coord.rank]) & ~bitboards.file_bitboards[file] & our_pawns;
+            // Backward pawn. #testing
+            // if (pawns_on_adjacent_files != 0 and relative_rank > 0) {
+            //     const backward_mask: u64 = bitboards.get_backward_pawn_mask(us, sq) & our_pawns;
             //     if (backward_mask == 0) {
             //         const square_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
             //         const piece_in_front: Piece = pos.board[square_in_front.u];
             //         const covered: u64 = attacks.get_pawn_attacks(square_in_front, us);
-            //         if (piece_in_front.is_pawn_of_color(them) or covered & pos.pawns(them) != 0) {
+            //         if (piece_in_front.is_color(them) or covered & pos.pawns(them) != 0) {
             //             score.inc(hcetables.backward_pawn_penalty[relative_rank]);
             //             //io.debugprint("backward pawn on {t}\n", .{ sq.e });
             //         }
             //     }
             // }
-
         }
 
         // Pawn - king stuff.
@@ -641,9 +640,9 @@ pub const Evaluator = struct {
 
     /// TODO: make perfectly legal?
     fn legalize_moves(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
-        //_ = us;
+        _ = us;
         const from_bb: u64 = from.to_bitboard();
-        if (self.pos.our_pins(us) & from_bb == 0) {
+        if (self.pos.our_pins() & from_bb == 0) {
             return bb_moves;
         }
 

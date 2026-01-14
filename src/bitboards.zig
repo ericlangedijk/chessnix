@@ -37,9 +37,9 @@ pub const bb_file_h: u64 = 0x8080808080808080;
 
 pub const bb_full: u64 = 0xffffffffffffffff;
 pub const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
-pub const bb_border_inner = (bb_rank_2 | bb_rank_7 | bb_file_b | bb_file_g) & ~bb_border;
-pub const bb_center = bb_full & ~bb_border & ~bb_border_inner;
-pub const bb_mini_center = bb_e4 | bb_d4 | bb_e5 | bb_d5;
+//pub const bb_border_inner = (bb_rank_2 | bb_rank_7 | bb_file_b | bb_file_g) & ~bb_border;
+//pub const bb_center = bb_full & ~bb_border & ~bb_border_inner;
+//pub const bb_mini_center = bb_e4 | bb_d4 | bb_e5 | bb_d5;
 
 pub const bb_white_squares: u64 = 0b01010101_10101010_01010101_10101010_01010101_10101010_01010101_10101010;
 pub const bb_black_squares: u64 = ~bb_white_squares;
@@ -177,6 +177,8 @@ pub const passed_pawn_masks_white: [64]u64 = compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [64]u64 = compute_passed_pawn_masks_black();
 pub const adjacent_file_masks: [64]u64 = compute_adjacent_file_masks();
 pub const king_areas: [64]u64 = compute_king_areas();
+pub const backward_pawn_masks_white: [64]u64 = compute_backward_pawn_masks_white();
+pub const backward_pawn_masks_black: [64]u64 = compute_backward_pawn_masks_black();
 
 // TODO put the eval bitboard stuff here.
 
@@ -313,6 +315,42 @@ fn compute_adjacent_file_masks() [64]u64 {
     return afm;
 }
 
+fn compute_backward_pawn_masks_white()[64]u64 {
+    var bpm: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        if (sq.coord.rank >= 6 or sq.coord.rank == 0) {
+            continue;
+        }
+        var bb: u64 = passed_pawn_masks_black[sq.u] & ~file_bitboards[sq.coord.file];
+        if (sq.coord.file > 0) {
+            bb |= sq.sub(1).to_bitboard();
+        }
+        if (sq.coord.file < 7) {
+            bb |= sq.add(1).to_bitboard();
+        }
+        bpm[sq.u] = bb;
+    }
+    return bpm;
+}
+
+fn compute_backward_pawn_masks_black()[64]u64 {
+    var bpm: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        if (sq.coord.rank <= 1 or sq.coord.rank == 7) {
+            continue;
+        }
+        var bb: u64 = passed_pawn_masks_white[sq.u] & ~file_bitboards[sq.coord.file];
+        if (sq.coord.file > 0) {
+            bb |= sq.sub(1).to_bitboard();
+        }
+        if (sq.coord.file < 7) {
+            bb |= sq.add(1).to_bitboard();
+        }
+        bpm[sq.u] = bb;
+    }
+    return bpm;
+}
+
 /// Information about a pair of squares.
 /// * Mainly used for determining pinners and pinned pieces.
 pub const SquarePair = struct {
@@ -353,6 +391,13 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
     return switch (us.e) {
         .white => passed_pawn_masks_white[sq.u],
         .black => passed_pawn_masks_black[sq.u],
+    };
+}
+
+pub fn get_backward_pawn_mask(comptime us: Color, sq: Square) u64 {
+    return switch (us.e) {
+        .white => backward_pawn_masks_white[sq.u],
+        .black => backward_pawn_masks_black[sq.u],
     };
 }
 

@@ -6,7 +6,7 @@ A testversion named chessnix_bot can be played against on lichess.org.
 - chessnix is a windows 64 bits exe for modern computers.
 
 ### Version 1.3 Work In Progress...
-- Target 3200+ ELO. Working on time management, search, speed.
+- Target 3200+ ELO. Working on time management, search finetuning, speed, structure. Currently at ~3150 ELO.
 
 ### Version 1.2
 - Stronger: ~3015 ELO on CCRL.

@@ -234,6 +234,14 @@ const UCI = struct {
         return std.fmt.parseInt(u64, str.?, 10) catch Error.ParsingError;
     }
 
+    fn parse_32(str: ?[]const u8) Error!i32 {
+        if (str == null) {
+            return Error.ParsingError;
+        }
+        return std.fmt.parseInt(i32, str.?, 10) catch Error.ParsingError;
+    }
+
+
     // fn parse_32(str: ?[]const u8) ?u32 {
     //     if (str == null) return null;
     //     return std.fmt.parseInt(u32, str.?, 10) catch null;
@@ -283,6 +291,10 @@ const TTY = struct {
     }
 
     fn print_state() void {
+
+        // for (types.PieceType.all) |pt| {
+        //     funcs.print_bitboard(engine.pos.threats[pt.u]);
+        // }
 
         // io.print("evals: {}, evalhits: {}\n", .{ search.EVALS, search.EVAL_HITS });
 

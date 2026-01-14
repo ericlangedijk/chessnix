@@ -26,7 +26,7 @@ pub fn finalize() void {
 pub const BoundedArray = @import("utils.zig").BoundedArray;
 
 // Globals.
-pub const version = "1.2";
+pub const version = "1.3";
 
 // Crash guard logic.
 pub const is_debug: bool = builtin.mode == .Debug;
@@ -39,7 +39,7 @@ const Safety = enum {
 };
 
 const safety: Safety = switch (builtin.mode) {
-    .Debug => .paranoid, // Set to paranoid if needed during debug for insane bugs. Set to guarded for faster debugging.
+    .Debug => .guarded, // Set to paranoid if needed during debug for insane bugs. Set to guarded for faster debugging.
     .ReleaseSafe => .guarded, // Do not change: build mode decides safety.
     .ReleaseFast, .ReleaseSmall => .none, // Do not change.
 };
