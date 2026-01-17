@@ -7,6 +7,7 @@ A testversion named chessnix_bot can be played against on lichess.org.
 
 ### Version 1.3 Work In Progress...
 - Target 3200+ ELO. Working on time management, search finetuning, speed, structure. Currently at ~3150 ELO.
+- Working on another terrible bug: the correction history is completely wrong.
 
 ### Version 1.2
 - Stronger: ~3015 ELO on CCRL.
