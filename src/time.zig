@@ -34,8 +34,7 @@ pub const Termination = enum {
     clock,
 };
 
-// go wtime 300000 btime 300000 winc 3000 binc 3000 movestogo 40
-// go wtime 30000 btime 30000 winc 10 binc 10 movestogo 200
+// TODO: use endtime -> then we do not have to calculate elapsed_ms each time.
 pub const TimeManager = struct {
     termination: Termination,
     timer: utils.Timer,
@@ -88,21 +87,19 @@ pub const TimeManager = struct {
 
         const time: u64 = go.time[us.u];
         const inc: u64 = go.increment[us.u];
-
+        
+        const half_inc: u64 = inc / 2;
+        //const half_inc: u64 = (inc * 200) / 300;
         const move_overhead: u64 = @min(25, time / 2);
-
-
         const cyclic_timecontrol: bool = go.movestogo > 0;
-        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 100) else 50; // TODO: more stable.
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental
 
-        var timeleft = @max(1, time + inc * (movestogo - 1)); // - move_overhead * (2 + movestogo));
+        var timeleft = @max(1, time + half_inc * (movestogo - 1));
         const minus: u64 = move_overhead * (2 + movestogo);
         if (minus < timeleft)
-             timeleft -= minus
+            timeleft -= minus
          else 
-             timeleft = 1;
-
-
+            timeleft = 1; // TODO: debug this. This would be quite a panic
 
         var optscale: f32 = 0;
         const mtg: f32 = float(movestogo);
@@ -134,9 +131,6 @@ pub const TimeManager = struct {
         const eval_scaling_factor: f32 = eval_stability_scales[eval_stability];
         const base: f32 = @floatFromInt(self.opt_movetime_base);
         const opt: f32 = base * node_scaling_factor * best_move_scaling_factor * eval_scaling_factor;
-
-        //td->info.stoptimeOpt = std::min<uint64_t>(td->info.starttime + td->info.stoptimeBaseOpt * nodeScalingFactor * bestMoveScalingFactor * evalScalingFactor, td->info.stoptimeMax);
-
         self.opt_movetime = @intFromFloat(opt);
         self.opt_movetime = @min(self.max_movetime, self.opt_movetime);
     }

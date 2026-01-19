@@ -18,13 +18,7 @@ const Value = types.Value;
 const Move = types.Move;
 const ScorePair = types.ScorePair;
 
-/// Simple struct for calculating the 3 tt sizes.
-pub const TTSizes = struct {
-    /// Space in bytes for transposition table.
-    tt: usize,
-    /// Space in bytes for eval table.
-    eval: usize,
-};
+const no_score = types.no_score;
 
 /// Returns number of bytes. Minimum is 16 MB.
 pub fn compute_tt_size(megabytes: usize) usize {
@@ -67,11 +61,11 @@ pub const Entry = packed struct {
     depth: u8,
     /// The best move according to search.
     move: Move,
-    /// The evaluation according to search.
+    /// The evaluation according to search. no_score == null.
     score: SmallValue,
     /// Indicates wether this entry stored during principal variation search.
     was_pv: bool,
-    /// The raw static eval of the evaluation function. Never when in check.
+    /// The raw static eval of the evaluation function. Never when in check. no_score == null.
     raw_static_eval: SmallValue,
 
     pub const empty: Entry = .{
@@ -79,13 +73,13 @@ pub const Entry = packed struct {
         .key = 0,
         .depth = 0,
         .move = .empty,
-        .score = -types.infinity,
-        .raw_static_eval = -types.infinity,
+        .score = no_score,
+        .raw_static_eval = no_score,
         .was_pv = false
     };
 
     pub fn is_score_usable_for_depth(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
-        if (self.score == -types.infinity or self.depth < depth) {
+        if (self.score == no_score or self.depth < depth) {
             return false;
         }
         return switch (self.bound) {
@@ -97,7 +91,7 @@ pub const Entry = packed struct {
     }
 
     pub fn is_score_usable(self: *const Entry, alpha: Value, beta: Value) bool {
-        if (self.score == -types.infinity) {
+        if (self.score == no_score) {
             return false;
         }
         return switch (self.bound) {
@@ -109,7 +103,7 @@ pub const Entry = packed struct {
     }
 
     pub fn is_raw_static_eval_usable(self: *const Entry) bool {
-        return self.raw_static_eval != -types.infinity;
+        return self.raw_static_eval != no_score;
     }
 };
 
@@ -142,12 +136,16 @@ pub const TranspositionTable = struct {
         self.hash.clear();
     }
 
-    /// Store the search score. Does not overwrite the static_eval.
-    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool, raw_static_eval: ?Value) void {
+    pub fn store_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
+        self.store(.none, key, 0, 0, Move.empty, no_score, false, raw_static_eval);
+    }
+
+    /// Store the search score.
+    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool, raw_static_eval: Value) void {
         if (comptime lib.is_paranoid) {
             assert(depth >= 0 and depth <= 128);
             assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-            assert(raw_static_eval == null or (raw_static_eval.? < std.math.maxInt(i16) and raw_static_eval.? > std.math.minInt(i16)));
+            assert(raw_static_eval < std.math.maxInt(i16) and raw_static_eval > std.math.minInt(i16));
         }
 
         const bucket: *Bucket = self.hash.get(key);
@@ -171,7 +169,7 @@ pub const TranspositionTable = struct {
                 // Same depth: prefer replacing a non-exact bound
                 const v0_cost: u1 = if (bucket.e0.bound == .exact) 1 else 0;
                 const v1_cost: u1 = if (bucket.e1.bound == .exact) 1 else 0;
-                entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1;
+                entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1; // TODO: what about <= instead of <
                 // TODO: if this equal use age.
             }
         }
@@ -180,9 +178,9 @@ pub const TranspositionTable = struct {
         entry.key = key;
         entry.depth = @intCast(depth);
         entry.move = move;
-        entry.score = @intCast(get_adjusted_score_for_tt_store(score, ply));
+        entry.score = if (score != no_score) @intCast(get_adjusted_score_for_tt_store(score, ply)) else no_score;
         entry.was_pv = pv;
-        entry.raw_static_eval = if (raw_static_eval != null) @intCast(raw_static_eval.?) else -types.infinity;
+        entry.raw_static_eval = @intCast(raw_static_eval);
     }
 
     pub fn probe(self: *TranspositionTable, key: u64) ?*const Entry {
@@ -196,6 +194,24 @@ pub const TranspositionTable = struct {
         return null;
     }
 };
+
+// pub const PawnEntry = struct {
+//     key: u64,
+//     passed_pawns: [2]u64,
+//     score: [2]SmallValue,
+
+//     const empty: PawnEntry = .{
+//         .key = 0,
+//         .passed_pawns = .{ 0, 0 },
+//         .doubled_pawns = .{ 0, 0 },
+//         .score = .{ no_score, no_score },
+//     };
+// };
+
+// /// A fixed size pawn evaluation cache.
+// pub const PawnCache = struct {
+//     hash: HashTable(PawnEntry),
+// };
 
 /// Simple internal generic hash.
 fn HashTable(Element: type) type {

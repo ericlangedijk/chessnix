@@ -1,6 +1,6 @@
 // zig fmt: off
 
-//! Basic types and consts.
+//! Basic types and consts, used almost everywhere.
 
 const std = @import("std");
 const bitboards = @import("bitboards.zig");
@@ -11,14 +11,6 @@ const lib = @import("lib.zig");
 const assert = std.debug.assert;
 const wtf = lib.wtf();
 const io = lib.io;
-
-// Much used, we shorten.
-// pub const P = PieceType.PAWN;
-// pub const N = PieceType.KNIGHT;
-// pub const B = PieceType.BISHOP;
-// pub const R = PieceType.ROOK;
-// pub const Q = PieceType.QUEEN;
-// pub const K = PieceType.KING;
 
 /// Used for evaluation and hashtables and scorepair.
 pub const SmallValue = i16;
@@ -793,7 +785,7 @@ pub const max_search_depth: u8 = 128; // TODD: maybe 256 for egtb
 pub const max_threads: u16 = 32;
 
 // A score which means "nothing" and should be treated as such or discarded during search.
-pub const no_score: Value = -32002;
+pub const no_score: Value = 32002;
 
 pub const infinity: Value = 32000;
 pub const mate: Value = 30000;
@@ -802,13 +794,6 @@ pub const stalemate: Value = 0;
 pub const draw: Value = 0;
 pub const invalid_movescore: Value = std.math.minInt(Value);
 
-// pub const value_pawn: Value = 98;
-// pub const value_knight: Value = 299;
-// pub const value_bishop: Value = 300;
-// pub const value_rook: Value = 533;
-// pub const value_queen: Value = 921;
-// pub const value_king: Value = 0;
-
 // Simple scores for SEE and move ordering.
 pub const value_pawn: Value = 100;
 pub const value_knight: Value = 300;
@@ -816,7 +801,6 @@ pub const value_bishop: Value = 300;
 pub const value_rook: Value = 500;
 pub const value_queen: Value = 900;
 pub const value_king: Value = 0;
-
 
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,

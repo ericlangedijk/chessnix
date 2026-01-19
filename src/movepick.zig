@@ -42,13 +42,11 @@ pub const Stage = enum {
     score_noisy,
     /// Stage 4: extract the noisy moves.
     noisy,
-    /// Stage 5: extract killer.
-    killer,
-    /// Stage 7: score the quiet moves.
+    /// Stage 5: score the quiet moves.
     score_quiet,
-    /// Stage 8: Extract the quiet moves.
+    /// Stage 6: Extract the quiet moves.
     quiet,
-    /// Stage 9: Extract the bad noisy moves.
+    /// Stage 7: Extract the bad noisy moves.
     bad_noisy,
 };
 
@@ -60,18 +58,14 @@ const ListMode = enum {
 };
 
 const Scores = struct {
-    const tt           : Value = 8_000_000;
-    const killer      : Value = 7_000_000;
-    //const killer2      : Value = 6_000_000;
+    const tt           : Value = 8_000_000; // TODO: remove
     const promotion    : Value = 4_000_000;
     const capture      : Value = 2_000_000;
     const bad_capture  : Value = -2_000_000;
 };
 
-/// There is no staged move generation (which is much slower).
-/// Instead we put the moves in the correct list.
+/// There is no staged move generation (which is much slower). Instead we put the moves in the correct list.
 /// Bad noisy moves are added during the scoring of noisy moves. Extracting uses some tricky scheme.
-/// There is no need to validate tt-move and killers: they pass by during move generation.
 pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
     return struct {
@@ -84,7 +78,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         node: *const Node,
         input_tt_move: Move,
         tt_move: ?ExtMove,
-        killer_move: ?ExtMove,
         move_count: u8,
         move_idx: u8,
         noisies: ExtMoveList(80),
@@ -99,7 +92,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 .node = node,
                 .input_tt_move = tt_move,
                 .tt_move = null,
-                .killer_move = null,
                 .move_count = 0,
                 .move_idx = 0,
                 .noisies = .init(),
@@ -135,15 +127,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         self.move_idx += 1;
                         return ex;
                     }
-                    self.stage = .killer;
-                    continue :sw .killer;
-                },
-                .killer => {
                     self.stage = .score_quiet;
-                    if (self.killer_move != null) {
-                        self.set_single_move_details(&self.killer_move.?);
-                        return self.killer_move.?;
-                    }
                     continue :sw .score_quiet;
                 },
                 .score_quiet => {
@@ -188,11 +172,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 self.tt_move.?.is_tt_move = true;
                 self.tt_move.?.score = Scores.tt; // not strictly needed
             }
-            else if (move == self.node.killer) {
-                self.killer_move = .init(move);
-                self.killer_move.?.is_killer = true;
-                self.killer_move.?.score = Scores.killer; // not strictly needed
-            }
             else if (move.is_noisy()) {
                 self.noisies.add(.init(move));
             }
@@ -226,7 +205,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        /// Only used for tt_move and killers.
+        /// Only used for tt_move.
         fn set_single_move_details(self: *Self, ex: *ExtMove) void {
             ex.piece = self.pos.board[ex.move.from.u];
             switch (ex.move.flags) {
@@ -251,7 +230,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        /// Besides scoring the move some details are set.
+        /// Besides scoring the move set the details.
         fn score_list_move(self: *Self, ex: *ExtMove, comptime listmode: ListMode) void {
 
             // Some paranoid checks.
@@ -272,6 +251,17 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.captured = pos.board[ex.move.to.u];
 
+                        // version 1
+                        // const see = hce.see_score(pos, ex.move);
+                        // ex.is_bad_capture = see < 0;
+                        // if (ex.is_bad_capture) {
+                        //     ex.score = Scores.bad_capture + see;
+                        // }
+                        // else {
+                        //     ex.score = Scores.capture + see;
+                        // }
+
+                        // version 2
                         ex.is_bad_capture = !hce.see(pos, ex.move, 0);
                         if (ex.is_bad_capture) {
                             ex.score = Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value();
@@ -279,6 +269,15 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         else {
                             ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value();
                         }
+
+                        // // version 2
+                        // ex.is_bad_capture = !hce.see(pos, ex.move, 0);
+                        // if (ex.is_bad_capture) {
+                        //     ex.score = Scores.bad_capture + ex.captured.value() * 10 - ex.piece.value();
+                        // }
+                        // else {
+                        //     ex.score = Scores.capture + ex.captured.value() * 10 - ex.piece.value();
+                        // }
 
                         ex.score += hist.capture.get_score(ex.*);
 
@@ -290,6 +289,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.ep => {
                         ex.captured = comptime Piece.create(PieceType.PAWN, them);
                         ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value();
+                        //ex.score = Scores.capture + ex.captured.value() * 10 - ex.piece.value(); // version 3
                         ex.score += hist.capture.get_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
@@ -310,6 +310,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                             .bishop, .rook => ex.score = Scores.promotion,
                             else => unreachable,
                         }
+                        ex.score += 10;
                     },
                     else => {
                         unreachable;
@@ -321,52 +322,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 switch (ex.move.flags) {
                     Move.silent, Move.double_push, Move.castle_short, Move.castle_long => {
                         ex.score = hist.quiet.get_score(ex.*);
-
-                        const parentnode: ?*const Node = if (pos.ply >= 1) &self.searcher.nodes[pos.ply - 1] else null;
-                        if (parentnode) |parent| {
-                            if (!parent.current_move.move.is_empty() and parent.current_move.move.is_quiet()) {
-                                ex.score += hist.continuation.get_score(parent.current_move, ex.*);
-                                // Include the grandparent in the score.
-                                const grandparentnode: ?*const Node = if (pos.ply >= 2) &self.searcher.nodes[pos.ply - 2] else null;
-                                if (grandparentnode) |grandparent| {
-                                    if (!grandparent.current_move.move.is_empty() and grandparent.current_move.move.is_quiet()) {
-                                        ex.score += hist.continuation.get_score(grandparent.current_move, parent.current_move);
-                                    }
-                                }
-                            }
-                        }
-
-                        // #discarded for now -> worse results.
-                        // if (!ex.move.is_castle()) {
-                        //     const bb_from: u64 = ex.move.from.to_bitboard();
-                        //     const bb_to: u64 = ex.move.to.to_bitboard();
-
-                        //     const pawn_threats: u64 = pos.threats[PieceType.PAWN.u];
-                        //     const minor_threats: u64 = pawn_threats | pos.threats[PieceType.KNIGHT.u] | pos.threats[PieceType.BISHOP.u];
-                        //     const rook_threats: u64 = minor_threats | pos.threats[PieceType.ROOK.u];
-
-                        //     switch (ex.piece.piecetype().e) {
-                        //         .pawn => {
-                        //             // do nothing
-                        //         },
-                        //         .knight, .bishop => {
-                        //             if (pawn_threats & bb_from != 0) ex.score += 7728;
-                        //             if (pawn_threats & bb_to != 0) ex.score -= 8293;
-                        //         },
-                        //         .rook => {
-                        //             if (minor_threats & bb_from != 0) ex.score += 12809;
-                        //             if (minor_threats & bb_to != 0) ex.score -= 13027;
-                        //         },
-                        //         .queen => {
-                        //             if (rook_threats & bb_from != 0) ex.score += 20004;
-                        //             if (rook_threats & bb_to != 0) ex.score -= 18629;
-                        //         },
-                        //         .king => {
-                        //             // do nothing
-                        //         },
-                        //     }
-                        // }
-
+                        ex.score += hist.continuation.get_score(ex.*, self.node.ply, &self.searcher.nodes);
                     },
                     else => {
                         unreachable;

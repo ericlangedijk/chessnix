@@ -9,6 +9,15 @@ A testversion named chessnix_bot can be played against on lichess.org.
 - Target 3200+ ELO. Working on time management, search finetuning, speed, structure. Currently at ~3150 ELO.
 - Working on another terrible bug: the correction history is completely wrong.
 
+- Added: Store raw static evaluation in transposition table.
+- Removed: killer move heuristic.
+- Removed: Updating pins of both sides. I am not going to code a perfect SEE.
+- Changed: Lots of tweaks in the search algorithm.
+- Changed: History structure and calculations.
+- Changed: Moved 'ply' from position to search.
+- Changed: Included a slight score correction during search using rule50.
+- Bug solved: Corrected 'id name' uci output.
+
 ### Version 1.2
 - Stronger: ~3015 ELO on CCRL.
 - Added: Chess960 support.

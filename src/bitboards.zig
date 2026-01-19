@@ -37,18 +37,12 @@ pub const bb_file_h: u64 = 0x8080808080808080;
 
 pub const bb_full: u64 = 0xffffffffffffffff;
 pub const bb_border = bb_rank_1 | bb_rank_8 | bb_file_a | bb_file_h;
-//pub const bb_border_inner = (bb_rank_2 | bb_rank_7 | bb_file_b | bb_file_g) & ~bb_border;
-//pub const bb_center = bb_full & ~bb_border & ~bb_border_inner;
-//pub const bb_mini_center = bb_e4 | bb_d4 | bb_e5 | bb_d5;
-
 pub const bb_white_squares: u64 = 0b01010101_10101010_01010101_10101010_01010101_10101010_01010101_10101010;
 pub const bb_black_squares: u64 = ~bb_white_squares;
-
 pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
 pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
 pub const bb_queenside: u64 = bb_file_a | bb_file_b | bb_file_d | bb_file_d;
 pub const bb_kingside: u64 = bb_file_e | bb_file_f | bb_file_g | bb_file_h;
-
 pub const bb_colored_squares: [2]u64 = .{ bb_white_squares, bb_black_squares };
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
@@ -274,7 +268,6 @@ fn compute_ep_masks() [64]u64 {
     return ep;
 }
 
-/// TODO: remove?
 fn compute_king_areas() [64]u64 {
     @setEvalBranchQuota(8000);
     var ka: [64]u64 = @splat(0);
@@ -289,19 +282,6 @@ fn compute_king_areas() [64]u64 {
         if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
         if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
     }
-
-    // TODO: maybe this is too much. probably can be deleted.
-    //for (Square.all) |sq| {
-        //ka[a]
-        // if (sq.coord.rank == 0) ka[sq.u] |= ka[sq.add(8).u];
-        // if (sq.coord.rank == 7) ka[sq.u] |= ka[sq.sub(8).u];
-        // if (sq.coord.file == 0) ka[sq.u] |= ka[sq.add(1).u];
-        // if (sq.coord.file == 7) ka[sq.u] |= ka[sq.sub(1).u];
-        // if (sq.e == Square.A1.e) ka[sq.u] |= Square.C3.to_bitboard();
-        // if (sq.e == Square.A8.e) ka[sq.u] |= Square.C6.to_bitboard();
-        // if (sq.e == Square.H1.e) ka[sq.u] |= Square.F3.to_bitboard();
-        // if (sq.e == Square.H8.e) ka[sq.u] |= Square.F6.to_bitboard();
-    //}
     return ka;
 }
 
@@ -381,12 +361,6 @@ pub fn get_squarepair(from: Square, to: Square) *const SquarePair
     return &pairs[idx];
 }
 
-// pub fn in_between_bitboard(from: Square, to: Square) u64
-// {
-//     const idx: usize = from.idx() * 64 + to.idx();
-//     return pairs[idx].in_between_bitboard;
-// }
-
 pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
     return switch (us.e) {
         .white => passed_pawn_masks_white[sq.u],
@@ -399,79 +373,4 @@ pub fn get_backward_pawn_mask(comptime us: Color, sq: Square) u64 {
         .white => backward_pawn_masks_white[sq.u],
         .black => backward_pawn_masks_black[sq.u],
     };
-}
-
-////////////////////////////////////////////////////////////////
-// EXPERIMENTAL
-////////////////////////////////////////////////////////////////
-pub const BitBoardRanks = packed struct(u64) {
-    a: u8,
-    b: u8,
-    c: u8,
-    d: u8,
-    e: u8,
-    f: u8,
-    g: u8,
-    h: u8,
-};
-
-pub const BitBoardSquares = packed struct (u64) {
-    a1: u1,  b1: u1,  c1: u1,  d1: u1,  e1: u1,  f1: u1,  g1: u1,  h1: u1,
-    a2: u1,  b2: u1,  c2: u1,  d2: u1,  e2: u1,  f2: u1,  g2: u1,  h2: u1,
-    a3: u1,  b3: u1,  c3: u1,  d3: u1,  e3: u1,  f3: u1,  g3: u1,  h3: u1,
-    a4: u1,  b4: u1,  c4: u1,  d4: u1,  e4: u1,  f4: u1,  g4: u1,  h4: u1,
-    a5: u1,  b5: u1,  c5: u1,  d5: u1,  e5: u1,  f5: u1,  g5: u1,  h5: u1,
-    a6: u1,  b6: u1,  c6: u1,  d6: u1,  e6: u1,  f6: u1,  g6: u1,  h6: u1,
-    a7: u1,  b7: u1,  c7: u1,  d7: u1,  e7: u1,  f7: u1,  g7: u1,  h7: u1,
-    a8: u1,  b8: u1,  c8: u1,  d8: u1,  e8: u1,  f8: u1,  g8: u1,  h8: u1,
-};
-
-pub const BitBoardBools = packed struct (u64) {
-    a1: bool,  b1: bool,  c1: bool,  d1: bool,  e1: bool,  f1: bool,  g1: bool,  h1: bool,
-    a2: bool,  b2: bool,  c2: bool,  d2: bool,  e2: bool,  f2: bool,  g2: bool,  h2: bool,
-    a3: bool,  b3: bool,  c3: bool,  d3: bool,  e3: bool,  f3: bool,  g3: bool,  h3: bool,
-    a4: bool,  b4: bool,  c4: bool,  d4: bool,  e4: bool,  f4: bool,  g4: bool,  h4: bool,
-    a5: bool,  b5: bool,  c5: bool,  d5: bool,  e5: bool,  f5: bool,  g5: bool,  h5: bool,
-    a6: bool,  b6: bool,  c6: bool,  d6: bool,  e6: bool,  f6: bool,  g6: bool,  h6: bool,
-    a7: bool,  b7: bool,  c7: bool,  d7: bool,  e7: bool,  f7: bool,  g7: bool,  h7: bool,
-    a8: bool,  b8: bool,  c8: bool,  d8: bool,  e8: bool,  f8: bool,  g8: bool,  h8: bool,
-};
-
-pub const BitBoard = packed union {
-    u: u64,
-    bools: BitBoardBools,
-    squares: BitBoardSquares,
-    ranks: BitBoardRanks,
-
-    pub const zero: BitBoard = .{ .u = 0 };
-
-    pub fn set(u: u64) BitBoard {
-        return .{ .u = u };
-    }
-
-    pub fn and_(self: BitBoard, other: BitBoard) BitBoard {
-        return .set(self.u & other.u);
-    }
-
-    pub fn or_(self: BitBoard, other: BitBoard) BitBoard {
-        return .set(self.u | other.u);
-    }
-
-    pub fn pop(self: *BitBoard) ?Square {
-        if (self.u == 0) return null;
-        const lsb: u6 = @intCast(@ctz(self.u));
-        self.u &= (self.u - 1);
-        return .{ .u = lsb };
-    }
-
-    pub fn pop_unsafe(self: *BitBoard) Square {
-        const lsb: u6 = @intCast(@ctz(self.u));
-        self.u &= (self.u - 1);
-        return .{ .u = lsb };
-    }
-
-};
-
-pub fn bitboard(u: u64) BitBoard {
-    return .{ .u = u };
 }

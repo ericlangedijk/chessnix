@@ -85,11 +85,9 @@ pub const Position = struct {
     phase: u8,
     /// Side to move.
     stm: Color,
-    /// Depth during search. TODO: delete and keep track in search
-    ply: u16,
-    /// Used for repetition detection.  TODO: delete and keep track in search
+    /// Used for repetition detection.
     ply_from_root: u16,
-    /// The 'real' game ply as given by the fen string.
+    /// The 'real' game ply. Initialized from fen string.
     game_ply: u16,
     /// State indicating we did a nullmove.
     nullmove_state: bool,
@@ -101,7 +99,7 @@ pub const Position = struct {
     castling_rights: u4,
     /// The position hashkey.
     key: u64,
-    /// The hashkey of pawns. Used for correction history.
+    /// The hashkey of all pawns. Used for correction history.
     pawnkey: u64,
     /// Key for each side for non pawns. Used for correction history.
     nonpawnkeys: [2]u64,
@@ -113,9 +111,7 @@ pub const Position = struct {
     pins_diagonal: u64,
     /// Bitboard with the orthogonal pin rays (excluding the king, including the attacker).
     pins_orthogonal: u64,
-    // Bitboards with covered squares by them (not the stm). Used for move ordering. #discarded for now
-    // threats: [6]u64,
-    /// Indicates chess 960.
+    /// Indicates chess 960. Also suitable for chess 324.
     is_960: bool,
 
     fn init_empty() Position {
@@ -127,7 +123,6 @@ pub const Position = struct {
             .bitboard_all = 0,
             .phase = 0,
             .stm = Color.WHITE,
-            .ply = 0,
             .ply_from_root = 0,
             .game_ply = 0,
             .nullmove_state = false,
@@ -141,7 +136,6 @@ pub const Position = struct {
             .checkmask = 0,
             .pins_diagonal = 0,
             .pins_orthogonal = 0,
-            //.threats = @splat(0),
             .is_960 = false,
         };
     }
@@ -163,7 +157,7 @@ pub const Position = struct {
             .bitboard_all = b.bb_rank_1 | b.bb_rank_2 | b.bb_rank_7 | b.bb_rank_8,
             .phase = types.max_phase,
             .stm = Color.WHITE,
-            .ply = 0,
+            //.ply = 0,
             .ply_from_root = 0,
             .game_ply = 0,
             .nullmove_state = false,
@@ -235,7 +229,7 @@ pub const Position = struct {
                             else => {
                                 const pc: Piece = try Piece.from_char(c);
                                 const sq: Square = Square.from_rank_file(rank, file);
-                                self.add_fen_piece(pc, sq);
+                                self.add_piece_ex(pc, sq);
                                 file +|= 1;
                             },
                         }
@@ -691,7 +685,7 @@ pub const Position = struct {
     }
 
     /// Update board, bitboards, values and keys.
-    fn add_fen_piece(self: *Position, pc: Piece, sq: Square) void {
+    pub fn add_piece_ex(self: *Position, pc: Piece, sq: Square) void {
         switch (pc.color().e) {
             .white => self.add_piece(Color.WHITE, pc, sq),
             .black => self.add_piece(Color.BLACK, pc, sq),
@@ -776,7 +770,7 @@ pub const Position = struct {
 
         // Update some stuff.
         self.stm = them;
-        self.ply += 1;
+        //self.ply += 1;
         self.ply_from_root += 1;
         self.game_ply += 1;
         self.nullmove_state = false;
@@ -990,7 +984,7 @@ pub const Position = struct {
         // Clear ep. Note that the ep zobrist for square a1 is 0 so this xor is safe.
         self.key ^= zobrist.btm() ^ zobrist.enpassant(self.ep_square);
         self.stm = them;
-        self.ply += 1;
+        //self.ply += 1;
         self.ply_from_root += 1;
         self.game_ply += 1;
         self.ep_square = Square.zero;
@@ -1077,7 +1071,7 @@ pub const Position = struct {
         }
     }
 
-    fn lazy_update_state(self: *Position) void {
+    pub fn lazy_update_state(self: *Position) void {
         switch (self.stm.e) {
             .white => self.update_state(Color.WHITE),
             .black => self.update_state(Color.BLACK),
@@ -1168,14 +1162,14 @@ pub const Position = struct {
         return path & self.all() == 0;
     }
 
-    pub fn lazy_generate_all_moves(self: *const Position, noalias storage: anytype) void {
+    pub fn lazy_generate_all_moves(self: *const Position, storage: anytype) void {
         switch (self.stm.e) {
             .white => self.generate_all_moves(Color.WHITE, storage),
             .black => self.generate_all_moves(Color.BLACK, storage),
         }
     }
 
-    pub fn lazy_generate_quiescence_moves(self: *const Position, noalias storage: anytype) void {
+    pub fn lazy_generate_quiescence_moves(self: *const Position, storage: anytype) void {
         switch (self.stm.e) {
             .white => self.generate_quiescence_moves(Color.WHITE, storage),
             .black => self.generate_quiescence_moves(Color.BLACK, storage),
@@ -1183,7 +1177,7 @@ pub const Position = struct {
     }
 
     // Generate all legal moves.
-    pub fn generate_all_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void {
+    pub fn generate_all_moves(self: *const Position, comptime us: Color, storage: anytype) void {
         const color_flag: u4 = comptime if (us.e == Color.BLACK.e) gf_black else 0;
         const check: bool = self.checkers != 0;
         const pins: bool = self.our_pins() != 0;
@@ -1202,7 +1196,7 @@ pub const Position = struct {
     /// Generate quiescence moves.
     /// - When not in check: Generate captures and queen promotions.
     /// - When in check: generate all legal moves and queen promotions.
-    pub fn generate_quiescence_moves(self: *const Position, comptime us: Color, noalias storage: anytype) void {
+    pub fn generate_quiescence_moves(self: *const Position, comptime us: Color, storage: anytype) void {
         const color_flag: u4 = comptime if (us.e == Color.BLACK.e) gf_black else 0;
         const check: bool = self.checkers != 0;
         const pins: bool = self.our_pins() != 0;
@@ -1220,7 +1214,7 @@ pub const Position = struct {
     }
 
     /// See `MoveStorage` for the interface of `storage`: required are the functions `reset()` and `store()`.
-    fn gen(self: *const Position, comptime flags: u4, noalias storage: anytype) void {
+    fn gen(self: *const Position, comptime flags: u4, storage: anytype) void {
 
         // Comptimes
         const us: Color = comptime Color.from_bool(flags & gf_black != 0);
@@ -1438,7 +1432,7 @@ pub const Position = struct {
         }
     }
 
-    fn store_many(self: *const Position, from: Square, bb_to: u64, noalias storage: anytype) ?void {
+    fn store_many(self: *const Position, from: Square, bb_to: u64, storage: anytype) ?void {
         var bb: u64 = bb_to;
         while (bitloop(&bb)) |to| {
             const flag: u4 = if (self.board[to.u].e == .no_piece) Move.silent else Move.capture;
@@ -1446,11 +1440,11 @@ pub const Position = struct {
         }
     }
 
-    fn store(from: Square, to: Square, flags: u4, noalias storage: anytype) ?void {
+    fn store(from: Square, to: Square, flags: u4, storage: anytype) ?void {
         return storage.store(Move.create(from, to, flags));
     }
 
-    fn store_promotions(comptime do_all: bool, from: Square, to: Square, comptime is_capture: bool, noalias storage: anytype) ?void {
+    fn store_promotions(comptime do_all: bool, from: Square, to: Square, comptime is_capture: bool, storage: anytype) ?void {
         const flags: u4 = if (is_capture) 0b1000 else 0b000;
         storage.store(Move.create(from, to, flags | Move.queen_promotion)) orelse return null;
         if (do_all) {
@@ -1500,6 +1494,8 @@ pub const Position = struct {
         if (popcnt(self.all() > 32)) {
             return false;
         }
+
+        // TODO: do we have to check kings next to eachother?
 
         const wk: u8 = popcnt(self.kings(Color.WHITE));
         const bk: u8 = popcnt(self.kings(Color.BLACK));
@@ -1684,7 +1680,7 @@ pub const Position = struct {
         io.print_buffered("fen: {f}\n", .{ self });
         io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1] });
         io.print_buffered("rule50: {}\n", .{ self.rule50 });
-        io.print_buffered("ply: {}\n", .{ self.ply });
+        //io.print_buffered("ply: {}\n", .{ self.ply });
         io.print_buffered("phase: {}\n", .{ self.phase });
         io.print_buffered("checkers: ", .{});
         if (self.checkers != 0) {
@@ -1711,7 +1707,7 @@ pub const Position = struct {
             std.meta.eql(self.bitboards_by_color, other.bitboards_by_color) and
             self.bitboard_all == other.bitboard_all and
             self.phase == other.phase and
-            self.ply == other.ply and
+            //self.ply == other.ply and
             self.ply_from_root == other.ply_from_root and
             self.game_ply == other.game_ply and
             self.nullmove_state == other.nullmove_state and

@@ -4,13 +4,6 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const uci = @import("uci.zig");
 
-const builtin = @import("builtin");
-const types = @import("types.zig");
-const funcs = @import("funcs.zig");
-const position = @import("position.zig");
-const hce = @import("hce.zig");
-const bitboards = @import("bitboards.zig");
-
 pub fn main() !void
 {
     @setFloatMode(.optimized);
@@ -19,17 +12,43 @@ pub fn main() !void
 
     // Debug tests.
     if (comptime lib.is_debug) {
-        try @import("tests.zig").run_silent_debugmode_tests();
+        //try @import("tests.zig").run_silent_debugmode_tests();
     }
 
-    //try @import("tests/enginetests.zig").lichess_puzzles();
+    // try @import("tests/enginetests.zig").lichess_puzzles();
 
-    // for (types.Square.all) |sq| {
-    //     std.debug.print("{t}\n", .{ sq.e});
-    //     funcs.print_bitboard(bitboards.backward_pawn_masks_black[sq.u]);
+    // const h = @import("history.zig");
+    // const calc = h.corr_calc;
+
+    // const depth: i32 = 1;
+    // var e: i16 = 0;
+    
+    // const err: i32 = 20;
+
+    // const b: i32 = std.math.clamp(@divTrunc(err * depth, 8), -16384, 16384);   
+    // const bonus: i16 = @intCast(b);
+
+    // calc.apply_bonus(&e, bonus);
+
+    // //const ediv = bonus += 66 * cv / 512;
+
+    // std.debug.print("++ d {} b {} e {} ediv {}\n", .{ depth, bonus, e, @divTrunc(e, 8) });
+
+    // var e: i16 = 0;
+    // for (1..32) |d| {
+    //     const depth: i32 = @intCast(d);
+    //     const bonus = calc.get_bonus(depth);
+    //     calc.apply_bonus(&e, bonus);
+    //     std.debug.print("++ d {} b {} e {}\n", .{ d, bonus, e });
     // }
 
-    
+    // for (1..32) |d| {
+    //     const depth: i32 = @intCast(d);
+    //     const bonus = calc.get_bonus(depth);
+    //     calc.apply_bonus(&e, -bonus);
+    //     std.debug.print("-- d {} b {} e {}\n", .{ d, bonus, e });
+    // }
+
     uci.run();
 }
 

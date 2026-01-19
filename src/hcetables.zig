@@ -48,7 +48,7 @@ pub const isolated_pawn_penalty: [8]ScorePair = .{
     pair(-8, 12), pair(-1, -12), pair(-11, -4), pair(-7, -13), pair(-11, -15), pair(-4, -6), pair(1, -12), pair(-7, 8),
 };
 
-/// By [rank]. EXPERIMENTAL
+/// By [rank]. #experimental not used
 pub const backward_pawn_penalty: [8]ScorePair = .{
     pair(0, 0), pair(-1, -12), pair(-11, -15), pair(-1, -5), pair(-1, -5), pair(0, 0), pair(0, 0), pair(0, 0)
 };
@@ -198,7 +198,7 @@ pub const threatened_by_rook_penalty: [6][2]ScorePair = .{
 pub const pawn_push_threat_table: [13]ScorePair = .{
     pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // w_pawn...w_king
     pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // b_pawn...b_king
-    pair(0, 0), // no_piece TODO: remove. we should never access this.
+    pair(0, 0),
 };
 
 /// By [piecetype]

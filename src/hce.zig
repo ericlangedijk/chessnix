@@ -124,16 +124,6 @@ pub const Evaluator = struct {
     }
 
     pub fn evaluate(self: *Self, pos: *const Position) Value {
-        const has_pawns: bool = pos.all_pawns() != 0;
-        const score: Value = switch(has_pawns) {
-            false => self.internal_evaluate(pos, false),
-            true  => self.internal_evaluate(pos, true),
-        };
-        return score;
-    }
-
-    /// Here and there the comptime has_pawns is there to boost a little speed.
-    fn internal_evaluate(self: *Self, pos: *const Position, comptime has_pawns: bool) Value {
 
         // Init pos reference.
         self.pos = pos;
@@ -144,18 +134,13 @@ pub const Evaluator = struct {
         self.king_areas[0] = king_areas_white[self.king_squares[0].u];
         self.king_areas[1] = king_areas_black[self.king_squares[1].u];
 
-        self.pawn_storm_areas[0] = if (!has_pawns) 0 else king_pawnstorm_areas_white[self.king_squares[0].u];
-        self.pawn_storm_areas[1] = if (!has_pawns) 0 else king_pawnstorm_areas_black[self.king_squares[1].u];
+        self.pawn_storm_areas[0] = king_pawnstorm_areas_white[self.king_squares[0].u];
+        self.pawn_storm_areas[1] = king_pawnstorm_areas_black[self.king_squares[1].u];
 
-        if (!has_pawns) {
-            self.pawn_attacks = .{ 0, 0 };
-        }
-        else {
-            self.pawn_attacks = .{
-                funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northwest) | funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northeast),
-                funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northwest) | funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northeast),
-            };
-        }
+        self.pawn_attacks = .{
+            funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northwest) | funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northeast),
+            funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northwest) | funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northeast),
+        };
 
         self.mobility_areas = .{
             ~(pos.by_color(Color.WHITE) | self.pawn_attacks[Color.BLACK.u]),
@@ -171,10 +156,8 @@ pub const Evaluator = struct {
         // Evaluate.
         var score: ScorePair = .empty;
 
-        if (has_pawns) {
-            score.inc(self.eval_pawns(Color.WHITE));
-            score.dec(self.eval_pawns(Color.BLACK));
-        }
+        score.inc(self.eval_pawns(Color.WHITE));
+        score.dec(self.eval_pawns(Color.BLACK));
 
         score.inc(self.eval_knights(Color.WHITE));
         score.dec(self.eval_knights(Color.BLACK));
@@ -188,11 +171,11 @@ pub const Evaluator = struct {
         score.inc(self.eval_queens(Color.WHITE));
         score.dec(self.eval_queens(Color.BLACK));
 
-        score.inc(self.eval_king(has_pawns, Color.WHITE));
-        score.dec(self.eval_king(has_pawns, Color.BLACK));
+        score.inc(self.eval_king(Color.WHITE));
+        score.dec(self.eval_king(Color.BLACK));
 
-        score.inc(self.eval_threats(has_pawns, Color.WHITE));
-        score.dec(self.eval_threats(has_pawns, Color.BLACK));
+        score.inc(self.eval_threats(Color.WHITE));
+        score.dec(self.eval_threats(Color.BLACK));
 
         if (self.pos.stm.e == .black) {
             score.mg = -score.mg;
@@ -469,7 +452,7 @@ pub const Evaluator = struct {
         return score;
     }
 
-    fn eval_king(self: *Self, comptime has_pawns: bool, comptime us: Color) ScorePair {
+    fn eval_king(self: *Self, comptime us: Color) ScorePair {
         var score: ScorePair = .empty;
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
@@ -482,18 +465,16 @@ pub const Evaluator = struct {
         const relative_sq: Square = our_king_sq.relative(us);
         score.inc(hcetables.piece_square_table[PieceType.KING.u][relative_sq.u]);
 
-        if (has_pawns) {
-            // Pawn protection
-            var pawn_protectors: u64 = our_pawns & self.king_areas[us.u];
-            while (bitloop(&pawn_protectors)) |sq| {
-                score.inc(get_pawn_protection_scorepair(us, our_king_sq, sq));
-            }
+        // Pawn protection
+        var pawn_protectors: u64 = our_pawns & self.king_areas[us.u];
+        while (bitloop(&pawn_protectors)) |sq| {
+            score.inc(get_pawn_protection_scorepair(us, our_king_sq, sq));
+        }
 
-            // Pawn storm to enemy king.
-            var storming_pawns: u64 = our_pawns & self.pawn_storm_areas[them.u];
-            while (bitloop(&storming_pawns)) |sq| {
-                score.inc(get_pawn_storm_scorepair(us, their_king_sq, sq));
-            }
+        // Pawn storm to enemy king.
+        var storming_pawns: u64 = our_pawns & self.pawn_storm_areas[them.u];
+        while (bitloop(&storming_pawns)) |sq| {
+            score.inc(get_pawn_storm_scorepair(us, their_king_sq, sq));
         }
 
         // Open files to our king.
@@ -501,7 +482,6 @@ pub const Evaluator = struct {
         if (our_pawns_on_file == 0) {
             const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[our_king_sq.coord.file];
             const half_open: u1 = if (their_pawns_on_file != 0) 1 else 0;
-            // assert(half_open == @intFromBool(their_pawns_on_file != 0));
             score.inc(hcetables.king_on_file_penalty[half_open][our_king_sq.coord.file]);
         }
 
@@ -511,7 +491,7 @@ pub const Evaluator = struct {
         return score;
     }
 
-    fn eval_threats(self: *Self, comptime has_pawns: bool, comptime us: Color) ScorePair {
+    fn eval_threats(self: *Self, comptime us: Color) ScorePair {
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
         const our_pieces: u64 = pos.by_color(us);
@@ -521,13 +501,11 @@ pub const Evaluator = struct {
         var bb: u64 = undefined;
 
         // Their pawn threats.
-        if (has_pawns) {
-            bb = self.pawn_attacks[them.u] & our_pieces;
-            while (bitloop(&bb)) |sq| {
-                const threatened_piece = pos.board[sq.u].piecetype();
-                const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
-                score.inc(hcetables.threatened_by_pawn_penalty[threatened_piece.u][is_defended]);
-            }
+        bb = self.pawn_attacks[them.u] & our_pieces;
+        while (bitloop(&bb)) |sq| {
+            const threatened_piece = pos.board[sq.u].piecetype();
+            const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
+            score.inc(hcetables.threatened_by_pawn_penalty[threatened_piece.u][is_defended]);
         }
 
         // Their knight threats.
@@ -557,18 +535,15 @@ pub const Evaluator = struct {
 
         // Pawn push threats.
         // Get the squares defended by the enemy, excluding squares that are defended by our pawns and not attacked by their pawns
-        if (has_pawns) {
-            const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
-            const enemy_protected_squares: u64 = self.pawn_attacks[them.u] | (their_piece_attacks & ~self.pawn_attacks[us.u]);
-            const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~enemy_protected_squares;
-            // Which enemy piece would be attacked if we push our pawn.
-            var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
-            while (bitloop(&pawn_push_threats)) |sq| {
-                //const sq: Square = pop(&pawn_push_threats);
-                if (comptime lib.is_paranoid) assert(!pos.board[sq.u].is_empty() and pos.board[sq.u].color().e == them.e);
-                const threatened: Piece = pos.board[sq.u];
-                score.inc(hcetables.pawn_push_threat_table[threatened.u]);
-            }
+        const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
+        const enemy_protected_squares: u64 = self.pawn_attacks[them.u] | (their_piece_attacks & ~self.pawn_attacks[us.u]);
+        const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~enemy_protected_squares;
+        // Which enemy piece would be attacked if we push our pawn.
+        var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
+        while (bitloop(&pawn_push_threats)) |sq| {
+            if (comptime lib.is_paranoid) assert(!pos.board[sq.u].is_empty() and pos.board[sq.u].color().e == them.e);
+            const threatened: Piece = pos.board[sq.u];
+            score.inc(hcetables.pawn_push_threat_table[threatened.u]);
         }
 
         // Get the squares that our pieces can reach to place the enemy king in check
@@ -577,14 +552,15 @@ pub const Evaluator = struct {
         const their_king_sq: Square = self.king_squares[them.u];
         const rook_checks: u64 = attacks.get_rook_attacks(their_king_sq, occupied);
         const bishop_checks: u64 = attacks.get_bishop_attacks(their_king_sq, occupied);
-        const safe: u64 = ~(self.pawn_attacks[them.u] | self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | attacks.get_king_attacks(their_king_sq)); // TODO: use their_piece_attacks.
+        // TODO: use their_piece_attacks? TODO: bug check.
+        const safe: u64 = ~(self.pawn_attacks[them.u] | self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | attacks.get_king_attacks(their_king_sq)); 
 
         const safe_knight_checks: u64 = not_us & safe & self.knight_attacks[us.u] & attacks.get_knight_attacks(their_king_sq);
         const safe_bishop_checks: u64 = not_us & safe & self.bishop_attacks[us.u] & bishop_checks;
         const safe_rook_checks: u64 = not_us & safe & self.rook_attacks[us.u] & rook_checks;
         const safe_queen_checks: u64 = not_us & safe & self.queen_attacks[us.u] & (rook_checks | bishop_checks);
 
-        // NOTE: First there was a bug, not filtering on our occupied squares. That is why I changed the safe checks table slightly.
+        // NOTE: First there was a bug, not filtering on our occupied squares. That is why I changed the safe_check_bonus table slightly.
         score.inc(hcetables.safe_check_bonus[PieceType.KNIGHT.u].mul(popcnt(safe_knight_checks)));
         score.inc(hcetables.safe_check_bonus[PieceType.BISHOP.u].mul(popcnt(safe_bishop_checks)));
         score.inc(hcetables.safe_check_bonus[PieceType.ROOK.u].mul(popcnt(safe_rook_checks)));
@@ -660,20 +636,6 @@ pub const Evaluator = struct {
         const eg: Value = score.eg;
         return @divTrunc(mg * phase + eg * (max - phase), max);
     }
-
-    fn trace(sp: ScorePair, us: Color, sq: ?Square, comptime msg: []const u8, args: anytype) void {
-        lib.not_in_release();
-
-        if (sq) |q| {
-            io.debugprint("{t} {t} mg {d:>4} eg {d:>4} ", .{ us.e, q.e, sp.mg, sp.eg });
-        }
-        else {
-            io.debugprint("{t}    mg {d:>4} eg {d:>4} ", .{ us.e, sp.mg, sp.eg });
-        }
-
-        io.debugprint(msg, args);
-        io.debugprint("\n", .{});
-    }
 };
 
 
@@ -685,7 +647,7 @@ pub fn interpolate_score(phase: u8, score: ScorePair) Value {
     return @divTrunc(mg * ph + eg * (max - ph), max);
 }
 
-/// Static exchange evaluation. Get score of capture fest on square.
+/// Static exchange evaluation. Get score of capture fest on square. Not used in search.
 pub fn see_score(pos: *const Position, m: Move) Value {
 
     if (m.is_ep() or m.is_castle()) {
@@ -887,96 +849,6 @@ pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
     }
     return pos.stm.u == winner.u;
 }
-
-/// WORK IN PROGRESS.
-pub fn see_perfect(pos: *const Position, m: Move, threshold: Value) bool {
-    if (m.is_castle() or m.is_ep()) {
-        return true;
-    }
-
-    const from: Square = m.from;
-    const to: Square = m.to;
-
-    // Set the score to captured piece minus how much we are allowed to lose.
-    var score: Value = pos.board[to.u].value() - threshold;
-
-    if (score < 0) {
-        io.debugprint("early exit false\n", .{});
-        return false;
-    }
-
-    score = pos.board[from.u].value() - score;
-
-    // Equal or winning.
-    if (score <= 0) {
-        io.debugprint("early exit true\n", .{});
-        return true;
-    }
-
-    const queens_bishops = pos.all_queens_bishops();
-    const queens_rooks = pos.all_queens_rooks();
-
-    // Execute the move on a bitboard.
-    var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
-
-    // Get the initial attacks from both sides to the to-square.
-    var us: Color = pos.stm;
-    var winner: Color = pos.stm;
-    var all_attacks: u64 = pos.get_combined_attacks_to_for_occupation(occupied, to);
-    var all_pinned_pieces: u64 = (pos.our_pins(us) & pos.by_color(us)) | (pos.our_pins(us.opp()) & pos.by_color(us.opp()));
-
-    attackloop: while (true) {
-        us = us.opp();
-        all_attacks &= occupied;
-
-        // Get our attackers.
-        const our_attackers: u64 = all_attacks & pos.by_color(us);
-
-        // No attackers left.
-        if (our_attackers == 0) {
-            break :attackloop;
-        }
-        winner = winner.opp();
-
-        // Get the least valuable next piece.
-        const piecetype: PieceType = find_next: inline for (PieceType.all) |pt| {
-            if (our_attackers & pos.by_type(pt) != 0) {
-                break :find_next pt;
-            }
-            if (pt.e == .king) {
-                unreachable;
-            }
-        };
-
-        io.debugprint("next piece {t}\n", .{ piecetype.e });
-
-        // TODO: if king??? maybe set king-value very high?
-
-        score = -score + 1 + piecetype.value();
-
-        // Quit if the exchange is lost or equal
-        if (score <= 0) {
-            break :attackloop;
-        }
-
-        // Remove used attacker.
-        const sq: Square = funcs.first_square(our_attackers & pos.by_type(piecetype));
-        const sq_bb = sq.to_bitboard();
-        occupied ^= sq_bb;
-        all_pinned_pieces &= ~sq_bb;
-
-        if (piecetype.e == .pawn or piecetype.e == .bishop or piecetype.e == .queen) {
-            all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-        }
-        if (piecetype.e == .rook or piecetype.e == .queen) {
-            all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-        }
-        //if (piecetype == .king)
-    }
-
-    return pos.stm.u == winner.u;
-}
-
 
 /// Check if the pawn square is inside the 3x4 king area.
 fn validate_king_pawn_protection_area(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) void {

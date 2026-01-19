@@ -39,7 +39,7 @@ const Safety = enum {
 };
 
 const safety: Safety = switch (builtin.mode) {
-    .Debug => .guarded, // Set to paranoid if needed during debug for insane bugs. Set to guarded for faster debugging.
+    .Debug => .paranoid, // Set to paranoid if needed during debug for insane bugs. Set to guarded for faster debugging.
     .ReleaseSafe => .guarded, // Do not change: build mode decides safety.
     .ReleaseFast, .ReleaseSmall => .none, // Do not change.
 };
@@ -87,7 +87,8 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
-        stdin = std.fs.File.stdin().reader(&in_buffer);
+        // stdin = std.fs.File.stdin().reader(&in_buffer);
+        stdin = std.fs.File.stdin().readerStreaming(&in_buffer); // NOTE: this seems to be safer
         stdout = std.fs.File.stdout().writer(&out_buffer);
         return .{
             .in = &stdin.interface,
