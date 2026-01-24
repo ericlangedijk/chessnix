@@ -253,13 +253,14 @@ pub const Square = packed union {
     }
 
     /// Returns the square when `us` is white otherwise the vertically mirrored square.
-    pub fn relative(self: Square, comptime us: Color) Square {
+    pub fn relative(self: Square, us: Color) Square {
         return if (us.e == .white) self else .{ .u = self.u ^ 56 };
     }
 
-    pub fn relative_dyn(self: Square, us: Color) Square {
-        return if (us.e == .white) self else .{ .u = self.u ^ 56 };
-    }
+    // // TODO: remove
+    // pub fn relative_dyn(self: Square, us: Color) Square {
+    //     return if (us.e == .white) self else .{ .u = self.u ^ 56 };
+    // }
 
     pub fn flipped(self: Square) Square {
         return .{ .u = self.u ^ 56 };
@@ -387,6 +388,10 @@ pub const PieceType = packed union {
         return piece_values[self.u];
     }
 
+    // pub fn phased_value(self: PieceType, phase: u8) Value {
+    //     return phased_piece_values[phase][self.u];
+    // }
+
     pub fn to_char(self: PieceType) u8 {
         return switch(self.e) {
             .pawn => 0,
@@ -446,11 +451,6 @@ pub const Piece = packed union {
 
     pub fn create(pt: PieceType, side: Color) Piece {
         return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
-    }
-
-    /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
-    pub fn value(self: Piece) Value {
-        return piece_values[self.u];
     }
 
     pub fn from_usize(u: usize) Piece {
@@ -533,6 +533,15 @@ pub const Piece = packed union {
         return if (us.e == .white) self.e == .w_rook else self.e == .b_rook;
     }
 
+    /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
+    pub fn value(self: Piece) Value {
+        return piece_values[self.u];
+    }
+
+    // pub fn phased_value(self: Piece, phase: u8) Value {
+    //     return phased_piece_values[phase][self.u];
+    // }
+
     pub fn to_print_char(self: Piece) u8 {
         var ch: u8 = switch(self.piecetype().e) {
             .pawn => 'P',
@@ -610,17 +619,15 @@ pub const Move = packed struct(u16) {
         return self == empty; //.bitcast() == 0;
     }
 
-    // pub fn is_null_move(self: Move) bool {
-    //     return self.bitcast() == 0xffff;
-    // }
-
     pub fn is_capture(self: Move) bool {
         //return self.flags & 0b1000 != 0;
         return self.flags & capture != 0;
     }
 
     pub fn is_quiet(self: Move) bool {
-        //return self.flags & 0b1100 == 0; // no capture, no promotion.
+        if (comptime lib.is_paranoid) {
+            assert(!self.is_empty());
+        }
         return self.flags & noisy_mask == 0;
     }
 
@@ -631,10 +638,6 @@ pub const Move = packed struct(u16) {
     pub fn is_promotion(self: Move) bool {
         return self.flags & 0b0100 != 0;
     }
-
-    // pub fn is_promotion_capture(self: Move) bool {
-    //     return self.flags & 0b1100 != 0;
-    // }
 
     pub fn is_ep(self: Move) bool {
         return self.flags == ep;
@@ -811,7 +814,40 @@ const piece_values: [13]Value = .{
 pub const max_phase: u8 = 24;
 
 /// Game phase table. Indexing by [piece]
-pub const phase_table: [12]u8 = .{
+pub const phase_table: [13]u8 = .{
     0, 1, 1, 2, 4, 0,
     0, 1, 1, 2, 4, 0,
+    0
 };
+
+// #experimenting...
+// const phased_piece_scorepairs: [13]ScorePair = .{
+//     pair(100, 188), pair(300, 320), pair(300, 322), pair(500, 697), pair(900, 1112), pair(0, 0),
+//     pair(100, 188), pair(300, 320), pair(300, 322), pair(500, 697), pair(900, 1112), pair(0, 0),
+//     pair(0, 0),
+// };
+
+// pub const phased_piece_values: [25][13]Value = compute_phased_piece_values();
+
+// fn compute_phased_piece_values() [25][13]Value {
+//     var table: [25][13]Value = @splat(@splat(0));
+//     for (0..24 + 1) |ph| {
+//         for (PieceType.all) |pt| {
+//             const phase: u8 = @intCast(ph);
+//             const px: u8 = pt.u;
+//             table[phase][px] = sliding_score(phase, phased_piece_scorepairs[px]);
+//             table[phase][px + 6] = table[phase][px];
+//         }
+//     }
+//     return table;
+// }
+
+// fn sliding_score(ph: u8, score: ScorePair) Value {
+//     const max: u8 = comptime max_phase;
+//     const phase: u8 = @min(max, ph);
+//     const mg: Value = score.mg;
+//     const eg: Value = score.eg;
+//     return @divTrunc(mg * phase + eg * (max - phase), max);
+// }
+
+

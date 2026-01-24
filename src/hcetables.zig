@@ -30,7 +30,8 @@ pub const pawn_phalanx_bonus: [8]ScorePair = .{
 
 /// By [rank].
 pub const passed_pawn_bonus: [8]ScorePair = .{
-    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
+    //pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
+    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 78), pair(0, 0), // #testing pawn on 7th (i got a crazy result on it, but maybe it was a lucky strike)
 };
 
 /// By [rank].
@@ -48,10 +49,13 @@ pub const isolated_pawn_penalty: [8]ScorePair = .{
     pair(-8, 12), pair(-1, -12), pair(-11, -4), pair(-7, -13), pair(-11, -15), pair(-4, -6), pair(1, -12), pair(-7, 8),
 };
 
-/// By [rank]. #experimental not used
-pub const backward_pawn_penalty: [8]ScorePair = .{
-    pair(0, 0), pair(-1, -12), pair(-11, -15), pair(-1, -5), pair(-1, -5), pair(0, 0), pair(0, 0), pair(0, 0)
+/// By [more, less, equal] #testing
+pub const space: [3]ScorePair = .{
+    pair(1, 15), pair(-1, -15), pair(0, 0),
 };
+
+//pub const more_space: ScorePair = pair(1, 15);
+pub const less_space: ScorePair = pair(-1, -15);
 
 pub const king_cannot_reach_passed_pawn_bonus = pair(-344, 199);
 

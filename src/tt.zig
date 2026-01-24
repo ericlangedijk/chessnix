@@ -136,11 +136,12 @@ pub const TranspositionTable = struct {
         self.hash.clear();
     }
 
+    /// Only store the raw static eval.
     pub fn store_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
         self.store(.none, key, 0, 0, Move.empty, no_score, false, raw_static_eval);
     }
 
-    /// Store the search score.
+    /// Store the search score and the raw static eval, if any.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool, raw_static_eval: Value) void {
         if (comptime lib.is_paranoid) {
             assert(depth >= 0 and depth <= 128);
@@ -169,8 +170,7 @@ pub const TranspositionTable = struct {
                 // Same depth: prefer replacing a non-exact bound
                 const v0_cost: u1 = if (bucket.e0.bound == .exact) 1 else 0;
                 const v1_cost: u1 = if (bucket.e1.bound == .exact) 1 else 0;
-                entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1; // TODO: what about <= instead of <
-                // TODO: if this equal use age.
+                entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1;
             }
         }
 
@@ -195,25 +195,8 @@ pub const TranspositionTable = struct {
     }
 };
 
-// pub const PawnEntry = struct {
-//     key: u64,
-//     passed_pawns: [2]u64,
-//     score: [2]SmallValue,
-
-//     const empty: PawnEntry = .{
-//         .key = 0,
-//         .passed_pawns = .{ 0, 0 },
-//         .doubled_pawns = .{ 0, 0 },
-//         .score = .{ no_score, no_score },
-//     };
-// };
-
-// /// A fixed size pawn evaluation cache.
-// pub const PawnCache = struct {
-//     hash: HashTable(PawnEntry),
-// };
-
-/// Simple internal generic hash.
+/// Simple internal generic hash, with % indexing.
+/// Although we only have 1 type of hashtable (the TranspositionTable), this thing is still hanging around here from earlier days.
 fn HashTable(Element: type) type {
     return struct {
         const Self = @This();

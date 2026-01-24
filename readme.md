@@ -6,16 +6,22 @@ A testversion named chessnix_bot can be played against on lichess.org.
 - chessnix is a windows 64 bits exe for modern computers.
 
 ### Version 1.3 Work In Progress...
-- Target 3200+ ELO. Working on time management, search finetuning, speed, structure. Currently at ~3150 ELO.
-- Working on another terrible bug: the correction history is completely wrong.
+- Target 3200+ ELO. Working on time management, search finetuning, speed, structure. Currently at ~3175 ELO.
+- Tweaking, optimizing, bug hunting...
 
+- Added: History pruning, history reduction.
 - Added: Store raw static evaluation in transposition table.
-- Removed: killer move heuristic.
-- Removed: Updating pins of both sides. I am not going to code a perfect SEE.
-- Changed: Lots of tweaks in the search algorithm.
-- Changed: History structure and calculations.
+- Added: Slight capture history bonus in quiescence search.
+- Removed: Correction history. It was flawed. Working on it...
+- Removed: Killer move heuristic.
+- Removed: Maintaining pins of both sides. I will not code a 'perfect' SEE in the near future.
+- Removed: Unused see_score function.
+- Changed: Lots of tweaks in the search algorithm (history pruning + reduction, different LMR table).
+- Changed: History structure and calculations, especially continuation history.
 - Changed: Moved 'ply' from position to search.
 - Changed: Included a slight score correction during search using rule50.
+- Changed: Boost and punish captures slightly in quiescence search.
+- Bug solved: Node clearing (before enter search and on making nullmoves).
 - Bug solved: Corrected 'id name' uci output.
 
 ### Version 1.2

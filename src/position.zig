@@ -157,7 +157,6 @@ pub const Position = struct {
             .bitboard_all = b.bb_rank_1 | b.bb_rank_2 | b.bb_rank_7 | b.bb_rank_8,
             .phase = types.max_phase,
             .stm = Color.WHITE,
-            //.ply = 0,
             .ply_from_root = 0,
             .game_ply = 0,
             .nullmove_state = false,
@@ -355,7 +354,7 @@ pub const Position = struct {
     }
 
     /// Parses a uci-move.
-    /// - Used after a uci "position" command. 
+    /// - Used after a uci "position" command.
     /// - During a game the time needed for this is not included in the movetime. Timeing only is active after the "go" command.
     pub fn parse_move(self: *const Position, str: []const u8) types.ParsingError!Move {
         if (str.len < 4 or str.len > 5) {
@@ -770,7 +769,6 @@ pub const Position = struct {
 
         // Update some stuff.
         self.stm = them;
-        //self.ply += 1;
         self.ply_from_root += 1;
         self.game_ply += 1;
         self.nullmove_state = false;
@@ -984,7 +982,6 @@ pub const Position = struct {
         // Clear ep. Note that the ep zobrist for square a1 is 0 so this xor is safe.
         self.key ^= zobrist.btm() ^ zobrist.enpassant(self.ep_square);
         self.stm = them;
-        //self.ply += 1;
         self.ply_from_root += 1;
         self.game_ply += 1;
         self.ep_square = Square.zero;
@@ -1033,7 +1030,7 @@ pub const Position = struct {
         // // Threats by them.
         // self.threats = @splat(0);
         // self.threats[PieceType.PAWN.u] = funcs.pawns_shift(self.pawns(them), them, .northwest) | funcs.pawns_shift(self.pawns(them), them, .northwest);
-        
+
         // var bb: u64 = self.knights(them);
         // while (bitloop(&bb))|sq| {
         //     self.threats[PieceType.KNIGHT.u] |= attacks.get_knight_attacks(sq);
@@ -1680,7 +1677,6 @@ pub const Position = struct {
         io.print_buffered("fen: {f}\n", .{ self });
         io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1] });
         io.print_buffered("rule50: {}\n", .{ self.rule50 });
-        //io.print_buffered("ply: {}\n", .{ self.ply });
         io.print_buffered("phase: {}\n", .{ self.phase });
         io.print_buffered("checkers: ", .{});
         if (self.checkers != 0) {
@@ -1707,7 +1703,6 @@ pub const Position = struct {
             std.meta.eql(self.bitboards_by_color, other.bitboards_by_color) and
             self.bitboard_all == other.bitboard_all and
             self.phase == other.phase and
-            //self.ply == other.ply and
             self.ply_from_root == other.ply_from_root and
             self.game_ply == other.game_ply and
             self.nullmove_state == other.nullmove_state and

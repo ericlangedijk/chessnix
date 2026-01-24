@@ -32,7 +32,7 @@ pub fn run_silent_debugmode_tests() !void {
     const perfts_960: usize = try run_perfts_960(3);
     const flips: usize = 0; // try test_flip();
     const evals: usize = 0; // try test_eval();
-    const evals_file: usize = 0;//try test_eval_file();
+    const evals_file: usize = try test_eval_file();
 
     const time = timer.read();
     lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, evals = {}, evals_file {}, (time {D})\n", .{ perfts, perfts_960, flips, evals, evals_file, time });

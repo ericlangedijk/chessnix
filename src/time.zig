@@ -87,18 +87,22 @@ pub const TimeManager = struct {
 
         const time: u64 = go.time[us.u];
         const inc: u64 = go.increment[us.u];
-        
+
         const half_inc: u64 = inc / 2;
-        //const half_inc: u64 = (inc * 200) / 300;
+        // If we have a move increment, don't add everything to the time. Keep reserve.
+        // TODO: we still have to figure out something for very small increment or time for the whole game.
+        //const half_inc: u64 = (inc * 200) / 300; // #testing
+
         const move_overhead: u64 = @min(25, time / 2);
         const cyclic_timecontrol: bool = go.movestogo > 0;
-        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental
+        //const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental (original()
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 40) else 40; // still #experimental
 
         var timeleft = @max(1, time + half_inc * (movestogo - 1));
         const minus: u64 = move_overhead * (2 + movestogo);
         if (minus < timeleft)
             timeleft -= minus
-         else 
+         else
             timeleft = 1; // TODO: debug this. This would be quite a panic
 
         var optscale: f32 = 0;
