@@ -68,20 +68,31 @@ pub const History = struct {
 
     /// Increase the score of the node's move. If the node move is quiet, punish the quiets.
     pub fn record_beta_cutoff(self: *History, depth: i32, ply: u16, ex: ExtMove, nodes: []const Node, bad_quiets: []const ExtMove) void {
+        if (lib.bughunt) {
+            self.continuation.verify_node(&nodes[ply]);
+        }
+
         if (ex.is_quiet) {
             self.quiet.update(depth, ex, bad_quiets);
-            self.continuation.update(depth, ex, ply, nodes, bad_quiets);
+            ContinuationHistory.update(depth, ex, ply, nodes, bad_quiets);
         }
         else if (ex.is_capture) {
             self.capture.update(depth, ex);
         }
     }
 
+    /// Returns the history score of a quiet move. Used for move ordering and pruning decisions.
     pub fn get_quiet_score(self: *const History, ex: ExtMove, ply: u16, nodes: []const Node) Value {
-        var v: Value = 0;
-        v += self.quiet.get_score(ex);
-        v += self.continuation.get_score(ex, ply, nodes);
+        var v: Value = self.quiet.get_score(ex);
+        if (ply >= 1) v += ContinuationHistory.get_single_score(&nodes[ply - 1], ex);
+        if (ply >= 2) v += ContinuationHistory.get_single_score(&nodes[ply - 2], ex);
+        if (ply >= 4) v += ContinuationHistory.get_single_score(&nodes[ply - 4], ex);
         return v;
+    }
+
+    /// Returns the history score of a capture move. Used for move ordering and pruning decisions.
+    pub fn get_capture_score(self: *const History, ex: ExtMove) Value {
+        return self.capture.get_score(ex);
     }
 };
 
@@ -109,8 +120,7 @@ pub const QuietHistory = struct {
         return &self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
 
-    /// TODO: make i32.
-    pub fn get_score(self: *const QuietHistory, ex: ExtMove) SmallValue {
+    fn get_score(self: *const QuietHistory, ex: ExtMove) Value {
         return self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
 };
@@ -142,20 +152,22 @@ pub const CaptureHistory = struct {
         return &self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 
-    pub fn get_score(self: *const CaptureHistory, ex: ExtMove) SmallValue {
+    fn get_score(self: *const CaptureHistory, ex: ExtMove) SmallValue {
         return self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 };
 
 /// Heuristics for quiet continuations.
 pub const ContinuationHistory = struct {
-    const depths_delta: [4]u16 = .{ 1, 2, 4, 6 };
-    // const depths_delta: [3]u16 = .{ 1, 2, 4 };
 
-    // Move pair scores. Indexing: [prevpiece][to-square][piece][to-square]
+    /// The previous plies of which we update the score.
+    const depths_delta: [3]u16 = .{ 1, 2, 4 };
+
+    /// Move pair scores. Indexing: [prevpiece][to-square][piece][to-square]
     table: [12][64][12][64]SmallValue,
 
-    pub fn update(self: *ContinuationHistory, depth: i32, ex: ExtMove, ply: u16, nodes: []const Node, bad_quiets: []const ExtMove) void {
+    /// The node's continuation_entry is used, so we do not need Self.
+    pub fn update(depth: i32, ex: ExtMove, ply: u16, nodes: []const Node, bad_quiets: []const ExtMove) void {
         if (ply == 0) {
             return;
         }
@@ -165,7 +177,7 @@ pub const ContinuationHistory = struct {
         // Increase score for this move.
         inline for (depths_delta) |d| {
             if (ply >= d) {
-                self.update_single_score(ex, ply - d, nodes, bonus);
+                update_single_score(&nodes[ply - d], ex, bonus);
             }
         }
 
@@ -173,52 +185,45 @@ pub const ContinuationHistory = struct {
         for (bad_quiets) |bad| {
             inline for (depths_delta) |d| {
                 if (ply >= d) {
-                    self.update_single_score(bad, ply - d, nodes, -bonus);
+                    update_single_score(&nodes[ply - d], bad, -bonus);
                 }
             }
         }
     }
 
-    pub fn get_score(self: *const ContinuationHistory, ex: ExtMove, ply: u16, nodes: []const Node) Value {
-        return if (ply >= 1) self.get_single_score(ex, ply - 1, nodes) else 0;
+    /// The node's continuation_entry is used, so we do not need Self.
+    fn update_single_score(node: *const Node, ex: ExtMove, bonus: SmallValue) void {
+        if (node.continuation_entry) |entry| {
+            const v: *SmallValue = &entry[ex.piece.u][ex.move.to.u];
+            hist_calc.apply_bonus(v, bonus);
+        }
     }
 
+    /// The node's continuation_entry is used, so we do not need Self.
+    fn get_single_score(node: *const Node, ex: ExtMove) Value {
+        if (node.continuation_entry) |entry| {
+            return entry[ex.piece.u][ex.move.to.u];
+        }
+        return 0;
+    }
+
+    /// Chess programming is crazy. In the node we store a pointer to an entry in the table.
     pub fn get_node_entry(self: *ContinuationHistory, ex: ExtMove) *[12][64]SmallValue {
         return &self.table[ex.piece.u][ex.move.to.u];
     }
 
-    fn update_single_score(self: *ContinuationHistory, ex: ExtMove, ply: u16, nodes: []const Node, bonus: SmallValue) void {
-
-        _ = self;
-        const node: *const Node = &nodes[ply];
-
-        if (node.continuation_entry) |e| {
-            const v: *SmallValue = &e[ex.piece.u][ex.move.to.u];
-            hist_calc.apply_bonus(v, bonus);
+    /// bughunt function.
+    fn verify_node(self: *const ContinuationHistory, node: *const Node) void {
+        lib.not_in_release();
+        if (node.current_move.move.is_empty()) {
+            lib.verify(node.continuation_entry == null, "continuation history verify_node() error. currentmove is empty but continuation_entry is not null", .{});
         }
-
-        // const node: *const Node = &nodes[ply];
-        // if (node.current_move.move.is_empty()) {
-        //     return;
-        // }
-        // const v: *SmallValue = &self.table[node.current_move.piece.u][node.current_move.move.to.u][ex.piece.u][ex.move.to.u];
-        // hist_calc.apply_bonus(v, bonus);
-    }
-
-    fn get_single_score(self: *const ContinuationHistory, ex: ExtMove, ply: u16, nodes: []const Node) Value {
-
-        _ = self;
-        const node: *const Node = &nodes[ply];
-        if (node.continuation_entry) |e| {
-            return e[ex.piece.u][ex.move.to.u];
+        if (!node.current_move.move.is_empty()) {
+            lib.verify(node.continuation_entry != null, "continuation history verify_node() error. currentmove is not empty but continuation_entry is null", .{});
         }
-        return 0;
-
-        // const prev: *const Node = &nodes[ply];
-        // if (prev.current_move.move.is_empty()) {
-        //     return 0;
-        // }
-        // return self.table[prev.current_move.piece.u][prev.current_move.move.to.u][ex.piece.u][ex.move.to.u];
+        if (node.continuation_entry == null) {
+            return;
+        }
+        lib.verify(node.continuation_entry == &self.table[node.current_move.piece.u][node.current_move.move.to.u], "continuation history verify_node() error. continuation_entry address mismatch", .{});
     }
-
 };

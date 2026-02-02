@@ -6,13 +6,12 @@ A testversion named chessnix_bot can be played against on lichess.org.
 - chessnix is a windows 64 bits exe for modern computers.
 
 ### Version 1.3 Work In Progress...
-- Target 3200+ ELO. Working on time management, search finetuning, speed, structure. Currently at ~3175 ELO.
-- Tweaking, optimizing, bug hunting...
-
+- Target 3200+ ELO. Experimenting, tweaking, optimizing, bug hunting. Currently at ~3175 ELO.
+- Experimental: Phased SEE + slight bias + randomness in quiet move ordering for shallow depths.
 - Added: History pruning, history reduction.
 - Added: Store raw static evaluation in transposition table.
 - Added: Slight capture history bonus in quiescence search.
-- Removed: Correction history. It was flawed. Working on it...
+- Removed: Correction history. It will be back later.
 - Removed: Killer move heuristic.
 - Removed: Maintaining pins of both sides. I will not code a 'perfect' SEE in the near future.
 - Removed: Unused see_score function.
@@ -20,7 +19,9 @@ A testversion named chessnix_bot can be played against on lichess.org.
 - Changed: History structure and calculations, especially continuation history.
 - Changed: Moved 'ply' from position to search.
 - Changed: Included a slight score correction during search using rule50.
-- Changed: Boost and punish captures slightly in quiescence search.
+- Changed: No storing in transposition table when rule50 >= 60.
+- Changed: Reward and punish captures slightly in quiescence search.
+- Bug solved: Terrible LMR table accessing out of bounds value resulting in god knows what.
 - Bug solved: Node clearing (before enter search and on making nullmoves).
 - Bug solved: Corrected 'id name' uci output.
 

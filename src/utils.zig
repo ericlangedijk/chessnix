@@ -134,6 +134,16 @@ pub const TextFileWriter = struct {
         };
     }
 
+    pub fn init_cwd(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
+        const file = try std.fs.cwd().createFile(filename, .{ .lock_nonblocking = true });
+        const buf = try allocator.alloc(u8, buffer_size);
+        return .{
+            .allocator = allocator,
+            .buffer = buf,
+            .writer = file.writer(buf),
+        };
+    }
+
     pub fn deinit(self: *TextFileWriter) void {
         self.writer.interface.flush() catch {};
         self.writer.file.close();

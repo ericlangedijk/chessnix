@@ -596,6 +596,7 @@ pub const Move = packed struct(u16) {
     pub const queen_promotion_capture  : u4 = 0b1111; // 15
 
     const noisy_mask                   : u4 = 0b1100;
+    const promotion_mask               : u4 = 0b0100;
 
     /// 6 bits.
     from: Square = .zero,
@@ -779,31 +780,50 @@ pub const ParsingError = error {
 ////////////////////////////////////////////////////////////////
 /// Constants
 ////////////////////////////////////////////////////////////////
-
 pub const megabyte: usize = 1024 * 1024;
 
 pub const max_game_length: usize = 1024;
-pub const max_move_count: usize = 224;
-pub const max_search_depth: u8 = 128; // TODD: maybe 256 for egtb
-pub const max_threads: u16 = 32;
+
+/// The absoluta maximum number of moves.
+pub const max_move_count: u8 = 224;
+pub const max_capture_move_count: u8 = 128;
+
+// /// Maximum number of silent moves. (no captures, no promotions).
+// pub const max_quiet_move_count: usize = 216;
+// /// Maximum number of capture moves (no promotions).
+// pub const max_capture_move_count: usize = 80;
+// /// Maximum number of quiescent search moves (captures and queen promotions either check evasions).
+// pub const max_quiescent_move_count: usize = 104;
+
+
+/// Our max search depth during search. All arrays are a bit oversized for safety.
+pub const max_search_depth: u8 = 128;
 
 // A score which means "nothing" and should be treated as such or discarded during search.
-pub const no_score: Value = 32002;
+pub const no_score: Value = -32002;
 
 pub const infinity: Value = 32000;
 pub const mate: Value = 30000;
-pub const mate_threshold = mate - 256;
-pub const stalemate: Value = 0;
 pub const draw: Value = 0;
+pub const mate_threshold = mate - max_search_depth; // - 256; #testing bug with huge mate scores.
+pub const stalemate: Value = 0;
 pub const invalid_movescore: Value = std.math.minInt(Value);
 
 // Simple scores for SEE and move ordering.
-pub const value_pawn: Value = 100;
-pub const value_knight: Value = 300;
+// pub const value_pawn: Value = 100;
+// pub const value_knight: Value = 300;
+// pub const value_bishop: Value = 300;
+// pub const value_rook: Value = 500;
+// pub const value_queen: Value = 900;
+// pub const value_king: Value = 0;
+
+pub const value_pawn: Value = 98;
+pub const value_knight: Value = 299;
 pub const value_bishop: Value = 300;
-pub const value_rook: Value = 500;
-pub const value_queen: Value = 900;
+pub const value_rook: Value = 533;
+pub const value_queen: Value = 921;
 pub const value_king: Value = 0;
+
 
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
@@ -819,35 +839,4 @@ pub const phase_table: [13]u8 = .{
     0, 1, 1, 2, 4, 0,
     0
 };
-
-// #experimenting...
-// const phased_piece_scorepairs: [13]ScorePair = .{
-//     pair(100, 188), pair(300, 320), pair(300, 322), pair(500, 697), pair(900, 1112), pair(0, 0),
-//     pair(100, 188), pair(300, 320), pair(300, 322), pair(500, 697), pair(900, 1112), pair(0, 0),
-//     pair(0, 0),
-// };
-
-// pub const phased_piece_values: [25][13]Value = compute_phased_piece_values();
-
-// fn compute_phased_piece_values() [25][13]Value {
-//     var table: [25][13]Value = @splat(@splat(0));
-//     for (0..24 + 1) |ph| {
-//         for (PieceType.all) |pt| {
-//             const phase: u8 = @intCast(ph);
-//             const px: u8 = pt.u;
-//             table[phase][px] = sliding_score(phase, phased_piece_scorepairs[px]);
-//             table[phase][px + 6] = table[phase][px];
-//         }
-//     }
-//     return table;
-// }
-
-// fn sliding_score(ph: u8, score: ScorePair) Value {
-//     const max: u8 = comptime max_phase;
-//     const phase: u8 = @min(max, ph);
-//     const mg: Value = score.mg;
-//     const eg: Value = score.eg;
-//     return @divTrunc(mg * phase + eg * (max - phase), max);
-// }
-
 

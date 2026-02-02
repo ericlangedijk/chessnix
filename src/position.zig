@@ -97,6 +97,8 @@ pub const Position = struct {
     ep_square: Square,
     /// Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4,
+    // Bit 0: white has castled, Bit 1: black has castled.
+    //has_castled: [2] bool,
     /// The position hashkey.
     key: u64,
     /// The hashkey of all pawns. Used for correction history.
@@ -129,6 +131,7 @@ pub const Position = struct {
             .rule50 = 0,
             .ep_square = Square.zero,
             .castling_rights = 0,
+            //.has_castled = .{ false, false },
             .key = 0,
             .pawnkey = 0,
             .nonpawnkeys = @splat(0),
@@ -163,6 +166,7 @@ pub const Position = struct {
             .rule50 = 0,
             .ep_square = Square.zero,
             .castling_rights = 0b1111,
+            //.has_castled = .{ false, false },
             .key = 0,
             .pawnkey = 0,
             .nonpawnkeys = @splat(0),
@@ -812,6 +816,7 @@ pub const Position = struct {
             },
             Move.castle_short => {
                 self.rule50 += 1;
+                //self.has_castled[us.u] = true;
                 const king: Piece = comptime Piece.create(PieceType.KING, us);
                 const rook: Piece = comptime Piece.create(PieceType.ROOK, us);
                 const king_to: Square = comptime king_castle_destination_squares[us.u][CastleType.SHORT.u];
@@ -832,6 +837,7 @@ pub const Position = struct {
             },
             Move.castle_long => {
                 self.rule50 += 1;
+                //self.has_castled[us.u] = true;
                 const king: Piece = comptime Piece.create(PieceType.KING, us);
                 const rook: Piece = comptime Piece.create(PieceType.ROOK, us);
                 const king_to: Square = comptime king_castle_destination_squares[us.u][CastleType.LONG.u];
@@ -1429,6 +1435,49 @@ pub const Position = struct {
         }
     }
 
+    // fn gen_one(self: *const Position, comptime flags: u4, from_sq: Square, to_sq: Square, prom_flags: u4) ?Move {
+
+    //     const us: Color = comptime Color.from_bool(flags & gf_black != 0);
+    //     const them = comptime us.opp();
+    //     const check: bool = comptime flags & gf_check != 0;
+    //     const has_pins: bool = comptime flags & gf_pins != 0;
+    //     const doublecheck: bool = check and @popCount(self.checkers) > 1;
+    //     const bb_from: u64 = from_sq.to_bitboard();
+    //     const bb_to: u64 = to_sq.to_bitboard();
+    //     const relative_rank: u3 = from_sq.relative(us).rank();
+
+    //     const piece: Piece = self.board[from_sq.u];
+    //     if (piece.is_empty()) {
+    //         return null;
+    //     }
+    //     const piecetype: PieceType = piece.piecetype();
+
+    //     // if (prom_flags != 0 and relative_rank != 6) {
+    //     //     return null;
+    //     // }
+
+    //     if (!doublecheck) {
+    //         switch (piecetype.e) {
+    //             .pawn => {
+    //                 //const our_pawns: u64 = bb_from;
+    //                 if (prom_flags == 0) {
+    //                     // double push
+    //                     if (relative_rank == bitboards.rank_2 and from_sq ^ to_sq == 16) {
+    //                         const square_in_front: Square = if (us.e == .white) from_sq.add(8) else from_sq.sub(8);
+    //                         if (self.board[square_in_front.u].is_piece()) {
+    //                             return null;
+    //                         }
+    //                         // if (from_sq.add(d: u6))
+
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     return null;
+    // }
+
     fn store_many(self: *const Position, from: Square, bb_to: u64, storage: anytype) ?void {
         var bb: u64 = bb_to;
         while (bitloop(&bb)) |to| {
@@ -1797,6 +1846,26 @@ pub const Any = struct {
         return null;
     }
 };
+
+// pub const First = struct {
+//     move: Move,
+
+//     pub fn init() First {
+//         return .{ .Move = .empty };
+//     }
+
+//     /// Required function.
+//     pub fn reset(self: *First) void {
+//         self.move = .empty;
+//     }
+
+//     /// Required function.
+//     pub fn store(self: *First, move: Move) ?void {
+//         self.move = move;
+//         return null;
+//     }
+// };
+
 
 pub const MoveFinder = struct {
     /// The required from square.

@@ -30,8 +30,7 @@ pub const pawn_phalanx_bonus: [8]ScorePair = .{
 
 /// By [rank].
 pub const passed_pawn_bonus: [8]ScorePair = .{
-    //pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
-    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 78), pair(0, 0), // #testing pawn on 7th (i got a crazy result on it, but maybe it was a lucky strike)
+    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
 };
 
 /// By [rank].
@@ -48,14 +47,6 @@ pub const doubled_pawn_penalty: [8]ScorePair = .{
 pub const isolated_pawn_penalty: [8]ScorePair = .{
     pair(-8, 12), pair(-1, -12), pair(-11, -4), pair(-7, -13), pair(-11, -15), pair(-4, -6), pair(1, -12), pair(-7, 8),
 };
-
-/// By [more, less, equal] #testing
-pub const space: [3]ScorePair = .{
-    pair(1, 15), pair(-1, -15), pair(0, 0),
-};
-
-//pub const more_space: ScorePair = pair(1, 15);
-pub const less_space: ScorePair = pair(-1, -15);
 
 pub const king_cannot_reach_passed_pawn_bonus = pair(-344, 199);
 
@@ -153,10 +144,6 @@ pub const king_on_file_penalty: [2][8]ScorePair = .{
     .{ pair(-3, 45), pair(-31, 19), pair(-17, 12), pair(3, -5), pair(-2, -7), pair(-3, 3), pair(-27, 23), pair(-15, 34) }, // half open
 };
 
-// pub const king_on_open_diagonal_penalty: [2][8]ScorePair = .{
-
-//pub const space:
-
 /// By [threatened piecetype][is_protected]
 pub const threatened_by_pawn_penalty: [6][2]ScorePair = .{
     .{ pair(-17, 13), pair(-11, 17) }, // pawn threatens pawn
@@ -207,8 +194,9 @@ pub const pawn_push_threat_table: [13]ScorePair = .{
 
 /// By [piecetype]
 pub const safe_check_bonus: [6]ScorePair = .{
-    // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0), // original #testing 1.3
-    pair(0, 0), pair(47, 7), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // alternative
+    // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0), // original
+    pair(0, 0), pair(48, 8), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // adjusted
+
 };
 
 /// By [piecetype][square]
@@ -274,4 +262,3 @@ pub const piece_square_table: [6][64]ScorePair = .{
         pair(74, -91), pair(82, -49), pair(60, -27), pair(-46, 9), pair(-19, -7), pair(-91, 11), pair(-24, -7), pair(101, -114), // rank 8
     }
 };
-

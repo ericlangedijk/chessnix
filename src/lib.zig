@@ -25,30 +25,17 @@ pub fn finalize() void {
 /// For now we put it here.
 pub const BoundedArray = @import("utils.zig").BoundedArray;
 
+////////////////////////////////////////////////////////////////
 // Globals.
+////////////////////////////////////////////////////////////////
 pub const version = "1.3";
-
-// Crash guard logic.
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-
-const Safety = enum {
-    none,
-    guarded,
-    paranoid,
-};
-
-const safety: Safety = switch (builtin.mode) {
-    .Debug => .paranoid, // Set to paranoid if needed during debug for insane bugs. Set to guarded for faster debugging.
-    .ReleaseSafe => .guarded, // Do not change: build mode decides safety.
-    .ReleaseFast, .ReleaseSmall => .none, // Do not change.
-};
-
-/// Use this for time consuming debug guards.
-pub const is_paranoid: bool = safety == .paranoid;
-
-/// Use this for releasesafe guards
-pub const is_guarded: bool = safety == .guarded;
+/// Using this for time consuming checks. Only in debug mode.
+pub const is_paranoid: bool = is_debug;
+/// Using this for tricky bug hunting. Never in releasemode.
+/// In ReleaseSafe mode we also create a logfile with the eror when calling crash().
+pub const bughunt: bool = builtin.mode == .ReleaseSafe or builtin.mode == .Debug;
 
 // Input output
 pub const ctx: *const MemoryContext = &memory_context;
@@ -159,23 +146,29 @@ pub fn not_in_release() void {
 }
 
 pub fn wtf() noreturn {
-    @panic("wtf");
+    @panic("wtf"); // TODO: finetune
 }
 
-pub fn crash(comptime str: []const u8, args: anytype) noreturn {
-    not_in_release();
-    io.printerror(str, args);
-    // Force linefeed.
-    if (str.len > 0 and str[str.len - 1] != '\n') {
-        io.printerror("\n", .{});
-    }
-    wtf();
-}
-
-/// Not in releasemode fast.
-pub fn guard(ok: bool, comptime str: []const u8, args: anytype) void {
+/// Only in ReleaseSafe
+pub fn verify(ok: bool, comptime str: []const u8, args: anytype) void {
     not_in_release();
     if (!ok) {
         crash(str, args);
     }
+}
+
+pub fn crash(comptime str: []const u8, args: anytype) noreturn {
+    not_in_release();
+    if (builtin.mode == .ReleaseSafe) {
+        log_crash(str, args);
+    }
+    std.debug.panic(str, args);
+}
+
+/// Internal function
+fn log_crash(comptime str: []const u8,  args: anytype) void {
+    not_in_release();
+    var writer = @import("utils.zig").TextFileWriter.init_cwd("chessnix.log", ctx.galloc, 256) catch return;
+    defer writer.deinit();
+    writer.writeline(str, args) catch return;
 }

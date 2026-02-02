@@ -95,8 +95,7 @@ pub const TimeManager = struct {
 
         const move_overhead: u64 = @min(25, time / 2);
         const cyclic_timecontrol: bool = go.movestogo > 0;
-        //const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental (original()
-        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 40) else 40; // still #experimental
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental
 
         var timeleft = @max(1, time + half_inc * (movestogo - 1));
         const minus: u64 = move_overhead * (2 + movestogo);

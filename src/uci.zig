@@ -27,7 +27,7 @@ pub fn run() void {
     // TODO: what to do in non-terminal mode? Just crash?
     uci_loop() catch |err| {
         //io.debugprint("error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
-        io.print("info error: {s}", .{ @errorName(err) });
+        io.print("info error: {s}", .{ @errorName(err) }); // TODO: what to do here? just call lib.bug()?
         //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
     };
 }
@@ -92,6 +92,9 @@ fn uci_loop() !void {
             else if (eql(cmd, "eval")) {
                 TTY.do_static_eval();
             }
+            else if (eql(cmd, "see")) {
+                TTY.do_see(&tokenizer);
+            }
             else if (eql(cmd, "state")) {
                 TTY.print_state();
             }
@@ -134,7 +137,7 @@ const UCI = struct {
     /// A go command must be eventually responded to with bestmove, once the search is completed or interrupted with stop.
     fn go(tokenizer: *Tokenizer) !void {
         const go_params: Go = try parse_go(tokenizer);
-        try engine.start(&go_params);
+        try engine.go(&go_params);
     }
 
     // A stop command must return bestmove.
@@ -288,6 +291,14 @@ const TTY = struct {
         //io.debugprint("e {} t {}\n", .{e, v});
         //eval.bench(&engine.pos, &engine.evaltranspositiontable);
         //io.debugprint("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
+    }
+
+    fn do_see(tokenizer: *Tokenizer) void {
+        const move: []const u8 = tokenizer.next() orelse return;
+        const threshold: []const u8 = tokenizer.next() orelse return;
+        const t: i32 = std.fmt.parseInt(i32, threshold, 10) catch return;
+        const result: bool = engine.see(move, t) catch return;
+        io.print("{}\n", .{result});
     }
 
     fn print_state() void {

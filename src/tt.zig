@@ -3,7 +3,6 @@
 //! Transposition Table for search.
 
 const std = @import("std");
-
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
@@ -43,12 +42,12 @@ pub fn get_adjusted_score_for_tt_probe(tt_score: Value, ply: u16) Value {
 pub const Bound = enum(u2) {
     /// Empty or static eval only.
     none,
-    /// Exact score.
-    exact,
     /// Upper bound.
     alpha,
     /// Lower bound.
-    beta
+    beta,
+    /// Exact score.
+    exact,
 };
 
 /// 16 bytes, 123 bits. We could still stuff a 5 bits age in here.
@@ -68,6 +67,8 @@ pub const Entry = packed struct {
     /// The raw static eval of the evaluation function. Never when in check. no_score == null.
     raw_static_eval: SmallValue,
 
+    //age: u5,
+
     pub const empty: Entry = .{
         .bound = .none,
         .key = 0,
@@ -75,7 +76,8 @@ pub const Entry = packed struct {
         .move = .empty,
         .score = no_score,
         .raw_static_eval = no_score,
-        .was_pv = false
+        .was_pv = false,
+        //.age = 0,
     };
 
     pub fn is_score_usable_for_depth(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
@@ -84,9 +86,9 @@ pub const Entry = packed struct {
         }
         return switch (self.bound) {
             .none  => false,
-            .exact => true,
             .alpha => self.score <= alpha,
             .beta  => self.score >= beta,
+            .exact => true,
         };
     }
 
@@ -96,14 +98,22 @@ pub const Entry = packed struct {
         }
         return switch (self.bound) {
             .none  => false,
-            .exact => true,
             .alpha => self.score <= alpha,
             .beta  => self.score >= beta,
+            .exact => true,
         };
     }
 
     pub fn is_raw_static_eval_usable(self: *const Entry) bool {
         return self.raw_static_eval != no_score;
+    }
+
+    fn bias(self: *const Entry) u2 {
+        return switch(self.bound) {
+            .none => 0,
+            .alpha, .beta => 1,
+            .exact => 2,
+        };
     }
 };
 
@@ -138,18 +148,18 @@ pub const TranspositionTable = struct {
 
     /// Only store the raw static eval.
     pub fn store_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
-        self.store(.none, key, 0, 0, Move.empty, no_score, false, raw_static_eval);
+        self.store(.none, key, 0, 0, .empty, no_score, false, raw_static_eval);
     }
 
     /// Store the search score and the raw static eval, if any.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool, raw_static_eval: Value) void {
-        if (comptime lib.is_paranoid) {
-            assert(depth >= 0 and depth <= 128);
-            assert(score < std.math.maxInt(i16) and score > std.math.minInt(i16));
-            assert(raw_static_eval < std.math.maxInt(i16) and raw_static_eval > std.math.minInt(i16));
+
+        if (lib.bughunt) {
+            verify_args(depth, score, raw_static_eval);
         }
 
         const bucket: *Bucket = self.hash.get(key);
+
         var entry: *Entry = undefined;
 
         if (bucket.e0.key == key) {
@@ -167,10 +177,8 @@ pub const TranspositionTable = struct {
                 entry = &bucket.e1;
             }
             else {
-                // Same depth: prefer replacing a non-exact bound
-                const v0_cost: u1 = if (bucket.e0.bound == .exact) 1 else 0;
-                const v1_cost: u1 = if (bucket.e1.bound == .exact) 1 else 0;
-                entry = if (v0_cost < v1_cost) &bucket.e0 else &bucket.e1;
+                // Same depth: prefer replacing a less valuable bound.
+                entry = if (bucket.e0.bias() < bucket.e1.bias()) &bucket.e0 else &bucket.e1;
             }
         }
 
@@ -192,6 +200,13 @@ pub const TranspositionTable = struct {
             return &bucket.e1;
         }
         return null;
+    }
+
+    fn verify_args(depth: i32, score: Value, raw_static_eval: Value) void {
+        lib.not_in_release();
+        if (depth < 0 or depth > 128) lib.crash("tt invalid depth {}", .{ depth });
+        if (score > std.math.maxInt(i16) or score < std.math.minInt(i16)) lib.crash("tt invalid score {}", .{ score });
+        if (raw_static_eval > std.math.maxInt(i16) or raw_static_eval < std.math.minInt(i16)) lib.crash("tt invalid raw static eval {}", .{ raw_static_eval });
     }
 };
 

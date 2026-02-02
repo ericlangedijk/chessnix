@@ -43,6 +43,8 @@ pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
 pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
 pub const bb_queenside: u64 = bb_file_a | bb_file_b | bb_file_d | bb_file_d;
 pub const bb_kingside: u64 = bb_file_e | bb_file_f | bb_file_g | bb_file_h;
+pub const bb_center: u64 = (bb_file_c | bb_file_d | bb_file_e | bb_file_f) & (bb_rank_3 | bb_rank_4 | bb_rank_5 | bb_rank_6);
+pub const bb_mini_center: u64 = (bb_file_d | bb_file_e) & (bb_rank_4 | bb_rank_5);
 pub const bb_colored_squares: [2]u64 = .{ bb_white_squares, bb_black_squares };
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
@@ -142,18 +144,6 @@ pub const bb_f8: u64 = 0x2000000000000000;
 pub const bb_g8: u64 = 0x4000000000000000;
 pub const bb_h8: u64 = 0x8000000000000000;
 
-// Array of bitboards of each square
-// pub const square_bitboards: [64]u64 = .{
-//     bb_a1, bb_b1, bb_c1, bb_d1, bb_e1, bb_f1, bb_g1, bb_h1,
-//     bb_a2, bb_b2, bb_c2, bb_d2, bb_e2, bb_f2, bb_g2, bb_h2,
-//     bb_a3, bb_b3, bb_c3, bb_d3, bb_e3, bb_f3, bb_g3, bb_h3,
-//     bb_a4, bb_b4, bb_c4, bb_d4, bb_e4, bb_f4, bb_g4, bb_h4,
-//     bb_a5, bb_b5, bb_c5, bb_d5, bb_e5, bb_f5, bb_g5, bb_h5,
-//     bb_a6, bb_b6, bb_c6, bb_d6, bb_e6, bb_f6, bb_g6, bb_h6,
-//     bb_a7, bb_b7, bb_c7, bb_d7, bb_e7, bb_f7, bb_g7, bb_h7,
-//     bb_a8, bb_b8, bb_c8, bb_d8, bb_e8, bb_f8, bb_g8, bb_h8,
-// };
-
 ////////////////////////////////////////////////////////////////
 // Computed stuff.
 ////////////////////////////////////////////////////////////////
@@ -171,12 +161,17 @@ pub const passed_pawn_masks_white: [64]u64 = compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [64]u64 = compute_passed_pawn_masks_black();
 pub const adjacent_file_masks: [64]u64 = compute_adjacent_file_masks();
 pub const king_areas: [64]u64 = compute_king_areas();
-pub const backward_pawn_masks_white: [64]u64 = compute_backward_pawn_masks_white();
-pub const backward_pawn_masks_black: [64]u64 = compute_backward_pawn_masks_black();
 
-// TODO put the eval bitboard stuff here.
+/// (hce) By [square]
+pub const king_areas_white: [64]u64 = compute_king_areas_white();
+/// (hce) By [square]
+pub const king_areas_black: [64]u64 = compute_king_areas_black();
+/// (hce) Pawnstorm areas from the perspective of the white king. By [white-king-square]
+pub const king_pawnstorm_areas_white: [64]u64 = compute_king_pawnstorm_areas_white();
+/// (hce) Pawnstorm areas from the perspective of the black king. Indexing by [black-king-square]
+pub const king_pawnstorm_areas_black: [64]u64 = compute_king_pawnstorm_areas_black();
 
-/// Using the `Orientation` enum order.
+/// Using the `Direction` enum order.
 pub const direction_bitboards: [8][*]const u64 = .{
     &bb_north, &bb_east, &bb_south, &bb_west, &bb_northwest, &bb_northeast, &bb_southeast, &bb_southwest,
 };
@@ -295,24 +290,6 @@ fn compute_adjacent_file_masks() [64]u64 {
     return afm;
 }
 
-fn compute_backward_pawn_masks_white()[64]u64 {
-    var bpm: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        if (sq.coord.rank >= 6 or sq.coord.rank == 0) {
-            continue;
-        }
-        var bb: u64 = passed_pawn_masks_black[sq.u] & ~file_bitboards[sq.coord.file];
-        if (sq.coord.file > 0) {
-            bb |= sq.sub(1).to_bitboard();
-        }
-        if (sq.coord.file < 7) {
-            bb |= sq.add(1).to_bitboard();
-        }
-        bpm[sq.u] = bb;
-    }
-    return bpm;
-}
-
 fn compute_backward_pawn_masks_black()[64]u64 {
     var bpm: [64]u64 = @splat(0);
     for (Square.all) |sq| {
@@ -330,6 +307,51 @@ fn compute_backward_pawn_masks_black()[64]u64 {
     }
     return bpm;
 }
+
+/// hce eval
+fn compute_king_areas_white() [64]u64 {
+    var ka: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        ka[sq.u] = sq.to_bitboard() | attacks.get_king_attacks(sq);
+        // Go 1 rank further.
+        ka[sq.u] |= funcs.pawns_shift(ka[sq.u], Color.WHITE, .up);
+    }
+    return ka;
+}
+
+/// hce eval
+fn compute_king_areas_black() [64]u64 {
+    var ka: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        ka[sq.u] = sq.to_bitboard() | attacks.get_king_attacks(sq);
+        // Go 1 rank further.
+        ka[sq.u] |= funcs.pawns_shift(ka[sq.u], Color.BLACK, .up);
+    }
+    return ka;
+}
+
+/// hce eval
+fn compute_king_pawnstorm_areas_white() [64]u64 {
+    var ps: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        ps[sq.u] = passed_pawn_masks_white[sq.u];
+        // Include the squares next to the king.
+        ps[sq.u] |= funcs.pawns_shift(ps[sq.u], Color.BLACK, .up);
+    }
+    return ps;
+}
+
+/// hce
+fn compute_king_pawnstorm_areas_black() [64]u64 {
+    var ps: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        ps[sq.u] = passed_pawn_masks_black[sq.u];
+        // Include the squares next to the king.
+        ps[sq.u] |= funcs.pawns_shift(ps[sq.u], Color.WHITE, .up);
+    }
+    return ps;
+}
+
 
 /// Information about a pair of squares.
 /// * Mainly used for determining pinners and pinned pieces.
@@ -354,7 +376,6 @@ pub const SquarePair = struct {
 //////////////////////////////////////////////////////////////
 // Funcs
 ////////////////////////////////////////////////////////////////
-
 pub fn get_squarepair(from: Square, to: Square) *const SquarePair
 {
     const idx: usize = from.idx() * 64 + to.idx();
@@ -365,12 +386,5 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
     return switch (us.e) {
         .white => passed_pawn_masks_white[sq.u],
         .black => passed_pawn_masks_black[sq.u],
-    };
-}
-
-pub fn get_backward_pawn_mask(comptime us: Color, sq: Square) u64 {
-    return switch (us.e) {
-        .white => backward_pawn_masks_white[sq.u],
-        .black => backward_pawn_masks_black[sq.u],
     };
 }
