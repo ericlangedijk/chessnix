@@ -7,8 +7,8 @@ A testversion named chessnix_bot can be played against on lichess.org.
 
 ### Version 1.3 Work In Progress...
 - Target 3200+ ELO. Experimenting, tweaking, optimizing, bug hunting. Currently at ~3175 ELO.
-- Experimental: Phased SEE + slight bias + randomness in quiet move ordering for shallow depths.
-- Added: History pruning, history reduction.
+- Experimental: Slight center bias in quiet move ordering for shallow depths.
+- Added: Search History pruning, Search history reduction.
 - Added: Store raw static evaluation in transposition table.
 - Added: Slight capture history bonus in quiescence search.
 - Removed: Correction history. It will be back later.
@@ -84,7 +84,7 @@ To be continued...
 ### Thanks
 Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3) to get me started (from chessnix 2.0 onwards I will do my own tuning).
 Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
-The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, OpenCritter, PlentyChess, Seawall, Shallow, Shallowguess, Stash, Stockfish, Supernova, Teki.
+The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, OpenCritter, PlentyChess, Priessnitz, Seawall, Seredina, Shallow, Shallowguess, Stash, Stockfish, Supernova, Teki.
 Some extra thanks to these people who made their engine support chess960.
 I also learned a lot from the source code of all these engines.
 Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Cwtch, Lambergar, Integral, PlentyChess, Stockfish and probably others).

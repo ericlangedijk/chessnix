@@ -58,6 +58,8 @@ pub const Evaluator = struct {
     rook_attacks: [2]u64,
     /// All queen attacks (updated on the fly).
     queen_attacks: [2]u64,
+    /// The attacks combined (updated on the fly).
+    all_attacks: [2]u64,
     /// All attacks to the enemy king area (updated on the fly).
     attack_power: [2]ScorePair,
 
@@ -74,15 +76,16 @@ pub const Evaluator = struct {
             .bishop_attacks = .{ 0, 0 },
             .rook_attacks = .{ 0, 0 },
             .queen_attacks = .{ 0, 0 },
+            .all_attacks = .{ 0, 0},
             .attack_power = .{ .empty, .empty },
         };
     }
 
     pub fn evaluate(self: *Self, pos: *const Position) Value {
-
         // Init pos reference.
         self.pos = pos;
-        self.pins = pos.our_pins();
+        // We can only use pinned pieces. Remember: pins include the enemy pinner.
+        self.pins = pos.our_pins() & pos.by_color(pos.stm);
 
         // Init fields.
         self.king_squares = .{ pos.king_square(Color.WHITE), pos.king_square(Color.BLACK) };
@@ -97,6 +100,8 @@ pub const Evaluator = struct {
             funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northwest) | funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northeast),
             funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northwest) | funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northeast),
         };
+
+        self.all_attacks = self.pawn_attacks;
 
         self.mobility_areas = .{
             ~(pos.by_color(Color.WHITE) | self.pawn_attacks[Color.BLACK.u]),
@@ -140,17 +145,7 @@ pub const Evaluator = struct {
 
         score.inc(hcetables.tempo_bonus);
 
-        // // #experimental.
-        // if (pos.phase < 12 and pos.all_pawns() == 0) {
-        //     var m: f32 = @floatFromInt(score.mg);
-        //     var e: f32 = @floatFromInt(score.eg);
-        //     m = m * 0.8;
-        //     e = e * 0.8;
-        //     score.mg = @intFromFloat(m);
-        //     score.eg = @intFromFloat(e);
-        // }
-
-        return sliding_score(pos, score);
+        return types.phased_score(@min(24, pos.phase), score);
     }
 
     fn eval_pawns(self: *Self, comptime us: Color) ScorePair {
@@ -256,6 +251,7 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.knight_attacks[us.u] |= legal_moves;
+            self.all_attacks[us.u] |= legal_moves;
 
             // Attacks to the enemy king.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -302,6 +298,7 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.bishop_attacks[us.u] |= moves;
+            self.all_attacks[us.u] |= moves;
 
             // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -346,6 +343,7 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.rook_attacks[us.u] |= legal_moves;
+            self.all_attacks[us.u] |= legal_moves;
 
             // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -389,6 +387,7 @@ pub const Evaluator = struct {
 
             // Update
             self.queen_attacks[us.u] |= moves;
+            self.all_attacks[us.u] |= moves;
 
             // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -436,23 +435,6 @@ pub const Evaluator = struct {
         // King danger.
         score.dec(self.attack_power[them.u]);
 
-        // #experimental
-        // if (pos.phase > 16) {
-        //     switch (us.e) {
-        //         .white => {
-        //             if ((pos.castling_rights & (position.cf_white_short | position.cf_white_long) == 0) and !pos.has_castled[us.u]) {
-        //                 score.inc(types.pair(-10, 0));
-        //                 //io.debugprint("lost castling rights", .{});
-        //             }
-        //         },
-        //         .black => {
-        //             if ((pos.castling_rights & position.cf_black_short | position.cf_black_long == 0) and !pos.has_castled[us.u]) {
-        //                 score.inc(types.pair(-10, 0));
-        //             }
-        //         },
-        //     }
-        // }
-
         return score;
     }
 
@@ -460,7 +442,7 @@ pub const Evaluator = struct {
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
         const our_pieces: u64 = pos.by_color(us);
-        const our_attacks: u64 = self.pawn_attacks[us.u] | self.knight_attacks[us.u] | self.bishop_attacks[us.u] | self.rook_attacks[us.u] | self.queen_attacks[us.u];
+        const our_attacks: u64 = self.all_attacks[us.u];
 
         var score: ScorePair = .empty;
         var bb: u64 = undefined;
@@ -517,8 +499,8 @@ pub const Evaluator = struct {
         const their_king_sq: Square = self.king_squares[them.u];
         const rook_checks: u64 = attacks.get_rook_attacks(their_king_sq, occupied);
         const bishop_checks: u64 = attacks.get_bishop_attacks(their_king_sq, occupied);
-        // TODO: use their_piece_attacks? TODO: bug check.
         const safe: u64 = ~(self.pawn_attacks[them.u] | self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | attacks.get_king_attacks(their_king_sq));
+        //const safe: u64 = ~(self.all_attacks[them.u] | attacks.get_king_attacks(their_king_sq)); // #testing
 
         const safe_knight_checks: u64 = not_us & safe & self.knight_attacks[us.u] & attacks.get_knight_attacks(their_king_sq);
         const safe_bishop_checks: u64 = not_us & safe & self.bishop_attacks[us.u] & bishop_checks;
@@ -579,35 +561,10 @@ pub const Evaluator = struct {
         return hcetables.pawn_storm_table[i];
     }
 
-    fn legalize_moves_raw(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
-        _ = self;
-        _ = pt;
-        _ = us;
-        _ = from;
-        return bb_moves;
-    }
-
-    /// Used in the past.
-    fn legalize_moves_old(self: *Self, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
-        _ = us;
-        // if (us.e != self.pos.stm.e) return bb_moves; // #testing DAMN!!! something is fucking wrong here.
-
-        const from_bb: u64 = from.to_bitboard();
-        if (self.pins & from_bb == 0) {
-            return bb_moves;
-        }
-
-        // Pinned knight
-        if (pt.e == .knight) {
-            return 0;
-        }
-        return bb_moves;
-    }
-
     /// This thing makes chessnix playing worse. I keep it around if I find the cause of this little drama.
     fn legalize_moves(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
         const from_bb: u64 = from.to_bitboard();
-        const pins: u64 = self.pins & from_bb & self.pos.by_color(self.pos.stm);
+        const pins: u64 = self.pins & from_bb;
         if (pins == 0) {
             return bb_moves;
         }
@@ -651,17 +608,8 @@ pub const Evaluator = struct {
     }
 };
 
-/// Returns the final value of a scorepair, interpolated by phase.
-pub fn sliding_score(pos: *const Position, score: ScorePair) Value {
-    const max: u8 = comptime types.max_phase;
-    const phase: u8 = @min(max, pos.phase);
-    const mg: Value = score.mg;
-    const eg: Value = score.eg;
-    return @divTrunc(mg * phase + eg * (max - phase), max);
-}
-
 /// Returns true for castle, enpassant and promotions, regardless of the threshold.
-pub fn see_fixed(pos: *const Position, m: Move, threshold: Value) bool {
+pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
     if (m.is_castle() or m.is_ep() or m.is_promotion()) {
         return true;
     }
@@ -739,6 +687,7 @@ pub fn see_fixed(pos: *const Position, m: Move, threshold: Value) bool {
                         return if (all_attacks & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
                     },
                 }
+
                 next_attacker_value = piecetype.value();
                 break :get_next_attacker;
             }
@@ -752,137 +701,4 @@ pub fn see_fixed(pos: *const Position, m: Move, threshold: Value) bool {
         }
     }
     return pos.stm.u == winner.u;
-}
-
-/// Returns true for castle, enpassant and promotions, regardless of the threshold.
-/// - This is #experimental, using phased see values.
-pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
-    if (m.is_castle() or m.is_ep() or m.is_promotion()) {
-        return true;
-    }
-
-    const val = phased_piece_value;
-    const phase: u8 = @min(types.max_phase, pos.phase);
-    const from: Square = m.from;
-    const to: Square = m.to;
-
-    // Set the score to captured piece minus how much we are allowed to lose.
-    //var score: Value = pos.board[to.u].value() - threshold;
-    var score: Value = val(pos.board[to.u], phase) - threshold;
-
-    if (score < 0) {
-        return false;
-    }
-
-    score = val(pos.board[from.u], phase) - score;
-
-    // Equal or winning.
-    if (score <= 0) {
-        return true;
-    }
-
-    const queens_bishops = pos.all_queens_bishops();
-    const queens_rooks = pos.all_queens_rooks();
-
-    // Execute the move on a bitboard.
-    var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
-
-    // Get the initial attacks from both sides to the to-square.
-    var all_attacks: u64 = pos.get_combined_attacks_to_for_occupation(occupied, to);
-    var us: Color = pos.stm;
-    var winner: Color = pos.stm;
-
-    attackloop: while (true) {
-        us = us.opp();
-        all_attacks &= occupied;
-
-        // Get our attackers.
-        const our_attackers: u64 = all_attacks & pos.by_color(us);
-
-        // No attackers left.
-        if (our_attackers == 0) {
-            break :attackloop;
-        }
-        winner = winner.opp();
-        var next_attacker_value: Value = 0;
-
-        // Get the least valuable next piece.
-        get_next_attacker: inline for (PieceType.all) |piecetype| {
-            const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
-            if (next_attacker != 0) {
-
-                // Clear this attacker.
-                const sq: Square = funcs.first_square(next_attacker);
-                funcs.clear_square(&occupied, sq);
-                // Reveal next x-ray attacker on the attacks bitboard.
-                switch (piecetype.e) {
-                    .pawn   => {
-                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    },
-                    .knight => {
-                        // Do nothing: a knight move cannot reveal a new slider.
-                    },
-                    .bishop => {
-                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    },
-                    .rook   => {
-                        all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    },
-                    .queen  => {
-                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                        all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    },
-                    .king   => {
-                        // We can exit here: if the king captures and the opponent can capture our king we lose othersize we win.
-                        return if (all_attacks & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
-                    },
-                }
-                next_attacker_value = val(Piece.create(piecetype, Color.WHITE), phase);
-                break :get_next_attacker;
-            }
-        }
-
-        score = -score + 1 + next_attacker_value;
-
-        // Quit if the exchange is lost or equal
-        if (score <= 0) {
-            break :attackloop;
-        }
-    }
-    return pos.stm.u == winner.u;
-}
-
-////////////////////////////////////////////////////////////////
-// Constants for experimental phased SEE.
-////////////////////////////////////////////////////////////////
-fn phased_piece_value(piece: Piece, phase: u8) Value {
-    return phased_piece_values[phase][piece.u];
-}
-
-// pub const base_table: [6]ScorePair = .{
-//     types.pair(98, 151), types.pair(301, 321), types.pair(331, 356), types.pair(439, 512), types.pair(874, 1080), types.pair(0, 0),
-// };
-
-pub const phased_piece_values: [25][13]Value = compute_phased_piece_values();
-
-fn compute_phased_piece_values() [25][13]Value {
-    var table: [25][13]Value = @splat(@splat(0));
-    for (0..24 + 1) |ph| {
-        for (PieceType.all) |pt| {
-            const phase: u8 = @intCast(ph);
-            const px: u8 = pt.u;
-            table[phase][px] = slide(phase, hcetables.piece_value_table[px]);
-            // table[phase][px] = slide(phase, base_table[px]);
-            table[phase][px + 6] = table[phase][px];
-        }
-    }
-    return table;
-}
-
-pub fn slide(ph: u8, score: ScorePair) Value {
-    const max: u8 = comptime types.max_phase;
-    const phase: u8 = @min(max, ph);
-    const mg: Value = score.mg;
-    const eg: Value = score.eg;
-    return @divTrunc(mg * phase + eg * (max - phase), max);
 }

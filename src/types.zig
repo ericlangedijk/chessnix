@@ -74,8 +74,6 @@ pub const Color = packed union {
     e: Enum,
     /// The numeric value
     u: u1,
-    /// Handy.
-    is_black: bool,
 
     pub const all: [2]Color = .{ WHITE, BLACK };
     pub const WHITE: Color = .{ .e = .white };
@@ -87,10 +85,6 @@ pub const Color = packed union {
 
     pub fn idx(self: Color) usize {
         return self.u;
-    }
-
-    pub fn from_bool(black_to_move: bool) Color {
-        return if (black_to_move) Color.BLACK else Color.WHITE;
     }
 };
 
@@ -257,11 +251,6 @@ pub const Square = packed union {
         return if (us.e == .white) self else .{ .u = self.u ^ 56 };
     }
 
-    // // TODO: remove
-    // pub fn relative_dyn(self: Square, us: Color) Square {
-    //     return if (us.e == .white) self else .{ .u = self.u ^ 56 };
-    // }
-
     pub fn flipped(self: Square) Square {
         return .{ .u = self.u ^ 56 };
     }
@@ -388,10 +377,6 @@ pub const PieceType = packed union {
         return piece_values[self.u];
     }
 
-    // pub fn phased_value(self: PieceType, phase: u8) Value {
-    //     return phased_piece_values[phase][self.u];
-    // }
-
     pub fn to_char(self: PieceType) u8 {
         return switch(self.e) {
             .pawn => 0,
@@ -477,7 +462,6 @@ pub const Piece = packed union {
         if (comptime lib.is_paranoid) {
             assert(self.e != .no_piece);
         }
-        //return .{ .is_black = self.u >= 6 };
         return if (self.u < 6) Color.WHITE else Color.BLACK;
     }
 
@@ -499,7 +483,9 @@ pub const Piece = packed union {
 
     /// Used for flipping the board.
     pub fn opp(self: Piece) Piece {
-        if (self.is_empty()) return Piece.NO_PIECE;
+        if (self.is_empty()) {
+            return Piece.NO_PIECE;
+        }
         return if (self.color().e == .white ) .{.u = self.u + 6} else .{ .u = self.u - 6 };
     }
 
@@ -538,10 +524,6 @@ pub const Piece = packed union {
         return piece_values[self.u];
     }
 
-    // pub fn phased_value(self: Piece, phase: u8) Value {
-    //     return phased_piece_values[phase][self.u];
-    // }
-
     pub fn to_print_char(self: Piece) u8 {
         var ch: u8 = switch(self.piecetype().e) {
             .pawn => 'P',
@@ -579,7 +561,6 @@ pub const Piece = packed union {
 };
 
 pub const Move = packed struct(u16) {
-    // bit 2 = promotion, bit 3 = capture.
     pub const silent                   : u4 = 0b0000; // 0
     pub const double_push              : u4 = 0b0001; // 1
     pub const castle_short             : u4 = 0b0010; // 2
@@ -595,8 +576,9 @@ pub const Move = packed struct(u16) {
     pub const rook_promotion_capture   : u4 = 0b1110; // 14
     pub const queen_promotion_capture  : u4 = 0b1111; // 15
 
-    const noisy_mask                   : u4 = 0b1100;
-    const promotion_mask               : u4 = 0b0100;
+    pub const capture_mask             : u4 = 0b1000; // bit 3 = capture.
+    pub const promotion_mask           : u4 = 0b0100; // bit 2 = promotion
+    pub const noisy_mask               : u4 = capture_mask | promotion_mask;
 
     /// 6 bits.
     from: Square = .zero,
@@ -606,7 +588,6 @@ pub const Move = packed struct(u16) {
     flags: u4 = 0,
 
     pub const empty: Move = .{};
-    //pub const nullmove: Move = @bitCast(@as(u16, 0xffff));
 
     pub fn create(from: Square, to: Square, flags: u4) Move {
         return .{ .from = from, .to = to, .flags = flags };
@@ -617,11 +598,10 @@ pub const Move = packed struct(u16) {
     }
 
     pub fn is_empty(self: Move) bool {
-        return self == empty; //.bitcast() == 0;
+        return self == empty;
     }
 
     pub fn is_capture(self: Move) bool {
-        //return self.flags & 0b1000 != 0;
         return self.flags & capture != 0;
     }
 
@@ -649,7 +629,9 @@ pub const Move = packed struct(u16) {
     }
 
     pub fn flipped(self: Move) Move {
-        if (self.is_empty()) return self;
+        if (self.is_empty()) {
+            return self;
+        }
         return. { .from = self.from.flipped(), .to = self.to.flipped(), .flags = self.flags };
     }
 
@@ -725,8 +707,54 @@ pub const Move = packed struct(u16) {
         }
         return result;
     }
-
 };
+
+pub const ExtMove = packed struct {
+    move: Move = .empty,
+    /// Set during move generation.
+    piece: Piece = Piece.NO_PIECE,
+    /// Set during move generation.
+    captured: Piece = Piece.NO_PIECE,
+    /// Set by movepicker during search.
+    score: i32 = 0,
+    /// Set by movepicker during search.
+    is_tt_move: bool = false,
+    /// Set by movepicker during search.
+    is_bad_capture: bool = false,
+
+    pub const empty: ExtMove = .{};
+
+    pub fn create(from: Square, to: Square, flags: u4, piece: Piece, captured: Piece) ExtMove {
+        return .{
+            .move = .{ .from = from, .to = to, .flags = flags },
+            .piece = piece,
+            .captured = captured,
+        };
+    }
+};
+
+/// Simple array wrapper.
+pub fn ExtMoveList(max: u8) type {
+    return struct {
+        const Self = @This();
+
+        extmoves: [max]ExtMove,
+        count: u8,
+
+        pub fn init() Self {
+            return .{ .extmoves = undefined, .count = 0 };
+        }
+
+        pub fn add(self: *Self, ex: ExtMove) void {
+            self.extmoves[self.count] = ex;
+            self.count += 1;
+        }
+
+        pub fn slice(self: *Self) []ExtMove {
+            return self.extmoves[0..self.count];
+        }
+    };
+}
 
 pub const ScorePair = struct {
     mg: SmallValue,
@@ -786,22 +814,11 @@ pub const max_game_length: usize = 1024;
 
 /// The absoluta maximum number of moves.
 pub const max_move_count: u8 = 224;
-pub const max_capture_move_count: u8 = 128;
-
-// /// Maximum number of silent moves. (no captures, no promotions).
-// pub const max_quiet_move_count: usize = 216;
-// /// Maximum number of capture moves (no promotions).
-// pub const max_capture_move_count: usize = 80;
-// /// Maximum number of quiescent search moves (captures and queen promotions either check evasions).
-// pub const max_quiescent_move_count: usize = 104;
-
-
+pub const max_noisy_count: u8 = 128;
 /// Our max search depth during search. All arrays are a bit oversized for safety.
 pub const max_search_depth: u8 = 128;
-
 // A score which means "nothing" and should be treated as such or discarded during search.
 pub const no_score: Value = -32002;
-
 pub const infinity: Value = 32000;
 pub const mate: Value = 30000;
 pub const draw: Value = 0;
@@ -824,7 +841,6 @@ pub const value_rook: Value = 533;
 pub const value_queen: Value = 921;
 pub const value_king: Value = 0;
 
-
 const piece_values: [13]Value = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
@@ -840,3 +856,17 @@ pub const phase_table: [13]u8 = .{
     0
 };
 
+pub fn phased_score(phase: u8, score: ScorePair) Value {
+    if (lib.is_paranoid) {
+        assert(phase <= 24);
+    }
+    //const max: u8 = comptime types.max_phase;
+    //const phase: u8 = @min(max, ph);
+    const mg: Value = score.mg;
+    const eg: Value = score.eg;
+    return @divTrunc(mg * phase + eg * (max_phase - phase), max_phase);
+}
+
+pub fn phase_of(phase: u8) GamePhase {
+    return if (phase > 16) .opening else if (phase > 8) .midgame else .endgame;
+}

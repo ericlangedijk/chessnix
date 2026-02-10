@@ -21,12 +21,12 @@ const Square = types.Square;
 const Piece = types.Piece;
 const PieceType = types.PieceType;
 const Move = types.Move;
+const ExtMove = types.ExtMove;
+const ExtMoveList = types.ExtMoveList;
 const ScorePair = types.ScorePair;
 const Position = position.Position;
-const ExtMove = search.ExtMove;
 const Node = search.Node;
 const Searcher = search.Searcher;
-const ExtMoveList = search.ExtMoveList;
 const History = history.History;
 
 /// Depending on the search callsite we generate all moves or quiescence moves.
@@ -53,22 +53,7 @@ pub const Stage = enum {
     bad_noisy,
 };
 
-// The current stage of the movepicker.
-pub const ExtStage = enum {
-    /// Generate all moves, putting them in the correct list.
-    generate,
-    /// The first move to consider is a tt-move.
-    tt,
-    /// Extract the noisy moves.
-    noisy,
-    /// Extract the quiet moves.
-    quiet,
-    /// Extract the bad noisy moves.
-    bad_noisy,
-};
-
-
-/// Depending on the stage we have to select a list.
+/// Depending on the stage we have to select a list to pick from.
 const ListMode = enum {
     noisies,
     quiets,
@@ -81,9 +66,7 @@ const Scores = struct {
     const bad_capture  : Value = -1_000_000;
 };
 
-
-/// A tiny shallow move ordering bias.
-/// #experimental.
+/// A tiny shallow move ordering center bias.
 const move_ordering_square_bias: [64]u3 = .{
     0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,
@@ -107,7 +90,8 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         // This saves some stack space during quiescence search.
         const max_quiets: u8 = if (gentype == .search) 224 else 128;
 
-        /// The current stage. TODO: make the stages cleaner, reflecting the actual current atage without these score nonsense in between.
+        /// The current stage.
+        /// TODO: make the stages cleaner, reflecting the actual current atage without these half baked score nonsense in between.
         stage: Stage,
         /// Reference to the position (on the stack during search).
         pos: *const Position,
@@ -131,7 +115,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         bad_noisies: ExtMoveList(128),
 
         pub fn init(pos: *const Position, searcher: *const Searcher, node: *const Node, tt_move: Move) Self {
-            //move_ordering_noise +%= 1;
             return .{
                 .stage = .generate,
                 .pos = pos,
@@ -201,7 +184,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        /// Required function for movgen.
+        /// Required function for movegen.
         pub fn reset(self: *Self) void {
             self.move_count = 0;
             self.move_idx = 0;
@@ -210,15 +193,16 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             self.bad_noisies.count = 0;
         }
 
-        /// Required function for movgen.
-        pub fn store(self: *Self, move: Move) ?void {
+        /// Required function for movegen.
+        pub fn store(self: *Self, extmove: ExtMove) ?void {
             self.move_count += 1;
-            var ex: ExtMove = init_move(move, self.pos);
-            if (move == self.input_tt_move) {
+            // Copy
+            var ex: ExtMove = extmove;
+            if (extmove.move == self.input_tt_move) {
                 ex.is_tt_move = true;
                 self.tt_move = ex;
             }
-            else if (move.is_noisy()) {
+            else if (extmove.move.is_noisy()) {
                 self.noisies.add(ex);
             }
             else {
@@ -226,26 +210,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        fn init_move(move: Move, pos: *const Position) ExtMove {
-            var ex: ExtMove = .init(move);
-            ex.piece = pos.board[ex.move.from.u];
-            switch (ex.move.flags) {
-                Move.capture, Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
-                    ex.captured = pos.board[ex.move.to.u];
-                },
-                Move.ep => {
-                    ex.captured = Piece.create(PieceType.PAWN, them);
-                },
-                else => {
-                    // Nothing to do.
-                }
-            }
-            return ex;
-        }
-
         /// Called during search.
         pub fn skip_quiets(self: *Self) void {
-            if (self.stage == .quiet and self.move_idx > 0) {
+            if (self.stage == .quiet) {
                 self.stage = .bad_noisy;
                 self.move_idx = 0;
             }
@@ -268,8 +235,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        /// Besides scoring the move set the details.
+        /// Set the score and is_bad_capture flag.
         fn score_move(self: *Self, ex: *ExtMove, comptime listmode: ListMode) void {
+            // The idea for capture scores is MVV-LVA scoring. When history kicked in that will overwrite the LVA part.
 
             // Some paranoid checks.
             if (comptime lib.is_paranoid) {
@@ -288,10 +256,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.is_bad_capture = !hce.see(pos, ex.move, 0);
                         if (ex.is_bad_capture) {
-                            ex.score = Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value();
+                            ex.score = Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         }
                         else {
-                            ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value();
+                            ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         }
                         ex.score += hist.get_capture_score(ex.*);
 
@@ -301,7 +269,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                     },
                     Move.ep => {
-                        ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value();
+                        ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         ex.score += hist.get_capture_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
@@ -321,7 +289,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                             .bishop, .rook => ex.score = Scores.promotion,
                             else => unreachable,
                         }
-                       // ex.score += hist.capture.get_score(ex.*);
+                        ex.score += hist.get_capture_score(ex.*);
                     },
                     else => {
                         unreachable;
@@ -331,7 +299,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             // Score a quiet move.
             else if (listmode == .quiets) {
                 ex.score = hist.get_quiet_score(ex.*, self.node.ply, &self.searcher.nodes);
-                // Bias #experiment
                 ex.score += move_ordering_square_bias[ex.move.to.u];
             }
             // Bad noisy moves are already handled.

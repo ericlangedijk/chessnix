@@ -142,57 +142,51 @@ pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
 
 pub fn mirror_vertically(u: u64) u64 {
     return
-        ( (u << 56)) |
+        ( (u & 0x00000000000000ff) << 56) |
         ( (u & 0x000000000000ff00) << 40) |
         ( (u & 0x0000000000ff0000) << 24) |
         ( (u & 0x00000000ff000000) << 8 ) |
         ( (u & 0x000000ff00000000) >> 8 ) |
         ( (u & 0x0000ff0000000000) >> 24) |
         ( (u & 0x00ff000000000000) >> 40) |
-        ( (u >> 56));
-}
-
-pub fn mirror_u16_vertically(u: u16) u16 {
-    return
-        ( (u << 4)) |
-        ( (u & 0xff00) << 8 ) |
-        ( (u & 0x00ff) >> 8 ) |
-        ( (u >> 4));
+        ( (u & 0xff00000000000000) >> 56);
 }
 
 pub fn popcnt(bitboard: u64) u7 {
     return @popCount(bitboard);
 }
 
-/// Convenient popcount.
-pub fn popcnt_v(bitboard: u64) Value {
-    return @popCount(bitboard);
-}
+// Convenient popcount.
+// pub fn popcnt_v(bitboard: u64) Value {
+//     return @popCount(bitboard);
+// }
 
 pub fn contains_square(bitboard: u64, sq: Square) bool {
     return test_bit_64(bitboard, sq.u);
 }
 
-pub fn first_square_or_null(bitboard: u64) ?Square {
-    if (bitboard == 0) return null;
-    const lsb: u6 = @truncate(@ctz(bitboard));
-    return Square.from(lsb);
-}
+// pub fn first_square_or_null(bitboard: u64) ?Square {
+//     if (bitboard == 0) return null;
+//     const lsb: u6 = @truncate(@ctz(bitboard));
+//     return Square.from(lsb);
+// }
 
 /// Unsafe lsb
 pub fn first_square(bitboard: u64) Square {
-    if (comptime lib.is_paranoid) assert(bitboard != 0);
+    if (comptime lib.is_paranoid) {
+        assert(bitboard != 0);
+    }
     //const lsb: u6 = @truncate(@ctz(bitboard));
     const lsb: u6 = @intCast(@ctz(bitboard));
-    return .{ .u = lsb }; //Square.from(lsb);
+    return .{ .u = lsb };
 }
 
-/// Unsafe pop lsb and clears that lsb from the bitboard.
-pub fn pop_square(bitboard: *u64) Square {
-    if (comptime lib.is_paranoid) assert(bitboard.* != 0);
-    defer bitboard.* &= (bitboard.* - 1);
-    return first_square(bitboard.*);
-}
+// Unsafe pop lsb and clears that lsb from the bitboard.
+// pub fn pop_square(bitboard: *u64) Square {
+//     if (comptime lib.is_paranoid) assert(bitboard.* != 0);
+//     defer bitboard.* &= (bitboard.* - 1);
+//     return first_square(bitboard.*);
+// }
 
 /// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
 pub fn bitloop(bitboard: *u64) ?Square {

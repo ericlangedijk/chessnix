@@ -35,6 +35,7 @@ pub const Termination = enum {
 };
 
 // TODO: use endtime -> then we do not have to calculate elapsed_ms each time.
+// TODO: still some finetuning is needed.
 pub const TimeManager = struct {
     termination: Termination,
     timer: utils.Timer,
@@ -65,13 +66,13 @@ pub const TimeManager = struct {
 
         if (go.movetime > 0) {
             self.termination = .movetime;
-            self.max_movetime = go.movetime; // TODO: move overhead
+            self.max_movetime = go.movetime;
             return;
         }
 
         if (go.depth > 0) {
             self.termination = .depth;
-            // Cap the max depth.
+            // Cap the max depth here.
             self.max_depth = @min(max_search_depth, @as(u8, @truncate(go.depth)));
             return;
         }
@@ -89,9 +90,7 @@ pub const TimeManager = struct {
         const inc: u64 = go.increment[us.u];
 
         const half_inc: u64 = inc / 2;
-        // If we have a move increment, don't add everything to the time. Keep reserve.
-        // TODO: we still have to figure out something for very small increment or time for the whole game.
-        //const half_inc: u64 = (inc * 200) / 300; // #testing
+        // const half_inc: u64 = (inc * 300) / 400;
 
         const move_overhead: u64 = @min(25, time / 2);
         const cyclic_timecontrol: bool = go.movestogo > 0;
@@ -120,8 +119,9 @@ pub const TimeManager = struct {
         self.opt_movetime_base = @intFromFloat(optime);
         self.opt_movetime = self.opt_movetime_base;
 
-        // TODO: stabilize?
         const max_factor: f32 = 0.75;
+        //const max_factor: f32 = if (cyclic_timecontrol and time < 2000 and movestogo < 5 and movestogo > 1) 0.45 else 0.75;
+
         const maxtime: f32 = max_factor * t - mo;
         self.max_movetime = @intFromFloat(maxtime);
     }

@@ -10,7 +10,7 @@ const types = @import("types.zig");
 const Piece = types.Piece;
 const Square = types.Square;
 
- /// piece-square + ep + castling + btm.
+/// piece-square + ep + castling + btm.
 const rnd_count: usize = 768 + 64 + 16 + 1;
 
 /// We use one flat array for all.

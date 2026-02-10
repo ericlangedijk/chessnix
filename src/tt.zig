@@ -62,8 +62,6 @@ pub const Entry = packed struct {
     move: Move,
     /// The evaluation according to search. no_score == null.
     score: SmallValue,
-    /// Indicates wether this entry stored during principal variation search.
-    was_pv: bool,
     /// The raw static eval of the evaluation function. Never when in check. no_score == null.
     raw_static_eval: SmallValue,
 
@@ -76,8 +74,6 @@ pub const Entry = packed struct {
         .move = .empty,
         .score = no_score,
         .raw_static_eval = no_score,
-        .was_pv = false,
-        //.age = 0,
     };
 
     pub fn is_score_usable_for_depth(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
@@ -148,11 +144,11 @@ pub const TranspositionTable = struct {
 
     /// Only store the raw static eval.
     pub fn store_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
-        self.store(.none, key, 0, 0, .empty, no_score, false, raw_static_eval);
+        self.store(.none, key, 0, 0, .empty, no_score, raw_static_eval);
     }
 
     /// Store the search score and the raw static eval, if any.
-    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, pv: bool, raw_static_eval: Value) void {
+    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, raw_static_eval: Value) void {
 
         if (lib.bughunt) {
             verify_args(depth, score, raw_static_eval);
@@ -187,7 +183,6 @@ pub const TranspositionTable = struct {
         entry.depth = @intCast(depth);
         entry.move = move;
         entry.score = if (score != no_score) @intCast(get_adjusted_score_for_tt_store(score, ply)) else no_score;
-        entry.was_pv = pv;
         entry.raw_static_eval = @intCast(raw_static_eval);
     }
 

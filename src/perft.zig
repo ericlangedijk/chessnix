@@ -60,14 +60,14 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     pos.generate_all_moves(us, &storage);
     const moves = storage.slice();
 
-    for (moves) |m| {
+    for (moves) |ex| {
         if (is_root and depth <= 1) {
             count = 1;
             nodes += 1;
         }
         else {
             var next_pos: Position = pos.*;
-            next_pos.do_move(us, m);
+            next_pos.do_move(us, ex);
             if (is_leaf) {
                 var counter: JustCount = .init();
                 next_pos.generate_all_moves(them, &counter); // just count
@@ -81,7 +81,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
         }
 
         if (output and is_root) {
-            m.print_buffered(pos.is_960);
+            ex.move.print_buffered(pos.is_960);
             io.print_buffered(": {}\n", .{ count });
             io.flush();
         }

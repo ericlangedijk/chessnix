@@ -30,12 +30,11 @@ pub fn run_silent_debugmode_tests() !void {
 
     const perfts: usize = try run_perfts(3);
     const perfts_960: usize = try run_perfts_960(3);
-    const flips: usize = 0; // try test_flip();
-    const evals: usize = 0; // try test_eval();
-    const evals_file: usize = 0;//try test_eval_file();
-
+    const flips: usize = try test_flip();
     const time = timer.read();
-    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, evals = {}, evals_file {}, (time {D})\n", .{ perfts, perfts_960, flips, evals, evals_file, time });
+    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, (time {D})\n", .{ perfts, perfts_960, flips, time });
+
+    // _ = try test_flipped_eval();
 }
 
 pub const Error = error {
@@ -138,10 +137,13 @@ fn test_flip() !usize {
 
     for (testpositions, 0..) |str, index| {
         try pos.set(str, false);
+        //lib.io.debugprint("{f}\n", .{pos});
+        // pos.draw();
+        // funcs.print_bitboard(pos.pins_diagonal);
         mirrored = pos;
         mirrored.flip();
         mirrored.flip();
-        if (!mirrored.equals(&pos, true)) {
+        if (!mirrored.equals(&pos)) {
             return catch_error (
                 Error.FlipError,
                 \\testposition #{}
@@ -151,49 +153,13 @@ fn test_flip() !usize {
             );
         }
         done += 1;
+        //break;
     }
+
     return done;
 }
 
-/// When optimizing hce evaluation, make sure the evals stay the same as we stored them earlier.
-pub fn test_eval_file() !usize {
-    lib.not_in_release();
-
-    var reader: utils.TextFileReader = try .init("C:\\Data\\zig\\chessnix\\notes\\evals2.txt", ctx.galloc, 256);
-    defer reader.deinit();
-    var pos: Position = .empty;
-    //var flipped_pos: Position = .empty;
-    var done: usize = 0;
-    while (try reader.readline()) |line| {
-        try pos.set(line, false);
-        var tokenizer = std.mem.tokenizeScalar(u8, line, ',');
-        _ = tokenizer.next(); // fen
-        const eval_str = tokenizer.next() orelse @panic("wrong input for eval fen");
-        const stored_eval: i32 = try std.fmt.parseInt(i32, eval_str, 10);
-        var ev: hce.Evaluator = .init();
-        const eval: types.Value = ev.evaluate(&pos);
-        if (eval != stored_eval) {
-            return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
-        }
-        // TODO CHECK OUT.
-        // flipped_pos = pos;
-        // flipped_pos.flip();
-        // const eval_flipped = ev.evaluate(&flipped_pos, null, null);
-        // if (eval_flipped != eval) {
-        //     pos.draw();
-        //     flipped_pos.draw();
-        //     var e = hce.Evaluator.init();
-        //     _ = e.evaluate(&pos, null, null);
-        //     _ = e.evaluate(&flipped_pos, null, null);
-        //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });
-        // }
-
-        done += 1;
-    }
-    return done;
-}
-
-pub fn test_eval() !usize {
+pub fn test_flipped_eval() !usize {
     lib.not_in_release();
 
     var pos: Position = .empty;
@@ -204,29 +170,10 @@ pub fn test_eval() !usize {
     for (testpositions) |str| {
         try pos.set(str, false);
         var ev: hce.Evaluator = .init();
-        const eval1: types.Value = ev.evaluate(&pos, null);
-        // if (eval != stored_eval) {
-        //     return catch_error(Error.EvalError, "eval mismatch at line nr = {}, stored = {}, eval = {}", .{ done + 1, stored_eval, eval });
-        // }
-        flipped_pos = pos;
-        flipped_pos.flip();
-        const eval2: types.Value = ev.evaluate(&flipped_pos, null);
-
+        const eval1: types.Value = ev.evaluate(&pos);
+        flipped_pos = pos.flipped();
+        const eval2: types.Value = ev.evaluate(&flipped_pos);
         io.debugprint("{} ==? {}\n", .{ eval1, eval2 });
-
-        // TODO CHECK OUT.
-        // flipped_pos = pos;
-        // flipped_pos.flip();
-        // const eval_flipped = ev.evaluate(&flipped_pos, null, null);
-        // if (eval_flipped != eval) {
-        //     pos.draw();
-        //     flipped_pos.draw();
-        //     var e = hce.Evaluator.init();
-        //     _ = e.evaluate(&pos, null, null);
-        //     _ = e.evaluate(&flipped_pos, null, null);
-        //     return catch_error(Error.EvalError, "eval flipped mismatch at line nr = {}, stored = {}, eval = {}, eval flipped = {}", .{ done + 1, stored_eval, eval, eval_flipped });
-        // }
-
         done += 1;
     }
     return done;
@@ -314,9 +261,9 @@ fn index_of(slice: []const u8, value:u8) ?usize {
 
 pub const testpositions: [134][]const u8 = .{
 
+    "8/1PP5/2k5/8/8/8/4Kpp1/7Q b - - 0 1 ;D1 16", // pinned promotion pawn
     "3b4/2R5/1KQ4r/1RB5/8/8/8/1r2k1q1 w - - 0 1 ;D1 17", // general piece pin check
     "6K1/8/8/1PpP4/8/k7/b7/8 w - c6 0 1 ;D1 7", // ep capture pin check
-    "8/1PP5/2k5/8/8/8/4Kpp1/7Q b - - 0 1 ;D1 16", // pinned promotion pawn
 
     // Standard tests.
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324", // classical start pos

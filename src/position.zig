@@ -13,7 +13,7 @@ const ctx = lib.ctx;
 const io = lib.io;
 const wtf = lib.wtf;
 const popcnt = funcs.popcnt;
-const pop_square = funcs.pop_square;
+//const pop_square = funcs.pop_square;
 const pawns_shift = funcs.pawns_shift;
 const pawn_from = funcs.pawn_from;
 const bitloop = funcs.bitloop;
@@ -26,6 +26,7 @@ const PieceType = types.PieceType;
 const Piece = types.Piece;
 const Square = types.Square;
 const Move = types.Move;
+const ExtMove = types.ExtMove;
 const CastleType = types.CastleType;
 const GamePhase = types.GamePhase;
 
@@ -67,9 +68,23 @@ pub const rook_castle_destination_squares: [2][2]Square = .{ .{ .F1, .D1 }, .{ .
 /// Hard constant. Indexing [color][castletype].
 pub const castle_flags: [2][2]u4 = .{ .{ cf_white_short, cf_white_long }, .{ cf_black_short, cf_black_long } };
 
+/// Not used, but we keep it around.
+pub const Threats = struct {
+    by_pawns: u64 = 0,
+    by_knights: u64 = 0,
+    by_bishops: u64 = 0,
+    by_rooks: u64 = 0,
+    by_queens: u64 = 0,
+    by_king: u64 = 0,
+
+    pub const empty: Threats = .{};
+};
+
 pub const Position = struct {
     pub const empty: Position = .init_empty();
-    pub const empty_classic: Position = .init_empty_classic();
+
+    /// We must use `set_startpos()` to fill in the hashkeys.
+    const empty_classic: Position = .init_empty_classic();
 
     /// The initial layout, supporting Chess960.
     layout: *const Layout,
@@ -97,8 +112,6 @@ pub const Position = struct {
     ep_square: Square,
     /// Bitflags for castlingrights: cf_white_short, cf_white_long, cf_black_short, cf_black_long.
     castling_rights: u4,
-    // Bit 0: white has castled, Bit 1: black has castled.
-    //has_castled: [2] bool,
     /// The position hashkey.
     key: u64,
     /// The hashkey of all pawns. Used for correction history.
@@ -131,7 +144,6 @@ pub const Position = struct {
             .rule50 = 0,
             .ep_square = Square.zero,
             .castling_rights = 0,
-            //.has_castled = .{ false, false },
             .key = 0,
             .pawnkey = 0,
             .nonpawnkeys = @splat(0),
@@ -166,7 +178,6 @@ pub const Position = struct {
             .rule50 = 0,
             .ep_square = Square.zero,
             .castling_rights = 0b1111,
-            //.has_castled = .{ false, false },
             .key = 0,
             .pawnkey = 0,
             .nonpawnkeys = @splat(0),
@@ -174,14 +185,6 @@ pub const Position = struct {
             .checkmask = 0,
             .pins_diagonal = 0,
             .pins_orthogonal = 0,
-            // .threats = .{
-            //     b.bb_rank_7, // black pawn
-            //     b.bb_a6 | b.bb_c6 | b.bb_f6 | b.bb_h6, // black knights
-            //     b.bb_b7 | b.bb_d7 | b.bb_e7 | b.bb_g7, // black bishops
-            //     b.bb_a7 | b.bb_b8 | b.bb_h7 | b.bb_g8, // black rooks
-            //     b.bb_c8 | b.bb_e8 | b.bb_c7 | b.bb_d7 | b.bb_e7, // black queen
-            //     b.bb_d8 | b.bb_f8 | b.bb_d7 | b.bb_e7 | b.bb_f7, // black king
-            // },
             .is_960 = false,
         };
     }
@@ -306,6 +309,7 @@ pub const Position = struct {
         }
     }
 
+    /// Compute and get the layout depending on castlingrights and king + rook positions.
     fn select_layout(self: *Position) void {
         if (self.castling_rights == 0) {
             self.layout = empty_layout;
@@ -359,8 +363,8 @@ pub const Position = struct {
 
     /// Parses a uci-move.
     /// - Used after a uci "position" command.
-    /// - During a game the time needed for this is not included in the movetime. Timeing only is active after the "go" command.
-    pub fn parse_move(self: *const Position, str: []const u8) types.ParsingError!Move {
+    /// - During a game the time needed for this is not included in the movetime. Timer is only active after the "go" command.
+    pub fn parse_move(self: *const Position, str: []const u8) types.ParsingError!ExtMove {
         if (str.len < 4 or str.len > 5) {
             return types.ParsingError.IllegalMove;
         }
@@ -373,6 +377,7 @@ pub const Position = struct {
         // No promotion.
         if (str.len == 4) {
             // Castling. We only need to change target square if classic. In that case uci is different from our internal encoding.
+            // In chess960 the uci encoding is the same as ours: king takes rook.
             if (!self.is_960) {
                 if (from.u == self.layout.king_start_squares[us.u].u and self.board[from.u].e == Piece.create(PieceType.KING, us).e) {
                     if (to.e == Square.G1.e or to.e == Square.G8.e) {
@@ -398,7 +403,7 @@ pub const Position = struct {
         var finder: MoveFinder = .init(from, to, prom_flags);
         self.lazy_generate_all_moves(&finder);
         if (finder.found()) {
-            return finder.move; // return the exact move found.
+            return finder.extmove; // return the exact move found.
         }
         return types.ParsingError.IllegalMove;
     }
@@ -409,24 +414,36 @@ pub const Position = struct {
         self.init_hash();
     }
 
-    /// Flips the board.
-    /// TODO: still bugged.
+    /// Flips the board inplace.
     pub fn flip(self: *Position) void {
-        // NOTE: phase does not change with flipping.
-        // TODO: does not work for chess960 because of layout.
+        // Backup stuff
         const bk: [64]Piece = self.board;
-        self.board = @splat(Piece.NO_PIECE);
         var bb = self.all();
+
+        // Clear stuff
+        self.board = @splat(Piece.NO_PIECE);
+        self.bitboards_by_type = @splat(0);
+        self.bitboards_by_color = @splat(0);
+        self.bitboard_all = 0;
+
+        // Local hash keys.
         var key: u64 = 0;
         var pawnkey: u64 = 0;
         var white_nonpawnkey: u64 = 0;
         var black_nonpawnkey: u64 = 0;
 
+        // Put flipped pieces on flipped squares.
         while (bitloop(&bb)) |sq| {
             const pc: Piece = bk[sq.u];
             const new_sq: Square = sq.flipped();
             const new_pc: Piece = pc.opp();
+            const bb_new_sq: u64 = new_sq.to_bitboard();
+
             self.board[new_sq.u] = new_pc;
+            self.bitboards_by_type[new_pc.piecetype().u] |= bb_new_sq;
+            self.bitboards_by_color[new_pc.color().u] |= bb_new_sq;
+            self.bitboard_all |= bb_new_sq;
+
             const hash_delta: u64 = zobrist.piece_square(new_pc, new_sq);
             key ^= hash_delta;
             if (new_pc.is_pawn()) {
@@ -442,21 +459,13 @@ pub const Position = struct {
             }
         }
 
-        inline for (&self.bitboards_by_type) |*b| {
-            b.* = funcs.mirror_vertically(b.*);
-        }
-        inline for (&self.bitboards_by_color) |*b| {
-            b.* = funcs.mirror_vertically(b.*);
-        }
-
-        self.bitboard_all = funcs.mirror_vertically(self.bitboard_all);
-
+        // Update state just by mirroring the bitboards.
         self.checkers = funcs.mirror_vertically(self.checkers);
         self.checkmask = funcs.mirror_vertically(self.checkmask);
         self.pins_diagonal = funcs.mirror_vertically(self.pins_diagonal);
         self.pins_orthogonal = funcs.mirror_vertically(self.pins_orthogonal);
-        self.pins = funcs.mirror_vertically(self.pins);
 
+        // Complete the hashkeys for stm, castling and ep.
         self.stm = self.stm.opp();
         if (self.stm.e == .black) {
             key ^= zobrist.btm();
@@ -474,9 +483,20 @@ pub const Position = struct {
         self.pawnkey = pawnkey;
         self.nonpawnkeys = .{ white_nonpawnkey, black_nonpawnkey };
 
-        //self.lazy_update_state();
+        if (self.is_960) {
+            self.select_layout();
+        }
 
-        if (comptime lib.is_paranoid) assert(self.pos_ok());
+        if (comptime lib.is_paranoid) {
+            assert(self.pos_ok());
+        }
+    }
+
+    /// Returns a flipped position.
+    pub fn flipped(self: *const Position) Position {
+        var pos: Position = self.*;
+        pos.flip();
+        return pos;
     }
 
     fn init_hash(self: *Position) void {
@@ -615,15 +635,9 @@ pub const Position = struct {
         return self.pins_diagonal | self.pins_orthogonal;
     }
 
-    // /// Returns a bitboard of all pinned pieces (stm only).
-    // pub fn all_pins(self: *const Position) u64 {
-    //     return self.pins_diagonal | self.pins_orthogonal;
-    // }
-
-    /// TODO: strange case: many 1 colored bishops against 1 king is draw.
     pub fn is_draw_by_insufficient_material(self: *const Position) bool {
-        const us: Color = Color.WHITE;//self.stm;
-        const them: Color = Color.BLACK; //us.opp();
+        const us: Color = Color.WHITE;
+        const them: Color = Color.BLACK;
 
         // Queens rooks or pawns: no draw
         if (self.all_queens_rooks() | self.all_pawns() != 0) {
@@ -662,6 +676,8 @@ pub const Position = struct {
             const same_color = ((our_bishops & bitboards.bb_black_squares) == 0) == ((their_bishops & bitboards.bb_black_squares) == 0);
             if (same_color) return true;
         }
+
+        // TODO: strange case: many 1 colored bishops against 1 king is draw.
 
         return false;
     }
@@ -753,20 +769,23 @@ pub const Position = struct {
     }
 
     /// Makes the move on the board.`us` is comptime for performance reasons and must be the `stm`.
-    pub fn do_move(self: *Position, comptime us: Color, m: Move) void {
+    pub fn do_move(self: *Position, comptime us: Color, ex: ExtMove) void {
         if (comptime lib.is_paranoid) {
             assert(us.e == self.stm.e);
             assert(self.pos_ok());
         }
 
         const them: Color = comptime us.opp();
-        const from: Square = m.from;
-        const to: Square = m.to;
-        const pc: Piece = self.board[from.u];
+        const from: Square = ex.move.from;
+        const to: Square = ex.move.to;
+        const pc: Piece = ex.piece;
+
+
+        // const capt: Piece = ex.captured;
         const key_delta = zobrist.piece_square(pc, from) ^ zobrist.piece_square(pc, to);
 
         // Local keys for updating.
-        // Clear ep by default. Note that the zobrist for square a1 is 0 so this xor is safe.
+        // Clear ep by default. Note that the zobrist for square a1 (invalid ep) is 0 so this xor is safe.
         var key: u64 = self.key ^ zobrist.btm() ^ zobrist.enpassant(self.ep_square);
         var pawnkey: u64 = self.pawnkey;
         var nonpawnkeys: [2]u64 = self.nonpawnkeys;
@@ -789,7 +808,7 @@ pub const Position = struct {
         }
 
         // Switch is in numerical order.
-        sw: switch (m.flags) {
+        sw: switch (ex.move.flags) {
             Move.silent => {
                 self.move_piece(us, pc, from, to);
                 key ^= key_delta;
@@ -816,7 +835,6 @@ pub const Position = struct {
             },
             Move.castle_short => {
                 self.rule50 += 1;
-                //self.has_castled[us.u] = true;
                 const king: Piece = comptime Piece.create(PieceType.KING, us);
                 const rook: Piece = comptime Piece.create(PieceType.ROOK, us);
                 const king_to: Square = comptime king_castle_destination_squares[us.u][CastleType.SHORT.u];
@@ -837,7 +855,6 @@ pub const Position = struct {
             },
             Move.castle_long => {
                 self.rule50 += 1;
-                //self.has_castled[us.u] = true;
                 const king: Piece = comptime Piece.create(PieceType.KING, us);
                 const rook: Piece = comptime Piece.create(PieceType.ROOK, us);
                 const king_to: Square = comptime king_castle_destination_squares[us.u][CastleType.LONG.u];
@@ -897,8 +914,9 @@ pub const Position = struct {
                 nonpawnkeys[us.u] ^= zobrist.piece_square(prom, to);
             },
             Move.capture => {
+                const capt: Piece = ex.captured;
                 self.rule50 = 0;
-                const capt: Piece = self.board[to.u];
+
                 self.remove_piece(them, capt, to);
                 self.move_piece(us, pc, from, to);
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
@@ -931,7 +949,7 @@ pub const Position = struct {
                 pawnkey ^= zobrist.piece_square(pawn_us, from) ^ zobrist.piece_square(pawn_us, to) ^ zobrist.piece_square(pawn_them, capt_sq);
             },
             Move.knight_promotion_capture => {
-                const capt: Piece = self.board[to.u];
+                const capt: Piece = ex.captured;
                 self.remove_piece(them, capt, to);
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
@@ -939,7 +957,7 @@ pub const Position = struct {
                 continue :sw Move.knight_promotion;
             },
             Move.bishop_promotion_capture => {
-                const capt: Piece = self.board[to.u];
+                const capt: Piece = ex.captured;
                 self.remove_piece(them, capt, to);
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
@@ -947,7 +965,7 @@ pub const Position = struct {
                 continue :sw Move.bishop_promotion;
             },
             Move.rook_promotion_capture => {
-                const capt: Piece = self.board[to.u];
+                const capt: Piece = ex.captured;
                 self.remove_piece(them, capt, to);
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
@@ -955,7 +973,7 @@ pub const Position = struct {
                 continue :sw Move.rook_promotion;
             },
             Move.queen_promotion_capture => {
-                const capt: Piece = self.board[to.u];
+                const capt: Piece = ex.captured;
                 self.remove_piece(them, capt, to);
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
@@ -1032,38 +1050,102 @@ pub const Position = struct {
         }
         self.checkers = self.checkmask & bb_all;
 
-        // #discarded for now
-        // // Threats by them.
-        // self.threats = @splat(0);
-        // self.threats[PieceType.PAWN.u] = funcs.pawns_shift(self.pawns(them), them, .northwest) | funcs.pawns_shift(self.pawns(them), them, .northwest);
-
-        // var bb: u64 = self.knights(them);
-        // while (bitloop(&bb))|sq| {
-        //     self.threats[PieceType.KNIGHT.u] |= attacks.get_knight_attacks(sq);
-        // }
-
-        // bb = self.bishops(them);
-        // while (bitloop(&bb))|sq| {
-        //     self.threats[PieceType.BISHOP.u] |= attacks.get_bishop_attacks(sq, bb_all);
-        // }
-
-        // bb = self.rooks(them);
-        // while (bitloop(&bb))|sq| {
-        //     self.threats[PieceType.ROOK.u] |= attacks.get_rook_attacks(sq, bb_all);
-        // }
-
-        // bb = self.queens(them);
-        // while (bitloop(&bb))|sq| {
-        //     self.threats[PieceType.QUEEN.u] |= attacks.get_queen_attacks(sq, bb_all);
-        // }
-
-        // self.threats[PieceType.KING.u] = attacks.get_king_attacks(self.king_square(them));
     }
 
-    pub fn lazy_do_move(self: *Position, move: Move) void {
+    // fn update_state_for_both_pins(self: *Position, comptime us: Color) void {
+    //     const them: Color = comptime us.opp();
+    //     const bb_all: u64 = self.all();
+    //     const bb_us: u64 = self.by_color(us);
+
+    //     self.pins_orthogonal = @splat(0);
+    //     self.pins_diagonal = @splat(0);
+
+    //     self.checkmask =
+    //         (attacks.get_pawn_attacks(self.king_square(us), us) & self.pawns(them)) |
+    //         (attacks.get_knight_attacks(self.king_square(us)) & self.knights(them));
+
+    //     const our_king_sq: Square = self.king_square(us);
+    //     const bb_occ_without_us: u64 = bb_all ^ self.by_color(us);
+    //     var candidate_slider_attackers: u64 =
+    //         (attacks.get_bishop_attacks(our_king_sq, bb_occ_without_us) & self.queens_bishops(them)) |
+    //         (attacks.get_rook_attacks(our_king_sq, bb_occ_without_us) & self.queens_rooks(them));
+
+    //     // Our pins and their checks.
+    //     while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
+    //         const pair: *const bitboards.SquarePair = bitboards.get_squarepair(our_king_sq, attacker_sq);
+    //         const bb_ray: u64 = pair.ray & bb_us;
+    //         // We have a slider checker when there is nothing in between.
+    //         if (bb_ray == 0) {
+    //             self.checkmask |= pair.ray;
+    //         }
+    //         // We have a pin when exactly 1 bit is set. There is one piece in between.
+    //         else if (bb_ray & (bb_ray - 1) == 0) {
+    //             switch (pair.axis) {
+    //                 .orth => self.pins_orthogonal[us.u] |= pair.ray,
+    //                 .diag => self.pins_diagonal[us.u] |= pair.ray,
+    //                 else => unreachable,
+    //             }
+    //         }
+    //     }
+    //     self.checkers = self.checkmask & bb_all;
+
+    //     // Their pins.
+    //     const their_king_sq: Square = self.king_square(them);
+    //     const bb_occ_without_them: u64 = bb_all ^ self.by_color(them);
+    //     candidate_slider_attackers =
+    //         (attacks.get_bishop_attacks(their_king_sq, bb_occ_without_them) & self.queens_bishops(us)) |
+    //         (attacks.get_rook_attacks(their_king_sq, bb_occ_without_them) & self.queens_rooks(us));
+
+    //     while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
+    //         const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
+    //         const bb_ray: u64 = pair.ray & bb_us;
+    //         assert(bb_ray != 0); // This should never happen.
+    //         if (bb_ray & (bb_ray - 1) == 0) {
+    //             switch (pair.axis) {
+    //                 .orth => self.pins_orthogonal[them.u] |= pair.ray,
+    //                 .diag => self.pins_diagonal[them.u] |= pair.ray,
+    //                 else => unreachable,
+    //             }
+    //         }
+    //     }
+    // }
+
+    /// Not used, but we keep it around.
+    pub fn get_threats(self: *const Position, comptime attacker: Color) Threats {
+        const bb_all = self.all();
+        var threats: Threats = .empty;
+
+        threats.by_pawns = funcs.pawns_shift(self.pawns(attacker), attacker, .northwest) | funcs.pawns_shift(self.pawns(attacker), attacker, .northwest);
+
+        var bb: u64 = self.knights(attacker);
+        while (bitloop(&bb))|sq| {
+            threats.by_knights |= attacks.get_knight_attacks(sq);
+        }
+
+        bb = self.bishops(attacker);
+        while (bitloop(&bb))|sq| {
+            threats.by_bishops |= attacks.get_bishop_attacks(sq, bb_all);
+        }
+
+        bb = self.rooks(attacker);
+        while (bitloop(&bb))|sq| {
+            threats.by_rooks |= attacks.get_rook_attacks(sq, bb_all);
+        }
+
+        bb = self.queens(attacker);
+        while (bitloop(&bb))|sq| {
+            threats.by_queens |= attacks.get_queen_attacks(sq, bb_all);
+        }
+
+        threats.by_king = attacks.get_king_attacks(self.king_square(attacker));
+
+        return threats;
+    }
+
+    pub fn lazy_do_move(self: *Position, ex: ExtMove) void {
         switch (self.stm.e) {
-            .white => self.do_move(Color.WHITE, move),
-            .black => self.do_move(Color.BLACK, move),
+            .white => self.do_move(Color.WHITE, ex),
+            .black => self.do_move(Color.BLACK, ex),
         }
     }
 
@@ -1220,7 +1302,8 @@ pub const Position = struct {
     fn gen(self: *const Position, comptime flags: u4, storage: anytype) void {
 
         // Comptimes
-        const us: Color = comptime Color.from_bool(flags & gf_black != 0);
+        //const us: Color = comptime Color.from_bool(flags & gf_black != 0);
+        const us: Color = comptime if (flags & gf_black != 0) Color.BLACK else Color.WHITE;
         const them = comptime us.opp();
         const check: bool = comptime flags & gf_check != 0;
         const noisy: bool = comptime flags & gf_noisy != 0;
@@ -1233,7 +1316,7 @@ pub const Position = struct {
         }
 
         // In fact we do not need the reset function, because we always use the storage only once.
-        // However: when not using it, move generation is much slower! Some unknown magical compiler optimization?
+        // However: when not using reset, move generation is much much slower! Some unknown magical compiler optimization?
         storage.reset();
 
         const doublecheck: bool = check and popcnt(self.checkers) > 1;
@@ -1295,43 +1378,43 @@ pub const Position = struct {
                     // Single push normal.
                     bb = bb_single & ~last_rank;
                     while (bitloop(&bb)) |to| {
-                        store(pawn_from(to, us, .up), to, Move.silent, storage) orelse return;
+                        store(pawn_from(to, us, .up), to, Move.silent, Piece.create(PieceType.PAWN, us), Piece.NO_PIECE, storage) orelse return;
                     }
                     // Double push.
                     bb = bb_double;
                     while (bitloop(&bb)) |to| {
-                        store(if (us.e == .white) to.sub(16) else to.add(16), to, Move.double_push, storage) orelse return;
+                        store(if (us.e == .white) to.sub(16) else to.add(16), to, Move.double_push, Piece.create(PieceType.PAWN, us), Piece.NO_PIECE, storage) orelse return;
                     }
                 }
 
                 // left capture promotions.
                 bb = bb_northwest & last_rank;
                 while (bitloop(&bb)) |to| {
-                    store_promotions(do_all_promotions, pawn_from(to, us, .northwest), to, true, storage) orelse return;
+                    self.store_promotions(us, do_all_promotions, true, pawn_from(to, us, .northwest), to, storage) orelse return;
                 }
 
                 // right capture promotions.
                 bb = bb_northeast & last_rank;
                 while (bitloop(&bb)) |to| {
-                    store_promotions(do_all_promotions, pawn_from(to, us, .northeast), to, true, storage) orelse return;
+                    self.store_promotions(us, do_all_promotions, true, pawn_from(to, us, .northeast), to, storage) orelse return;
                 }
 
                 // push promotions.
                 bb = bb_single & last_rank;
                 while (bitloop(&bb)) |to| {
-                    store_promotions(do_all_promotions, pawn_from(to, us, .up), to, false, storage) orelse return;
+                    self.store_promotions(us, do_all_promotions, false, pawn_from(to, us, .up), to, storage) orelse return;
                 }
 
                 // left normal captures.
                 bb =  bb_northwest & ~last_rank;
                 while (bitloop(&bb)) |to| {
-                    store(pawn_from(to, us, .northwest), to, Move.capture, storage) orelse return;
+                    store(pawn_from(to, us, .northwest), to, Move.capture, comptime Piece.create(PieceType.PAWN, us), self.board[to.u], storage) orelse return;
                 }
 
                 // right normal captures.
                 bb = bb_northeast & ~last_rank;
                 while (bitloop(&bb)) |to| {
-                    store(pawn_from(to, us, .northeast), to, Move.capture, storage) orelse return;
+                    store(pawn_from(to, us, .northeast), to, Move.capture, comptime Piece.create(PieceType.PAWN, us), self.board[to.u], storage) orelse return;
                 }
 
                 const ep: Square = self.ep_square;
@@ -1340,7 +1423,7 @@ pub const Position = struct {
                     bb = attacks.get_pawn_attacks(ep, them) & our_pawns; // inversion trick.
                     while (bitloop(&bb)) |from| {
                         if (self.is_legal_enpassant(us, king_sq, from, ep)) {
-                            store(from, ep, Move.ep, storage) orelse return;
+                            store(from, ep, Move.ep, comptime Piece.create(PieceType.PAWN, us), comptime Piece.create(PieceType.PAWN, them), storage) orelse return;
                         }
                     }
                 }
@@ -1400,7 +1483,7 @@ pub const Position = struct {
             // Normal.
             while (bitloop(&bb)) |to| {
                 const flag: u4 = if (self.board[to.u].e == .no_piece) Move.silent else Move.capture;
-                store(king_sq, to, flag, storage) orelse return;
+                store(king_sq, to, flag, Piece.create(PieceType.KING, us), self.board[to.u], storage) orelse return;
             }
             // Castling.
             if (!check and !noisy) {
@@ -1408,7 +1491,7 @@ pub const Position = struct {
                     if (self.is_castling_allowed(us, ct) and self.is_castlingpath_empty(us, ct) and self.is_legal_castle(us, ct, bb_unsafe)) {
                         const castle_flag: u4 = comptime if (ct.e == .short) Move.castle_short else Move.castle_long;
                         const to = self.layout.rook_start_squares[us.u][ct.u]; // king takes rook.
-                        store(king_sq, to, castle_flag, storage) orelse return;
+                        store(king_sq, to, castle_flag, Piece.create(PieceType.KING, us), Piece.NO_PIECE, storage) orelse return;
                     }
                 }
             }
@@ -1419,7 +1502,7 @@ pub const Position = struct {
             while (bitloop(&bb)) |to| {
                 const flag: u4 = if (self.board[to.u].e == .no_piece) Move.silent else Move.capture;
                 if (self.is_legal_kingmove(us, bb_without_king, to)) {
-                    store(king_sq, to, flag, storage) orelse return;
+                    store(king_sq, to, flag, Piece.create(PieceType.KING, us), self.board[to.u], storage) orelse return;
                 }
             }
             // Castling.
@@ -1428,76 +1511,46 @@ pub const Position = struct {
                     if (self.is_castling_allowed(us, ct) and self.is_castlingpath_empty(us, ct) and self.is_legal_castle_check_attacks(us, ct)) {
                         const castle_flag: u4 = comptime if (ct.e == .short) Move.castle_short else Move.castle_long;
                         const to = self.layout.rook_start_squares[us.u][ct.u]; // king takes rook.
-                        store(king_sq, to, castle_flag, storage) orelse return;
+                        store(king_sq, to, castle_flag, Piece.create(PieceType.KING, us), Piece.NO_PIECE, storage) orelse return;
                     }
                 }
             }
         }
     }
 
-    // fn gen_one(self: *const Position, comptime flags: u4, from_sq: Square, to_sq: Square, prom_flags: u4) ?Move {
-
-    //     const us: Color = comptime Color.from_bool(flags & gf_black != 0);
-    //     const them = comptime us.opp();
-    //     const check: bool = comptime flags & gf_check != 0;
-    //     const has_pins: bool = comptime flags & gf_pins != 0;
-    //     const doublecheck: bool = check and @popCount(self.checkers) > 1;
-    //     const bb_from: u64 = from_sq.to_bitboard();
-    //     const bb_to: u64 = to_sq.to_bitboard();
-    //     const relative_rank: u3 = from_sq.relative(us).rank();
-
-    //     const piece: Piece = self.board[from_sq.u];
-    //     if (piece.is_empty()) {
-    //         return null;
-    //     }
-    //     const piecetype: PieceType = piece.piecetype();
-
-    //     // if (prom_flags != 0 and relative_rank != 6) {
-    //     //     return null;
-    //     // }
-
-    //     if (!doublecheck) {
-    //         switch (piecetype.e) {
-    //             .pawn => {
-    //                 //const our_pawns: u64 = bb_from;
-    //                 if (prom_flags == 0) {
-    //                     // double push
-    //                     if (relative_rank == bitboards.rank_2 and from_sq ^ to_sq == 16) {
-    //                         const square_in_front: Square = if (us.e == .white) from_sq.add(8) else from_sq.sub(8);
-    //                         if (self.board[square_in_front.u].is_piece()) {
-    //                             return null;
-    //                         }
-    //                         // if (from_sq.add(d: u6))
-
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     return null;
-    // }
-
+    /// For knights and sliders.
     fn store_many(self: *const Position, from: Square, bb_to: u64, storage: anytype) ?void {
+        const piece: Piece = self.board[from.u];
         var bb: u64 = bb_to;
         while (bitloop(&bb)) |to| {
-            const flag: u4 = if (self.board[to.u].e == .no_piece) Move.silent else Move.capture;
-            store(from, to, flag, storage) orelse return null;
+            const captured: Piece = self.board[to.u];
+            const flag: u4 = if (captured.e == .no_piece) Move.silent else Move.capture;
+            store(from, to, flag, piece, captured, storage) orelse return null;
         }
     }
 
-    fn store(from: Square, to: Square, flags: u4, storage: anytype) ?void {
-        return storage.store(Move.create(from, to, flags));
-    }
+    /// Store all promotions or just queen (for quiescence).
+    fn store_promotions(self: *const Position, comptime us: Color, comptime do_all: bool, comptime is_capture: bool, from: Square, to: Square, storage: anytype) ?void {
+        const Q: u4 = if (is_capture) Move.queen_promotion_capture else Move.queen_promotion;
+        const R: u4 = if (is_capture) Move.rook_promotion_capture else Move.rook_promotion;
+        const B: u4 = if (is_capture) Move.bishop_promotion_capture else Move.bishop_promotion;
+        const N: u4 = if (is_capture) Move.knight_promotion_capture else Move.knight_promotion;
 
-    fn store_promotions(comptime do_all: bool, from: Square, to: Square, comptime is_capture: bool, storage: anytype) ?void {
-        const flags: u4 = if (is_capture) 0b1000 else 0b000;
-        storage.store(Move.create(from, to, flags | Move.queen_promotion)) orelse return null;
+        const piece: Piece = Piece.create(PieceType.PAWN, us);
+        const captured: Piece = if (is_capture) self.board[to.u] else Piece.NO_PIECE;
+
+        store(from, to, Q, piece, captured, storage) orelse return null;
+
         if (do_all) {
-            storage.store(Move.create(from, to, flags | Move.rook_promotion)) orelse return null;
-            storage.store(Move.create(from, to, flags | Move.bishop_promotion)) orelse return null;
-            storage.store(Move.create(from, to, flags | Move.knight_promotion)) orelse return null; // TODO: maybe default as second option.
+            store(from, to, R, piece, captured, storage) orelse return null;
+            store(from, to, B, piece, captured, storage) orelse return null;
+            store(from, to, N, piece, captured, storage) orelse return null;
         }
+    }
+
+    /// Store one move to the storage.
+    fn store(from: Square, to: Square, flags: u4, piece: Piece, captured: Piece, storage: anytype) ?void {
+        return storage.store(ExtMove.create(from, to, flags, piece, captured));
     }
 
     /// Tricky one. An ep move can uncover a check.
@@ -1541,12 +1594,12 @@ pub const Position = struct {
             return false;
         }
 
-        // TODO: do we have to check kings next to eachother?
-
         const wk: u8 = popcnt(self.kings(Color.WHITE));
         const bk: u8 = popcnt(self.kings(Color.BLACK));
 
-        if (wk + bk != 2) return false;
+        if (wk + bk != 2) {
+            return false;
+        }
 
         const wk_sq: Square = self.king_square(Color.WHITE);
         if (self.stm.e == .black and self.is_square_attacked_by(wk_sq, Color.BLACK)) {
@@ -1560,7 +1613,7 @@ pub const Position = struct {
         return true;
     }
 
-    /// ### Debug only.
+    /// Debug only.
     pub fn pos_ok(self: *const Position) bool {
         lib.not_in_release();
 
@@ -1614,15 +1667,16 @@ pub const Position = struct {
 
         // In check and not to move.
         const king_sq_white: Square = self.king_square(Color.WHITE);
+        const king_sq_black = self.king_square(Color.BLACK);
+
         if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.stm.e != .white) {
-            lib.io.debugprint("WHITE IN CHECK AND NOT TO MOVE\n", .{});
+            lib.io.debugprint("WHITE IN CHECK AND NOT TO MOVE white king_sq = {t} black king_sq = {t}\n", .{ king_sq_white.e, king_sq_black.e });
             self.draw();
             return false;
         }
 
-        const king_sq_black = self.king_square(Color.BLACK);
         if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.stm.e != .black) {
-            lib.io.debugprint("BLACK IN CHECK AND NOT TO MOVE\n", .{});
+            lib.io.debugprint("BLACK IN CHECK AND NOT TO MOVE white king_sq = {t} black king_sq = {t}\n", .{ king_sq_white.e, king_sq_black.e });
             self.draw();
             return false;
         }
@@ -1736,11 +1790,17 @@ pub const Position = struct {
         }
         io.print_buffered("\n", .{});
         io.flush();
+        // if (lib.is_debug) {
+        //     funcs.print_bitboard(self.checkers);
+        //     funcs.print_bitboard(self.checkmask);
+        //     funcs.print_bitboard(self.pins_diagonal);
+        //     funcs.print_bitboard(self.pins_orthogonal);
+        // }
     }
 
-    /// ### Debug only.
-    /// * If `check_moves` then we also check if the generated moves are the same.
-    pub fn equals(self: *const Position, other: *const Position, comptime check_moves: bool) bool {
+    /// Debug only.
+    /// - The function is quite inconvenient. Zig cannot compare unions by default.
+    pub fn equals(self: *const Position, other: *const Position) bool {
         lib.not_in_release();
 
         // Not directly binary comparable with Zig std.
@@ -1765,28 +1825,15 @@ pub const Position = struct {
             self.checkers == other.checkers and
             self.checkmask == other.checkmask and
             self.pins_diagonal == other.pins_diagonal and
-            self.pins_orthogonal == other.pins_orthogonal and
-            self.pins == other.pins;
+            self.pins_orthogonal == other.pins_orthogonal;
 
-        if (!eql) return false;
-
-        if (check_moves) {
-            var store1: MoveStorage = .init();
-            var store2: MoveStorage = .init();
-            self.lazy_generate_all_moves(&store1);
-            self.lazy_generate_all_moves(&store2);
-            const ok: bool = std.mem.eql(Move, store1.slice(), store2.slice());
-            return ok;
-        }
-        else {
-            return true;
-        }
+        return eql;
     }
 };
 
 /// Basic storage of moves.
 pub const MoveStorage = struct {
-    moves: [types.max_move_count]Move,
+    moves: [types.max_move_count]ExtMove,
     count: u8,
 
     pub fn init() MoveStorage {
@@ -1799,13 +1846,13 @@ pub const MoveStorage = struct {
     }
 
     /// Required function.
-    pub fn store(self: *MoveStorage, move: Move) ?void {
+    pub fn store(self: *MoveStorage, extmove: ExtMove) ?void {
         assert(self.count < 224);
-        self.moves[self.count] = move;
+        self.moves[self.count] = extmove;
         self.count += 1;
     }
 
-    pub fn slice(self: *const MoveStorage) []const Move {
+    pub fn slice(self: *const MoveStorage) []const ExtMove {
         return self.moves[0..self.count];
     }
 };
@@ -1823,7 +1870,7 @@ pub const JustCount = struct {
     }
 
     /// Required function.
-    pub fn store(self: *JustCount, _: Move) ?void {
+    pub fn store(self: *JustCount, _: ExtMove) ?void {
         self.moves += 1;
     }
 };
@@ -1841,31 +1888,11 @@ pub const Any = struct {
     }
 
     /// Required function.
-    pub fn store(self: *Any, _: Move) ?void {
+    pub fn store(self: *Any, _: ExtMove) ?void {
         self.has_moves = true;
         return null;
     }
 };
-
-// pub const First = struct {
-//     move: Move,
-
-//     pub fn init() First {
-//         return .{ .Move = .empty };
-//     }
-
-//     /// Required function.
-//     pub fn reset(self: *First) void {
-//         self.move = .empty;
-//     }
-
-//     /// Required function.
-//     pub fn store(self: *First, move: Move) ?void {
-//         self.move = move;
-//         return null;
-//     }
-// };
-
 
 pub const MoveFinder = struct {
     /// The required from square.
@@ -1875,27 +1902,27 @@ pub const MoveFinder = struct {
     /// The required promotion piece **without** capture flag.
     prom_flags: u4,
     /// The move, if found.
-    move: Move,
+    extmove: ExtMove,
 
     pub fn init(from: Square, to: Square, prom_flags: u4) MoveFinder {
-        return .{ .from = from, .to = to, .prom_flags = prom_flags, .move = .empty };
+        return .{ .from = from, .to = to, .prom_flags = prom_flags, .extmove = .empty };
     }
 
     /// Required function.
     pub fn reset(self: *MoveFinder) void {
-        self.move = .empty;
+        self.extmove = .empty;
     }
 
     /// Required function.
-    pub fn store(self: *MoveFinder, move: Move) ?void {
-        if (self.from.u == move.from.u and self.to.u == move.to.u and (self.prom_flags == 0 or self.prom_flags == move.flags & ~Move.capture)) {
-            self.move = move;
+    pub fn store(self: *MoveFinder, extmove: ExtMove) ?void {
+        if (self.from.u == extmove.move.from.u and self.to.u == extmove.move.to.u and (self.prom_flags == 0 or self.prom_flags == extmove.move.flags & ~Move.capture)) {
+            self.extmove = extmove;
             return null;
         }
     }
 
     pub fn found(self: *const MoveFinder) bool {
-        return !self.move.is_empty();
+        return !self.extmove.move.is_empty();
     }
 };
 

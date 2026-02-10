@@ -30,7 +30,8 @@ pub const pawn_phalanx_bonus: [8]ScorePair = .{
 
 /// By [rank].
 pub const passed_pawn_bonus: [8]ScorePair = .{
-    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
+    //pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
+    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 86), pair(0, 0),
 };
 
 /// By [rank].

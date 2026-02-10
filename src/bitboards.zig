@@ -358,7 +358,6 @@ fn compute_king_pawnstorm_areas_black() [64]u64 {
 pub const SquarePair = struct {
     /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
     ray: u64 = 0,
-
     // The bitboard of the squares in between the 2 squares.
     in_between: u64 = 0,
     /// The from-to direction.
@@ -373,9 +372,6 @@ pub const SquarePair = struct {
     const empty: SquarePair = .{};
 };
 
-//////////////////////////////////////////////////////////////
-// Funcs
-////////////////////////////////////////////////////////////////
 pub fn get_squarepair(from: Square, to: Square) *const SquarePair
 {
     const idx: usize = from.idx() * 64 + to.idx();

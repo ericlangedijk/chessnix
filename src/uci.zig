@@ -64,7 +64,7 @@ fn uci_loop() !void {
             try UCI.stop();
         }
         else if (eql(cmd, "quit")) {
-            try UCI.stop(); // TODO: engine still outputs bestmove.
+            try UCI.quit(); // TODO: engine still outputs bestmove.
             return;
         }
         else if (eql(cmd, "setoption")) {
@@ -91,6 +91,10 @@ fn uci_loop() !void {
             }
             else if (eql(cmd, "eval")) {
                 TTY.do_static_eval();
+            }
+            else if (eql(cmd, "kiwi")) {
+                try engine.set_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", null);
+                TTY.do_see(&tokenizer);
             }
             else if (eql(cmd, "see")) {
                 TTY.do_see(&tokenizer);
@@ -143,6 +147,10 @@ const UCI = struct {
     // A stop command must return bestmove.
     fn stop() !void {
         try engine.stop();
+    }
+
+    fn quit() !void {
+        try engine.quit();
     }
 
     /// Parse UCI command after "setoption".
@@ -301,7 +309,10 @@ const TTY = struct {
         io.print("{}\n", .{result});
     }
 
+    /// TODO: print lots of engine states here.
     fn print_state() void {
+
+
 
         // for (types.PieceType.all) |pt| {
         //     funcs.print_bitboard(engine.pos.threats[pt.u]);

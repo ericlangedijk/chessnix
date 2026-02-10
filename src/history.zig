@@ -18,10 +18,10 @@ const Color = types.Color;
 const Square = types.Square;
 const Piece = types.Piece;
 const Move = types.Move;
+const ExtMove = types.ExtMove;
 const Position = position.Position;
 const Searcher = search.Searcher;
 const Nodes = search.Nodes;
-const ExtMove = search.ExtMove;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
@@ -29,7 +29,9 @@ const hist_scale: SmallValue = 135;
 const hist_max_bonus: SmallValue = 1188;
 const hist_max_score: SmallValue = 15176;
 
-/// The 3 functions to handle default history bonus.
+const hist_calc = HistoryBonus(hist_scale, hist_max_bonus, hist_max_score);
+
+/// The 3 functions to handle history bonus.
 fn HistoryBonus(comptime scale: SmallValue, comptime max_bonus: SmallValue, comptime max_score: SmallValue) type {
     return struct {
         /// `depth * scale`.
@@ -49,8 +51,6 @@ fn HistoryBonus(comptime scale: SmallValue, comptime max_bonus: SmallValue, comp
         }
     };
 }
-
-const hist_calc = HistoryBonus(hist_scale, hist_max_bonus, hist_max_score);
 
 /// Container for all history heuristics.
 pub const History = struct {
@@ -72,11 +72,11 @@ pub const History = struct {
             self.continuation.verify_node(&nodes[ply]);
         }
 
-        if (ex.is_quiet) {
+        if (ex.move.is_quiet()) {
             self.quiet.update(depth, ex, bad_quiets);
             ContinuationHistory.update(depth, ex, ply, nodes, bad_quiets);
         }
-        else if (ex.is_capture) {
+        else if (ex.move.is_capture()) {
             self.capture.update(depth, ex);
         }
     }
@@ -99,7 +99,7 @@ pub const History = struct {
 /// Heuristics for quiet moves.
 pub const QuietHistory = struct {
 
-    /// Quiet move scores. Indexing: [piece][from-square][to-square]
+    /// Quiet move scores. Indexing: [piece][from][to]
     table: [12][64][64]SmallValue,
 
     fn update(self: *QuietHistory, depth: i32, ex: ExtMove, quiets: []const ExtMove) void {
@@ -125,10 +125,10 @@ pub const QuietHistory = struct {
     }
 };
 
-/// Hearistics for captures moves.
+/// Hearistics for capture moves.
 pub const CaptureHistory = struct {
 
-    /// Capture move scores. Indexing: [piece][to-square][captured-piecetype]
+    /// Capture move scores. Indexing: [piece][to][captured-piecetype]
     table: [12][64][6]SmallValue,
 
     pub fn update(self: *CaptureHistory, depth: i32, ex: ExtMove) void {
@@ -141,7 +141,7 @@ pub const CaptureHistory = struct {
 
     pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
         const bonus: SmallValue = hist_calc.get_bonus(depth);
-        // Decrease score of previous capture moves. These did not cause a beta cutoff.
+        // Decrease score of capture moves (that did not raise alpha).
         for (captures) |prev| {
             const p: *SmallValue = self.get_score_ptr(prev);
             hist_calc.apply_bonus(p, -bonus);
@@ -157,13 +157,13 @@ pub const CaptureHistory = struct {
     }
 };
 
-/// Heuristics for quiet continuations.
+/// Heuristics for quiet continuation moves.
 pub const ContinuationHistory = struct {
 
     /// The previous plies of which we update the score.
-    const depths_delta: [3]u16 = .{ 1, 2, 4 };
+    const depths_delta: [3]u16 = .{ 1, 2, 4 }; // #testing
 
-    /// Move pair scores. Indexing: [prevpiece][to-square][piece][to-square]
+    /// Move pair scores. Indexing: [prevpiece][to][piece][to]
     table: [12][64][12][64]SmallValue,
 
     /// The node's continuation_entry is used, so we do not need Self.
@@ -181,7 +181,7 @@ pub const ContinuationHistory = struct {
             }
         }
 
-        // Decrease score of the bad quiet moves. These did not cause a beta cutoff.
+        // Decrease score of the bad quiet moves (that did not cause a beta cutoff).
         for (bad_quiets) |bad| {
             inline for (depths_delta) |d| {
                 if (ply >= d) {
