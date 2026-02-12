@@ -1,7 +1,7 @@
 ### chessnix
 
 <br/>
-<p align="left">
+<p align="center">
 <img src="/src/img/logo.png" alt="logo" width=104 height=174/>
 </p>
 <br/>
