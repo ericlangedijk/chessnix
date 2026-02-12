@@ -26,7 +26,6 @@ Chessnix is a UCI chess engine.
 - Changed: History structure and calculations, especially continuation history.
 - Changed: Moved 'ply' from position to search.
 - Changed: Included a slight score correction during search using rule50.
-- Changed: No storing in transposition table when rule50 >= 60.
 - Changed: Bound logic when storing to TT. I think it is correct now.
 - Bug solved: Terrible LMR table accessing out of bounds value resulting in god knows what.
 - Bug solved: Node clearing (before enter search and on making nullmoves).
@@ -87,6 +86,7 @@ To be continued...
 - bench -> performs perft speedtests on 4 positions.
 - d -> draw the current position and some info.
 - quit -> stop the program.
+- cls -> clear the terminal.
 
 ### Thanks
 Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3) to get me started (from chessnix 2.0 onwards I will do my own tuning).
@@ -95,6 +95,10 @@ The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colos
 Some extra thanks to these people who made their engine support chess960.
 I also learned a lot from the source code of all these engines.
 Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Alexandria, Cwtch, Lambergar, Integral, PlentyChess, Stockfish and probably others).
+
+### The name
+I spent many years on Lemmix, the DOS Lemmings clone. So in my feeling the name had to end with "ix" as well.
+Later I found out a nix is a kind of water spirit. So then I added the queen water spirit logo.
 
 ### Noob
 I am a github noob and only use a main branch as a backup of the current state on my PC.

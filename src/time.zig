@@ -53,24 +53,21 @@ pub const TimeManager = struct {
         .max_depth = 0,
     };
 
+    const default_move_overhead: u64 = 20;
+
     pub fn set(self: *TimeManager, go: *const uci.Go, us: Color) void {
+        // TODO: recalculate to endtimes in nanoseconds. that saves conversions to ms and we can just use timer.read().
         self.* = .empty;
         self.timer = .start();
 
+        // Below 3 cases are time independant.
         if (go.infinite) {
             self.termination = .infinite;
             return;
         }
 
-        if (go.movetime > 0) {
-            self.termination = .movetime;
-            self.max_movetime = go.movetime;
-            return;
-        }
-
         if (go.depth > 0) {
             self.termination = .depth;
-            // Cap the max depth here.
             self.max_depth = @min(max_search_depth, @as(u8, @truncate(go.depth)));
             return;
         }
@@ -81,25 +78,25 @@ pub const TimeManager = struct {
             return;
         }
 
-        // From here we are in a tournament situation and need smart timing.
-        self.termination = .clock;
-
+        // From here on we have a time.
         const time: u64 = go.time[us.u];
         const inc: u64 = go.increment[us.u];
+        const move_overhead: u64 = if (time > default_move_overhead + 10) default_move_overhead else 0;
 
-        const half_inc: u64 = inc / 2;
-        // const half_inc: u64 = (inc * 300) / 400;
+        if (go.movetime > 0) {
+            self.termination = .movetime;
+            self.max_movetime = go.movetime - move_overhead;
+            return;
+        }
 
-        const move_overhead: u64 = @min(25, time / 2); // TODO: this is nonsense. change it.
+        // And from here on we are in a clock situation and need smart timing.
+        self.termination = .clock;
+
+        const half_inc: u64 = inc / 2; // TODO: test 2/3 or 3/4 as well.
         const cyclic_timecontrol: bool = go.movestogo > 0;
-        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50;
 
-        var timeleft = @max(1, time + half_inc * (movestogo - 1));
-        const minus: u64 = move_overhead * (2 + movestogo);
-        if (minus < timeleft)
-            timeleft -= minus;
-         //else
-           // timeleft = 1;
+        const timeleft = time + half_inc * (movestogo - 1) - move_overhead;
 
         var optscale: f32 = 0;
         const mtg: f32 = @floatFromInt(movestogo);
@@ -117,6 +114,8 @@ pub const TimeManager = struct {
         self.opt_movetime_base = @intFromFloat(optime);
         self.opt_movetime = self.opt_movetime_base;
 
+        // Never use more than 75% of the time left.
+        // TODO: test if the engine is left with virtually no time a few moves before the time control.
         const max_factor: f32 = 0.75;
         // if (cyclic_timecontrol and movestogo < 6 and movestogo > 1) {
         //     max_factor = 0.45;

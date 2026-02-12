@@ -1891,7 +1891,7 @@ fn get_layout(w_left_rook: ?u6, w_right_rook: ?u6, w_king: ?u6, b_left_rook: ?u6
     return ptr.value_ptr;
 }
 
-/// Squares are simple u6 for easy auto hash mapping (lazy me avoiding writing a hash function)
+/// Squares are simple u6 for easy auto hash mapping (lazy me avoiding to write a hash function).
 pub const LayoutKey = struct {
     w_left_rook: ?u6,
     w_right_rook: ?u6,

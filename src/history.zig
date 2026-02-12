@@ -244,9 +244,7 @@ pub const ContinuationHistory = struct {
     }
 };
 
-var MIN: Value = 1000;
-var MAX: Value = -1000;
-
+/// Heuristics for evaluation correction.
 pub const CorrectionHistory = struct {
     // I chose a big size here. It tested better. Probably less collisions.
     const SIZE: usize = 16384 * 2;
@@ -284,12 +282,12 @@ pub const CorrectionHistory = struct {
         const b: Value = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % SIZE];
 
         var correction: Value = 0;
-        //correction += @divFloor(p * 150, 100); //p * 2;
         correction += p * 2;
         correction += w;
         correction += b;
 
-        correction = @divFloor(correction, corr_scale * 3); // #testing 3
+        // The 3 is no typo. Maybe it is 'wrong' but it performed quite ok.
+        correction = @divFloor(correction, corr_scale * 3);
 
         const adjusted: Value = raw_static_eval + correction;
         const result: Value = clamp(adjusted, -types.mate_threshold + 1, types.mate_threshold - 1);
