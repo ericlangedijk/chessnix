@@ -1,26 +1,33 @@
-A testversion named chessnix_bot can be played against on lichess.org.
+### chessnix
 
-### UCI Chess Engine
-- Needs Zig 0.15.2.
-- On Windows run chessnix terminal in administrator mode for better performance.
+<br/>
+<p align="center">
+<img src="/img/logo.png" alt="logo" width=209 height=349/>
+</p>
+<br/>
+
+Chessnix is a UCI chess engine.
+
+- Needs Zig 0.15.2 to compile.
 - chessnix is a windows 64 bits exe for modern computers.
+- chessnix_bot can be played against on lichess.org.
 
 ### Version 1.3 Work In Progress...
 - Target 3200+ ELO. Experimenting, tweaking, optimizing, bug hunting. Currently at ~3175 ELO.
 - Experimental: Slight center bias in quiet move ordering for shallow depths.
-- Added: Search History pruning, Search history reduction.
-- Added: Store raw static evaluation in transposition table.
-- Added: Slight capture history bonus in quiescence search.
-- Removed: Correction history. It will be back later.
-- Removed: Killer move heuristic.
+- Added: Search history pruning, history reduction.
+- Added: Store raw static evaluation in TT.
+- Added: Slight capture history bonus and malus in quiescence search.
+- Removed: Killer moves.
 - Removed: Maintaining pins of both sides. I will not code a 'perfect' SEE in the near future.
 - Removed: Unused see_score function.
+- Changed: Correction history.
 - Changed: Lots of tweaks in the search algorithm (history pruning + reduction, different LMR table).
 - Changed: History structure and calculations, especially continuation history.
 - Changed: Moved 'ply' from position to search.
 - Changed: Included a slight score correction during search using rule50.
 - Changed: No storing in transposition table when rule50 >= 60.
-- Changed: Reward and punish captures slightly in quiescence search.
+- Changed: Bound logic when storing to TT. I think it is correct now.
 - Bug solved: Terrible LMR table accessing out of bounds value resulting in god knows what.
 - Bug solved: Node clearing (before enter search and on making nullmoves).
 - Bug solved: Corrected 'id name' uci output.
@@ -87,7 +94,7 @@ Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
 The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, OpenCritter, PlentyChess, Priessnitz, Seawall, Seredina, Shallow, Shallowguess, Stash, Stockfish, Supernova, Teki.
 Some extra thanks to these people who made their engine support chess960.
 I also learned a lot from the source code of all these engines.
-Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Cwtch, Lambergar, Integral, PlentyChess, Stockfish and probably others).
+Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Alexandria, Cwtch, Lambergar, Integral, PlentyChess, Stockfish and probably others).
 
 ### Noob
 I am a github noob and only use a main branch as a backup of the current state on my PC.
