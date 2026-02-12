@@ -24,26 +24,25 @@ const wtf = lib.wtf;
 var engine: *Engine = undefined;
 
 pub fn run() void {
-    // TODO: what to do in non-terminal mode? Just crash?
-    uci_loop() catch |err| {
-        //io.debugprint("error: {s}.\n\nPress any key to quit.\n", .{ @errorName(err) });
-        io.print("info error: {s}", .{ @errorName(err) }); // TODO: what to do here? just call lib.bug()?
-        //_ = lib.in.readByte() catch {}; TODO: repair 0.15.1
+    const is_tty: bool = lib.is_tty();
+    uci_loop(is_tty) catch |err| {
+        io.print("info error: {s}", .{ @errorName(err) });
     };
 }
 
-fn uci_loop() !void {
-    const is_tty = lib.is_tty();
+fn uci_loop(is_tty: bool) !void {
     if (is_tty) {
-        io.print("chessnix {s} by eric langedijk\n", .{ lib.version });
+        // Enable cls and maybe later some fancy coloring.
+        _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
+        TTY.print_hello();
     }
 
     engine = try Engine.create(false);
     defer engine.destroy();
 
     command_loop: while (true) {
-        const input = try io.readline() orelse continue :command_loop; // continue, break?
-        if (input.len == 0) continue :command_loop; // continue, break?
+        const input = try io.readline() orelse continue :command_loop;
+        if (input.len == 0) continue :command_loop;
         var tokenizer: Tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
         const cmd: []const u8 = tokenizer.next() orelse continue :command_loop;
 
@@ -64,8 +63,8 @@ fn uci_loop() !void {
             try UCI.stop();
         }
         else if (eql(cmd, "quit")) {
-            try UCI.quit(); // TODO: engine still outputs bestmove.
-            return;
+            try UCI.quit();
+            return; // stop the program.
         }
         else if (eql(cmd, "setoption")) {
             try UCI.setoption(&tokenizer);
@@ -76,9 +75,11 @@ fn uci_loop() !void {
 
         // Terminal only commands.
         else if (is_tty) {
-
             if (eql(cmd, "d")) {
                 TTY.draw_position();
+            }
+            if (eql(cmd, "cls")) {
+                TTY.cls();
             }
             else if (eql(cmd, "bench")) {
                 try TTY.run_bench();
@@ -90,21 +91,17 @@ fn uci_loop() !void {
                 TTY.run_perft(&tokenizer, true);
             }
             else if (eql(cmd, "eval")) {
-                TTY.do_static_eval();
+                TTY.eval();
             }
             else if (eql(cmd, "kiwi")) {
                 try engine.set_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", null);
-                TTY.do_see(&tokenizer);
             }
             else if (eql(cmd, "see")) {
-                TTY.do_see(&tokenizer);
+                TTY.see(&tokenizer);
             }
             else if (eql(cmd, "state")) {
                 TTY.print_state();
             }
-            // else  if (eql(cmd, "cls")) {
-            //     io.print("{}", .{ "\x1B[2J\x1B[H" });
-            // }
         }
     }
 }
@@ -251,16 +248,19 @@ const UCI = struct {
         }
         return std.fmt.parseInt(i32, str.?, 10) catch Error.ParsingError;
     }
-
-
-    // fn parse_32(str: ?[]const u8) ?u32 {
-    //     if (str == null) return null;
-    //     return std.fmt.parseInt(u32, str.?, 10) catch null;
-    // }
 };
 
 /// Just a simple wrapper.
 const TTY = struct {
+
+    fn print_hello() void {
+        io.print("chessnix {s} by eric langedijk\n", .{ lib.version });
+    }
+
+    fn cls() void {
+        io.print("\x1B[2J\x1B[H", .{});
+        print_hello();
+    }
 
     fn draw_position() void {
         engine.pos.draw();
@@ -283,25 +283,14 @@ const TTY = struct {
         }
     }
 
-    fn do_static_eval() void {
-
-        //const e = eval.evaluate_with_tracking_absolute(&engine.pos, &engine.evaltranspositiontable, &engine.pawntranspositiontable);
-        //io.print("eval abs = {} phase {}\n", .{ e, engine.pos.phase() });
-
-        //const bb = engine.pos.all_except_pawns_and_kings();
-        //funcs.print_bitboard(bb);
-
+    fn eval() void {
         var ev: hce.Evaluator = .init();
         const e = ev.evaluate(&engine.pos);
         io.print("eval: {}\n", .{ e });
-
-        //const v = eval.tuned_eval(&engine.pos);
-        //io.debugprint("e {} t {}\n", .{e, v});
-        //eval.bench(&engine.pos, &engine.evaltranspositiontable);
-        //io.debugprint("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
     }
 
-    fn do_see(tokenizer: *Tokenizer) void {
+    /// Input: "see move threshold"
+    fn see(tokenizer: *Tokenizer) void {
         const move: []const u8 = tokenizer.next() orelse return;
         const threshold: []const u8 = tokenizer.next() orelse return;
         const t: i32 = std.fmt.parseInt(i32, threshold, 10) catch return;
@@ -309,96 +298,8 @@ const TTY = struct {
         io.print("{}\n", .{result});
     }
 
-    /// TODO: print lots of engine states here.
     fn print_state() void {
-
-
-
-        // for (types.PieceType.all) |pt| {
-        //     funcs.print_bitboard(engine.pos.threats[pt.u]);
-        // }
-
-        // io.print("evals: {}, evalhits: {}\n", .{ search.EVALS, search.EVAL_HITS });
-
-        //io.print("{}\n", .{ engine.pos.threats});
-        // @import("history.zig").debug_hist(&engine.searcher.history_heuristics, &engine.pos);
-        // if (true) return;
-
-
-        //if (true) return;
-
-        // engine.set_position("1kr4r/1p1nnp2/1P1qb2p/p1pp4/P2P1NpN/2QBP1P1/5PP1/2R2RK1 w - - 0 24", null) catch return;
-        // engine.set_position("1kr5/1p3p2/1P1qb2p/p1pp4/P2P2pN/2Q1P1P1/5PP1/2R3K1 w - - 0 24", null) catch return;
-
-        // engine.set_position("5k2/p2P2pp/8/1pb5/1Nn1P1n1/6Q1/PPP4P/R3K1NR w KQ -", null) catch return;
-
-        // engine.set_position("r1b1kbnr/pppp1ppp/2n5/8/3PP2q/2N2N2/PPP1K1pP/R1BQ1B1R b kq - 1 7", null) catch return;
-
-        // const m: types.Move = engine.pos.parse_move("g2h1q") catch return;
-
-        // //const m: types.Move = .create(types.Square.C3, types.Square.A5, types.Move.capture);
-        // const see = hce.see_score(&engine.pos, m);
-        // //const see2 = hce.see_score_phased(&engine.pos, m);
-        // //draw_position();
-
-        // io.print("see score {}\n", .{ see });
-        // //io.print("see score phased {}", .{ see2 });
-        // if (true) return;
-
-
-
-        //const t: *const tt.TranspositionTable = &engine.transpositiontable;
-
-        // position fen r5k1/pbN2rp1/4Q1Np/2pn1pB1/8/P7/1PP2PPP/6K1 b - - 0 25 moves d5c7 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8 g6e7 g8f8 e7g6 f8g8
-
-        //io.debugprint("upcoming rep {}\n", .{engine.pos.is_repetition()});
-        //io.debugprint("threefold rep {}\n", .{engine.pos.is_threefold_repetition()});
-
-        //_ = eval.eval2(&engine.pos, .Endgame);
-
-        //io.debugprint("engine thinking {}\n", .{engine.is_busy()});
-        //io.debugprint("flags {}\n", .{ engine.pos.gen_flags });
-        //io.print("draw by material {}\n", .{ eval.is_draw_by_insufficient_material(&engine.pos) });
-        //io.print("3 rep {}\n", .{ engine.pos.is_threefold_repetition() });
-        //io.print("1 rep {}\n", .{ engine.pos.is_upcoming_repetition() });
-        //io.debugprint("engine controller thread active {}\n", .{engine.controller_thread != null});
-        //io.debugprint("engine search thread active {}\n", .{engine.search_thread != null});
-
-        //io.debugprint("tt MB {}\n", .{t.mb});
-        //io.debugprint("tt slots {}\n", .{t.len});
-        //io.debugprint("tt filled {}\n", .{t.filled});
-        //io.debugprint("tt permille {}\n", .{t.permille()});
-        //io.debugprint("tt age {}\n", .{t.age});
-
-//       const s = engine;
-
-        //io.print("eval hits {}\n", .{ engine.evaltranspositiontable.hits });
-        //io.print("is draw {}\n", .{ engine.pos.is_draw_by_insufficient_material() });
-
-        //io.print("sizeof ttentry {}\n", .{ @sizeOf(tt.Entry) });
-        //io.print("sizeof evalentry {}\n", .{ @sizeOf(tt.EvalEntry) });
-        //io.print("sizeof pawnentry {}\n", .{ @sizeOf(tt.PawnEntry) });
-
-        // //io.debugprint("{}\n", .{});
-        // io.print("tt len {}\n", .{ s.transpositiontable.hash.data.len });
-        // io.print("eval tt len {}\n", .{ s.evaltranspositiontable.hash.data.len });
-        // //io.print("pawneval len {}\n", .{ s.pawntranspositiontable.hash.data.len });
-
-        // const a = s.transpositiontable.hash.percentage_filled();
-        // const b = s.evaltranspositiontable.hash.percentage_filled();
-        // //const c = s.pawntranspositiontable.hash.percentage_filled();
-
-        // io.print("filled tt {}% eval {}%\n", .{ a, b });
-
-        //s.searcher.history_heuristics.print_state();
-        // io.debugprint("quiets    {}\n", .{ s.processed_quiescence_nodes });
-        // engine.pos.print_history();
-
-        // if (comptime lib.is_paranoid) {
-        //     for (self.transpositiontable.hash.data) |e| {
-        //         assert(e != tt.Entry.empty);
-        //     }
-        // }
+        io.print("engine busy: {}\n", .{ engine.is_busy()});
     }
 };
 

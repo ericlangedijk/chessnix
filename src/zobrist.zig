@@ -14,7 +14,7 @@ const Square = types.Square;
 const rnd_count: usize = 768 + 64 + 16 + 1;
 
 /// We use one flat array for all.
-const all_randoms: [rnd_count]u64 = compute_all_randoms();
+pub const all_randoms: [rnd_count]u64 = compute_all_randoms();
 
 const keys: Keys = compute_keys();
 

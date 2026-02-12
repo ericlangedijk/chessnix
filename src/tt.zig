@@ -143,7 +143,7 @@ pub const TranspositionTable = struct {
     }
 
     /// Only store the raw static eval.
-    pub fn store_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
+    pub fn store_raw_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
         self.store(.none, key, 0, 0, .empty, no_score, raw_static_eval);
     }
 

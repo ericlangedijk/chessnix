@@ -34,8 +34,6 @@ pub const Termination = enum {
     clock,
 };
 
-// TODO: use endtime -> then we do not have to calculate elapsed_ms each time.
-// TODO: still some finetuning is needed.
 pub const TimeManager = struct {
     termination: Termination,
     timer: utils.Timer,
@@ -92,22 +90,22 @@ pub const TimeManager = struct {
         const half_inc: u64 = inc / 2;
         // const half_inc: u64 = (inc * 300) / 400;
 
-        const move_overhead: u64 = @min(25, time / 2);
+        const move_overhead: u64 = @min(25, time / 2); // TODO: this is nonsense. change it.
         const cyclic_timecontrol: bool = go.movestogo > 0;
         const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50; // still #experimental
 
         var timeleft = @max(1, time + half_inc * (movestogo - 1));
         const minus: u64 = move_overhead * (2 + movestogo);
         if (minus < timeleft)
-            timeleft -= minus
-         else
-            timeleft = 1; // TODO: debug this. This would be quite a panic
+            timeleft -= minus;
+         //else
+           // timeleft = 1;
 
         var optscale: f32 = 0;
-        const mtg: f32 = float(movestogo);
-        const t: f32 = float(time);
-        const tl: f32 = float(timeleft);
-        const mo: f32 = float(move_overhead);
+        const mtg: f32 = @floatFromInt(movestogo);
+        const t: f32 = @floatFromInt(time);
+        const tl: f32 = @floatFromInt(timeleft);
+        const mo: f32 = @floatFromInt(move_overhead);
 
         if (cyclic_timecontrol) {
             optscale = @min(0.90 / mtg, 0.88 * t / tl);
@@ -120,13 +118,15 @@ pub const TimeManager = struct {
         self.opt_movetime = self.opt_movetime_base;
 
         const max_factor: f32 = 0.75;
-        //const max_factor: f32 = if (cyclic_timecontrol and time < 2000 and movestogo < 5 and movestogo > 1) 0.45 else 0.75;
+        // if (cyclic_timecontrol and movestogo < 6 and movestogo > 1) {
+        //     max_factor = 0.45;
+        // }
 
         const maxtime: f32 = max_factor * t - mo;
         self.max_movetime = @intFromFloat(maxtime);
     }
 
-    /// When in clockmode we should call this function after each search iteration.
+    /// When in clockmode we call this function after each search iteration.
     pub fn update_optimal_stoptime(self: *TimeManager, nodes_spent_on_move: u64, total_nodes: u64, best_move_stability: u3, eval_stability: u3) void {
         const best_move_nodes_fraction: f32 = float(nodes_spent_on_move) / float(total_nodes);
         const node_scaling_factor: f32 = (node_tm_base - best_move_nodes_fraction) * node_tm_multiplier;

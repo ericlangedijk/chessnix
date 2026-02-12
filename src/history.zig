@@ -8,6 +8,7 @@ const types = @import("types.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
+const tt = @import("tt.zig");
 
 const assert = std.debug.assert;
 const clamp = std.math.clamp;
@@ -25,9 +26,22 @@ const Nodes = search.Nodes;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
-const hist_scale: SmallValue = 135;
-const hist_max_bonus: SmallValue = 1188;
-const hist_max_score: SmallValue = 15176;
+
+// const hist_scale: SmallValue = 135;
+// const hist_max_bonus: SmallValue = 1188;
+// const hist_max_score: SmallValue = 15176;
+
+// #hist
+const hist_scale: SmallValue = 146; // try 145
+const hist_max_bonus: SmallValue = 1282; // try 1280
+const hist_max_score: SmallValue = 16384;
+
+// 15176  * 1.0796 ≈ 16384 (hist_max)
+//  1188  * 1.0796 ≈ 1282  (hist_max_bonus)
+// 13000  * 1.0796 ≈ 14035 (lmr divider)
+//  1695  * 1.0796 ≈ 1830  (lmp)
+//  480   * 1.0796 ≈ 518   (lmp base)
+//  135   * 1.0796 ≈ 146   (hist_scale)
 
 const hist_calc = HistoryBonus(hist_scale, hist_max_bonus, hist_max_score);
 
@@ -47,7 +61,8 @@ fn HistoryBonus(comptime scale: SmallValue, comptime max_bonus: SmallValue, comp
         /// `bonus - score * abs(bonus) / max_score`.
         fn scale_bonus(score: SmallValue, bonus: SmallValue) SmallValue {
             const s: Value = score;
-            return @intCast(bonus - @divTrunc(s * @abs(bonus), max_score));
+            //return @intCast(bonus - @divTrunc(s * @abs(bonus), max_score));
+            return @intCast(bonus - @divFloor(s * @abs(bonus), max_score)); // #testing
         }
     };
 }
@@ -57,6 +72,7 @@ pub const History = struct {
     quiet: QuietHistory,
     capture: CaptureHistory,
     continuation: ContinuationHistory,
+    correction: CorrectionHistory,
 
     pub fn init() History {
         return std.mem.zeroes(History);
@@ -225,5 +241,65 @@ pub const ContinuationHistory = struct {
             return;
         }
         lib.verify(node.continuation_entry == &self.table[node.current_move.piece.u][node.current_move.move.to.u], "continuation history verify_node() error. continuation_entry address mismatch", .{});
+    }
+};
+
+var MIN: Value = 1000;
+var MAX: Value = -1000;
+
+pub const CorrectionHistory = struct {
+    // I chose a big size here. It tested better. Probably less collisions.
+    const SIZE: usize = 16384 * 2;
+
+    const corr_scale: Value = 256;
+    const corr_max: Value = 64;
+
+    /// Entries for pawns
+    pawn_table: [2][SIZE]SmallValue,
+    /// Entries for white pieces
+    white_table: [2][SIZE]SmallValue,
+    /// Entries for black pieces.
+    black_table: [2][SIZE]SmallValue,
+
+    /// Updates the error values: the difference between the search score and the raw static eval.
+    pub fn update(self: *CorrectionHistory, comptime us: Color, pos: *const Position, depth: i32, search_score: Value, raw_static_eval: Value) void {
+        const err: Value = search_score - raw_static_eval;
+        const scaled_bonus: Value = err * corr_scale;
+        const weight: Value = @min(1 + depth, 16);
+
+        const pawn_entry: *SmallValue = &self.pawn_table[us.u][pos.pawnkey % SIZE];
+        const white_entry: *SmallValue = &self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % SIZE];
+        const black_entry: *SmallValue = &self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % SIZE];
+
+        update_entry(pawn_entry, scaled_bonus, weight);
+        update_entry(white_entry, scaled_bonus, weight);
+        update_entry(black_entry, scaled_bonus, weight);
+    }
+
+    /// Returns a corrected raw static eval.
+    pub fn apply(self: *const CorrectionHistory, comptime us: Color, pos: *const Position, raw_static_eval: Value) Value {
+
+        const p: Value = self.pawn_table[us.u][pos.pawnkey % SIZE];
+        const w: Value = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % SIZE];
+        const b: Value = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % SIZE];
+
+        var correction: Value = 0;
+        //correction += @divFloor(p * 150, 100); //p * 2;
+        correction += p * 2;
+        correction += w;
+        correction += b;
+
+        correction = @divFloor(correction, corr_scale * 3); // #testing 3
+
+        const adjusted: Value = raw_static_eval + correction;
+        const result: Value = clamp(adjusted, -types.mate_threshold + 1, types.mate_threshold - 1);
+        return result;
+    }
+
+    fn update_entry(entry: *SmallValue, scaled_bonus: Value, weight: Value) void {
+        var score: Value = entry.*;
+        score = @divFloor(score * (corr_scale - weight) + scaled_bonus * weight, corr_scale);
+        score = clamp(score, corr_scale * -corr_max, corr_scale * corr_max);
+        entry.* = @intCast(score);
     }
 };

@@ -864,7 +864,7 @@ pub fn phased_score(phase: u8, score: ScorePair) Value {
     //const phase: u8 = @min(max, ph);
     const mg: Value = score.mg;
     const eg: Value = score.eg;
-    return @divTrunc(mg * phase + eg * (max_phase - phase), max_phase);
+    return @divFloor(mg * phase + eg * (max_phase - phase), max_phase);
 }
 
 pub fn phase_of(phase: u8) GamePhase {

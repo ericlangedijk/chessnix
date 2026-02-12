@@ -1014,7 +1014,6 @@ pub const Position = struct {
 
     fn update_state(self: *Position, comptime us: Color) void {
         const them: Color = comptime us.opp();
-        // const occ: u64 = self.all();
         const bb_all: u64 = self.all();
         const bb_us: u64 = self.by_color(us);
         const king_sq: Square = self.king_square(us);
@@ -1051,64 +1050,6 @@ pub const Position = struct {
         self.checkers = self.checkmask & bb_all;
 
     }
-
-    // fn update_state_for_both_pins(self: *Position, comptime us: Color) void {
-    //     const them: Color = comptime us.opp();
-    //     const bb_all: u64 = self.all();
-    //     const bb_us: u64 = self.by_color(us);
-
-    //     self.pins_orthogonal = @splat(0);
-    //     self.pins_diagonal = @splat(0);
-
-    //     self.checkmask =
-    //         (attacks.get_pawn_attacks(self.king_square(us), us) & self.pawns(them)) |
-    //         (attacks.get_knight_attacks(self.king_square(us)) & self.knights(them));
-
-    //     const our_king_sq: Square = self.king_square(us);
-    //     const bb_occ_without_us: u64 = bb_all ^ self.by_color(us);
-    //     var candidate_slider_attackers: u64 =
-    //         (attacks.get_bishop_attacks(our_king_sq, bb_occ_without_us) & self.queens_bishops(them)) |
-    //         (attacks.get_rook_attacks(our_king_sq, bb_occ_without_us) & self.queens_rooks(them));
-
-    //     // Our pins and their checks.
-    //     while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
-    //         const pair: *const bitboards.SquarePair = bitboards.get_squarepair(our_king_sq, attacker_sq);
-    //         const bb_ray: u64 = pair.ray & bb_us;
-    //         // We have a slider checker when there is nothing in between.
-    //         if (bb_ray == 0) {
-    //             self.checkmask |= pair.ray;
-    //         }
-    //         // We have a pin when exactly 1 bit is set. There is one piece in between.
-    //         else if (bb_ray & (bb_ray - 1) == 0) {
-    //             switch (pair.axis) {
-    //                 .orth => self.pins_orthogonal[us.u] |= pair.ray,
-    //                 .diag => self.pins_diagonal[us.u] |= pair.ray,
-    //                 else => unreachable,
-    //             }
-    //         }
-    //     }
-    //     self.checkers = self.checkmask & bb_all;
-
-    //     // Their pins.
-    //     const their_king_sq: Square = self.king_square(them);
-    //     const bb_occ_without_them: u64 = bb_all ^ self.by_color(them);
-    //     candidate_slider_attackers =
-    //         (attacks.get_bishop_attacks(their_king_sq, bb_occ_without_them) & self.queens_bishops(us)) |
-    //         (attacks.get_rook_attacks(their_king_sq, bb_occ_without_them) & self.queens_rooks(us));
-
-    //     while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
-    //         const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
-    //         const bb_ray: u64 = pair.ray & bb_us;
-    //         assert(bb_ray != 0); // This should never happen.
-    //         if (bb_ray & (bb_ray - 1) == 0) {
-    //             switch (pair.axis) {
-    //                 .orth => self.pins_orthogonal[them.u] |= pair.ray,
-    //                 .diag => self.pins_diagonal[them.u] |= pair.ray,
-    //                 else => unreachable,
-    //             }
-    //         }
-    //     }
-    // }
 
     /// Not used, but we keep it around.
     pub fn get_threats(self: *const Position, comptime attacker: Color) Threats {
