@@ -23,17 +23,12 @@ const io = lib.io;
 
 pub fn run_silent_debugmode_tests() !void {
     lib.not_in_release();
-    //var perft_tests: usize = 0;
-
-
     var timer = utils.Timer.start();
-
     const perfts: usize = try run_perfts(3);
     const perfts_960: usize = try run_perfts_960(3);
     const flips: usize = try test_flip();
     const time = timer.read();
     lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, (time {D})\n", .{ perfts, perfts_960, flips, time });
-
     // _ = try test_flipped_eval();
 }
 
@@ -127,7 +122,7 @@ fn run_perfts_960(max_depth: usize) !usize {
     return done;
 }
 
-/// Test flip position.
+/// Test if flip position is 100% correct.
 fn test_flip() !usize {
     lib.not_in_release();
 
@@ -165,14 +160,13 @@ pub fn test_flipped_eval() !usize {
     var pos: Position = .empty;
     var flipped_pos: Position = .empty;
 
-    //var flipped_pos: Position = .empty;
     var done: usize = 0;
     for (testpositions) |str| {
         try pos.set(str, false);
         var ev: hce.Evaluator = .init();
-        const eval1: types.Value = ev.evaluate(&pos);
+        const eval1: types.Score = ev.evaluate(&pos);
         flipped_pos = pos.flipped();
-        const eval2: types.Value = ev.evaluate(&flipped_pos);
+        const eval2: types.Score = ev.evaluate(&flipped_pos);
         io.debugprint("{} ==? {}\n", .{ eval1, eval2 });
         done += 1;
     }
@@ -211,7 +205,6 @@ pub const FenDepths = lib.BoundedArray(u64, 16);
 /// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324"
 /// "1B6/1r3Bk1/8/Pp6/4KN1p/8/5b1R/8 b - -;23;728;14764;461899;9440955;292742932"
 fn decode_depths(fen: []const u8) ParseDepthError!FenDepths {
-    // TODO: simplyfy the depths (remove). it is just for debugging.
     var depths: lib.BoundedArray(u64, 16) = .{};
     depths.append_assume_capacity(0);
 
@@ -237,9 +230,8 @@ fn decode_depths(fen: []const u8) ParseDepthError!FenDepths {
             var i: usize = 0;
             while (sub_iter.next()) |part| {
 
-                if (i == 0) { // D1 (depth)
-                    //const nr = part[1..];
-                    // TODO: skip for now. lazy me. we should parse the depth here.
+                if (i == 0) { // D1 D2 etc.
+                    // lazy me. we should parse the depth here.
                 }
                 else if (i == 1) { // 20 (node)
                     //lib.io.debugprint("PART [{s}], ", .{part});
@@ -1365,13 +1357,7 @@ pub const testpositions_960: [960][]const u8 = .{
 
 // SEE tests.
 
-const see_debug_positions: [1][]const u8 = .{
-    "1k3r2/8/8/7B/8/8/8/1K2R3 w - - 0 1 ;e1e8 ;0",
-};
-
-const see_positions: [71 + 1][]const u8 = .{
-    "1r5k/p4pp1/2p1p2p/qpQP3P/2P2P2/1P1R4/P4rP1/1K1R4 b - - ;a5a2 ;100 ;P",
-
+const see_positions: [71][]const u8 = .{
     "6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - - ;f1f4 ;-100 ;P - R + B",
     "5rk1/1pp2q1p/p1pb4/8/3P1NP1/2P5/1P1BQ1P1/5RK1 b - - ;d6f4 ;0 ;-N + B",
     "4R3/2r3p1/5bk1/1p1r3p/p2PR1P1/P1BK1P2/1P6/8 b - - ;h5g4 ;0",
@@ -1444,68 +1430,3 @@ const see_positions: [71 + 1][]const u8 = .{
     "8/8/1k6/8/8/2N1N3/4p1K1/3n4 w - - ;c3d1 ;100 ;N - (N + Q - P) + Q",
     "r1bqk1nr/pppp1ppp/2n5/1B2p3/1b2P3/5N2/PPPP1PPP/RNBQK2R w KQkq - ;e1g1 ;0",
 };
-
-
-
-
-
-
-
-
-
-
-
-
-// TODO: remove and move to normal function. tests.zig.
-// test "see"
-// {
-//     try lib.initialize();
-//     var pos: Position = .empty;
-
-//     const GOOD = true;
-//     const BAD = false;
-
-//     // Pawn exchange.
-//     try execute_see_test(&pos, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "d5e6", GOOD);
-//     // Queen takes covered knight.
-//     try execute_see_test(&pos, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "f3f6", BAD);
-//     // Pawn takes knight.
-//     try execute_see_test(&pos, "8/8/5b1k/4n3/K2P4/8/8/8 w - - 0 1", "d4e5", GOOD);
-//     // Losing queen for pawn.
-//     try execute_see_test(&pos, "8/kb6/2p5/3p4/4Q3/5B2/6QK/8 w - - 0 1", "e4d5", BAD);
-//     // Losing rook for knight.
-//     try execute_see_test(&pos, "3q3k/8/4p3/3n4/3R4/8/8/K2R4 w - - 0 1", "d4d5", BAD);
-//     // Bishop captures pawn. King involved.
-//     try execute_see_test(&pos, "8/8/2k5/3p4/4B3/5K2/8/8 w - - 0 1", "e4d5", BAD);
-//     // Pawn captures bishop. King involved.
-//     try execute_see_test(&pos, "8/8/2k5/3b4/4P3/5K2/8/8 w - - 0 1", "e4d5", GOOD);
-//     // Pawn exchange. King involved.
-//     try execute_see_test(&pos, "8/8/2k5/3p4/4P3/5K2/8/8 w - - 0 1", "e4d5", GOOD);
-//     // Winning a pawn. King involved.
-//     try execute_see_test(&pos, "8/8/2k5/3p4/4P3/6K1/6B1/8 w - - 0 1", "e4d5", GOOD);
-
-//     // Pinned rook capturing pawn.
-//     try execute_see_test(&pos, "3r4/8/1K1p4/3R4/3R4/8/1k6/6b1 w - - 0 1", "d5d6", BAD);
-//     // Pinned rook capturing knight.
-//     try execute_see_test(&pos, "3r4/8/1K1n4/3R4/3R4/8/1k6/6b1 w - - 0 1", "d5d6", BAD);
-
-//     // TODO: This should - in a perfect situation - reveal more pins after the first move.
-//     try execute_see_test(&pos, "7b/1k6/8/4p3/1r1P1PK1/5R2/5B2/8 w - - 0 1", "f4e5", GOOD);
-
-//     // Mutally pinned rooks.
-//     try execute_see_test(&pos, "4B3/3r4/2k5/K7/3p4/3R4/3R4/4b3 w - - 0 1", "d3d4", GOOD);
-// }
-
-// /// TODO: complete with see->bool and expected value.
-// fn execute_see_test(pos: *Position, fen: []const u8, move: []const u8, expected_good: bool) !void {
-//     var st: StateInfo = undefined;
-//     try pos.set(&st, fen);
-//     const m: Move = try pos.parse_move(move);
-//     const val: Value = see_score(pos, m);
-//     io.debugprint("{}\n", .{ val });
-//     if (expected_good)
-//         try std.testing.expect(val >= 0)
-//     else
-//         try std.testing.expect(val < 0);
-// }
-

@@ -13,12 +13,11 @@ const ctx = lib.ctx;
 const io = lib.io;
 const wtf = lib.wtf;
 const popcnt = funcs.popcnt;
-//const pop_square = funcs.pop_square;
 const pawns_shift = funcs.pawns_shift;
 const pawn_from = funcs.pawn_from;
 const bitloop = funcs.bitloop;
 
-const Value = types.Value;
+const Score = types.Score;
 const Orientation = types.Orientation;
 const Direction = types.Direction;
 const Color = types.Color;
@@ -30,7 +29,12 @@ const ExtMove = types.ExtMove;
 const CastleType = types.CastleType;
 const GamePhase = types.GamePhase;
 
-// castling flags.
+/// Must be called when the program stops.
+pub fn finalize() void {
+    alternative_layout_map.deinit(ctx.galloc);
+}
+
+// Castling flags.
 pub const cf_white_short: u4 = 0b0001;
 pub const cf_white_long: u4 = 0b0010;
 pub const cf_black_short: u4 = 0b0100;
@@ -39,16 +43,11 @@ pub const cf_all: u4 = 0b1111;
 
 pub const classic_startpos_fen: []const u8 = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-// gen flags.
+// Gen flags for move generation.
 const gf_black: u4 = 0b0001;
 const gf_check: u4 = 0b0010;
 const gf_noisy: u4 = 0b0100;
 const gf_pins : u4 = 0b1000;
-
-/// Must be called when the program stops.
-pub fn finalize() void {
-    alternative_layout_map.deinit(ctx.galloc);
-}
 
 const EMPTY_LAYOUT: Layout = Layout.empty;
 const empty_layout: *const Layout = &EMPTY_LAYOUT;
@@ -81,11 +80,6 @@ pub const Threats = struct {
 };
 
 pub const Position = struct {
-    pub const empty: Position = .init_empty();
-
-    /// We must use `set_startpos()` to fill in the hashkeys.
-    const empty_classic: Position = .init_empty_classic();
-
     /// The initial layout, supporting Chess960.
     layout: *const Layout,
     /// The pieces on the 64 squares.
@@ -128,6 +122,11 @@ pub const Position = struct {
     pins_orthogonal: u64,
     /// Indicates chess 960. Also suitable for chess 324.
     is_960: bool,
+
+    /// An (invalid) empty position.
+    pub const empty: Position = .init_empty();
+    /// We must use `set_startpos()` to fill in the hashkeys.
+    const empty_classic: Position = .init_empty_classic();
 
     fn init_empty() Position {
         return .{
@@ -210,7 +209,7 @@ pub const Position = struct {
         const state_draw_count: u8 = 4;
         const state_movenumber: u8 = 5;
 
-        // uci is started with "setoption name UCI_Chess960 value true" before ucinewgame. (or after???)
+        // uci is started with "setoption name UCI_Chess960 value true" before ucinewgame.
         self.* = .empty;
         self.is_960 = is_960;
 
@@ -1239,7 +1238,7 @@ pub const Position = struct {
         }
     }
 
-    /// See `MoveStorage` for the interface of `storage`: required are the functions `reset()` and `store()`.
+    /// See `MoveStorage` for the interface of `storage`. Required are the functions `reset() void` and `store(anytype, ExtMove) ?void`.
     fn gen(self: *const Position, comptime flags: u4, storage: anytype) void {
 
         // Comptimes
@@ -1257,7 +1256,7 @@ pub const Position = struct {
         }
 
         // In fact we do not need the reset function, because we always use the storage only once.
-        // However: when not using reset, move generation is much much slower! Some unknown magical compiler optimization?
+        // However: when not using reset, move generation is more than twice as slow! Some unknown magical compiler optimization?
         storage.reset();
 
         const doublecheck: bool = check and popcnt(self.checkers) > 1;
@@ -1731,12 +1730,6 @@ pub const Position = struct {
         }
         io.print_buffered("\n", .{});
         io.flush();
-        // if (lib.is_debug) {
-        //     funcs.print_bitboard(self.checkers);
-        //     funcs.print_bitboard(self.checkmask);
-        //     funcs.print_bitboard(self.pins_diagonal);
-        //     funcs.print_bitboard(self.pins_orthogonal);
-        // }
     }
 
     /// Debug only.

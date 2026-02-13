@@ -12,12 +12,10 @@ const assert = std.debug.assert;
 const wtf = lib.wtf();
 const io = lib.io;
 
-/// Used for evaluation and hashtables and scorepair.
-pub const SmallValue = i16;
-/// Used for evaluation.
-pub const Value = i32;
-/// Used for evaluation.
-pub const Float = f32;
+/// Used for evaluations.
+pub const Score = i32;
+/// Used for stored evaluations to save memory.
+pub const SmallScore = i16;
 
 pub const Axis = enum(u2) {
     none, orth, diag,
@@ -373,7 +371,7 @@ pub const PieceType = packed union {
         return self.u;
     }
 
-    pub fn value(self: PieceType) Value {
+    pub fn value(self: PieceType) Score {
         return piece_values[self.u];
     }
 
@@ -520,7 +518,7 @@ pub const Piece = packed union {
     }
 
     /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
-    pub fn value(self: Piece) Value {
+    pub fn value(self: Piece) Score {
         return piece_values[self.u];
     }
 
@@ -657,8 +655,7 @@ pub const Move = packed struct(u16) {
         const from: Square = self.from;
         var to: Square = self.to;
 
-        // Only in classic chess we need to decode our "king takes rook".
-        // In Chess960 this is default.
+        // Only in classic chess we need to decode our "king takes rook". In Chess960 this is default.
         if (!is_960) {
             if (self.flags == Move.castle_short) {
                 const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
@@ -684,8 +681,7 @@ pub const Move = packed struct(u16) {
         const from: Square = self.from;
         var to: Square = self.to;
 
-        // Only in classic chess we need to decode our "king takes rook".
-        // In Chess960 this is default.
+        // Only in classic chess we need to decode our "king takes rook". In Chess960 this is default.
         if (!is_960) {
             if (self.flags == Move.castle_short) {
                 const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
@@ -757,12 +753,14 @@ pub fn ExtMoveList(max: u8) type {
 }
 
 pub const ScorePair = struct {
-    mg: SmallValue,
-    eg: SmallValue,
+    /// Middlegame
+    mg: SmallScore,
+    /// Endgame
+    eg: SmallScore,
 
     pub const empty: ScorePair = .{ .mg = 0, .eg = 0 };
 
-    pub fn init(mg: SmallValue, eg: SmallValue) ScorePair {
+    pub fn init(mg: SmallScore, eg: SmallScore) ScorePair {
         return .{ .mg = mg, .eg = eg };
     }
 
@@ -790,7 +788,7 @@ pub const ScorePair = struct {
 };
 
 /// Easy initialization function for eval tables.
-pub fn pair(mg: SmallValue, eg: SmallValue) ScorePair {
+pub fn pair(mg: SmallScore, eg: SmallScore) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
@@ -818,30 +816,30 @@ pub const max_noisy_count: u8 = 128;
 /// Our max search depth during search. All arrays are a bit oversized for safety.
 pub const max_search_depth: u8 = 128;
 // A score which means "nothing" and should be treated as such or discarded during search.
-pub const no_score: Value = -32002;
-pub const infinity: Value = 32000;
-pub const mate: Value = 30000;
-pub const draw: Value = 0;
+pub const no_score: Score = -32002;
+pub const infinity: Score = 32000;
+pub const mate: Score = 30000;
+pub const draw: Score = 0;
 pub const mate_threshold = mate - max_search_depth; // - 256; #testing bug with huge mate scores.
-pub const stalemate: Value = 0;
-pub const invalid_movescore: Value = std.math.minInt(Value);
+pub const stalemate: Score = 0;
+pub const invalid_movescore: Score = std.math.minInt(Score);
 
 // Simple scores for SEE and move ordering.
-// pub const value_pawn: Value = 100;
-// pub const value_knight: Value = 300;
-// pub const value_bishop: Value = 300;
-// pub const value_rook: Value = 500;
-// pub const value_queen: Value = 900;
-// pub const value_king: Value = 0;
+pub const value_pawn: Score = 98;
+pub const value_knight: Score = 299;
+pub const value_bishop: Score = 300;
+pub const value_rook: Score = 533;
+pub const value_queen: Score = 921;
+pub const value_king: Score = 0;
 
-pub const value_pawn: Value = 98;
-pub const value_knight: Value = 299;
-pub const value_bishop: Value = 300;
-pub const value_rook: Value = 533;
-pub const value_queen: Value = 921;
-pub const value_king: Value = 0;
+// pub const value_pawn: Score = 100;
+// pub const value_knight: Score = 300;
+// pub const value_bishop: Score = 300;
+// pub const value_rook: Score = 500;
+// pub const value_queen: Score = 900;
+// pub const value_king: Score = 0;
 
-const piece_values: [13]Value = .{
+const piece_values: [13]Score = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     0,
@@ -856,17 +854,16 @@ pub const phase_table: [13]u8 = .{
     0
 };
 
-pub fn phased_score(phase: u8, score: ScorePair) Value {
+pub fn phased_score(phase: u8, score: ScorePair) Score {
     if (lib.is_paranoid) {
         assert(phase <= 24);
     }
-    //const max: u8 = comptime types.max_phase;
-    //const phase: u8 = @min(max, ph);
-    const mg: Value = score.mg;
-    const eg: Value = score.eg;
+    const mg: Score = score.mg;
+    const eg: Score = score.eg;
     return @divFloor(mg * phase + eg * (max_phase - phase), max_phase);
 }
 
+/// Not used.
 pub fn phase_of(phase: u8) GamePhase {
     return if (phase > 16) .opening else if (phase > 8) .midgame else .endgame;
 }

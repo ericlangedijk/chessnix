@@ -13,20 +13,22 @@ Chessnix is a UCI chess engine.
 - chessnix_bot can be played against on lichess.org.
 
 ### Version 1.3 Work In Progress...
-- Target 3200+ ELO. Experimenting, tweaking, optimizing, bug hunting. Currently at ~3175 ELO.
-- Experimental: Slight center bias in quiet move ordering for shallow depths.
+- Stronger: ~3200 ELO.
+- Added: Slight center bias in quiet move ordering for shallow depths (experimental).
 - Added: Search history pruning, history reduction.
 - Added: Store raw static evaluation in TT.
 - Added: Slight capture history bonus and malus in quiescence search.
 - Removed: Killer moves.
 - Removed: Maintaining pins of both sides. I will not code a 'perfect' SEE in the near future.
 - Removed: Unused see_score function.
-- Changed: Correction history.
 - Changed: Lots of tweaks in the search algorithm (history pruning + reduction, different LMR table).
+- Changed: Correction history.
 - Changed: History structure and calculations, especially continuation history.
+- Changed: Rescaled history values.
 - Changed: Moved 'ply' from position to search.
 - Changed: Included a slight score correction during search using rule50.
 - Changed: Bound logic when storing to TT. I think it is correct now.
+- Changed: Move generation creates ExtMoves (64 bits) instead of the raw moves (16 bits), avoiding copying stuff.
 - Bug solved: Terrible LMR table accessing out of bounds value resulting in god knows what.
 - Bug solved: Node clearing (before enter search and on making nullmoves).
 - Bug solved: Corrected 'id name' uci output.

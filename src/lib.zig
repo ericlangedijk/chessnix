@@ -31,8 +31,10 @@ pub const BoundedArray = @import("utils.zig").BoundedArray;
 pub const version = "1.3";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-/// Using this for time consuming checks. Only in debug mode.
+
+/// Using this for time consuming checks.
 pub const is_paranoid: bool = is_debug;
+
 /// Using this for tricky bug hunting. Never in releasemode.
 /// In ReleaseSafe mode we also create a logfile with the eror when calling crash().
 pub const bughunt: bool = builtin.mode == .ReleaseSafe or builtin.mode == .Debug;

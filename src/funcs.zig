@@ -10,8 +10,7 @@ const types = @import("types.zig");
 const attacks = @import("attacks.zig");
 const position = @import("position.zig");
 
-const Value = types.Value;
-const Float = types.Float;
+const Score = types.Score;
 const Direction = types.Direction;
 const Color = types.Color;
 const Piece = types.Piece;
@@ -80,13 +79,6 @@ pub fn relative_rank_7(us: Color) u3 {
     return if (us.e == .white) bitboards.rank_7 else bitboards.rank_2;
 }
 
-/// TODO: move to bitboards.
-pub fn forward_file(comptime us: Color, sq: Square) u64 {
-    return if (us.e == .white) bitboards.bb_north[sq.u] else bitboards.bb_south[sq.u];
-}
-
-
-// TODO: make generic bitboard shift for all directions.
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64 {
     switch(us.e) {
         .white => {
@@ -126,7 +118,6 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
     }
 }
 
-/// TODO: TEST CORRECTNESS
 pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
     return switch (dir) {
         .north      => (u & ~bitboards.bb_rank_8) << 8,
@@ -157,7 +148,7 @@ pub fn popcnt(bitboard: u64) u7 {
 }
 
 // Convenient popcount.
-// pub fn popcnt_v(bitboard: u64) Value {
+// pub fn popcnt_v(bitboard: u64) Score {
 //     return @popCount(bitboard);
 // }
 
@@ -181,13 +172,6 @@ pub fn first_square(bitboard: u64) Square {
     return .{ .u = lsb };
 }
 
-// Unsafe pop lsb and clears that lsb from the bitboard.
-// pub fn pop_square(bitboard: *u64) Square {
-//     if (comptime lib.is_paranoid) assert(bitboard.* != 0);
-//     defer bitboard.* &= (bitboard.* - 1);
-//     return first_square(bitboard.*);
-// }
-
 /// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
 pub fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
@@ -196,14 +180,8 @@ pub fn bitloop(bitboard: *u64) ?Square {
 }
 
 pub fn clear_square(bitboard: *u64, sq: Square) void {
-    bitboard.* &= ~sq.to_bitboard(); // TODO: XOR?
+    bitboard.* &= ~sq.to_bitboard();
 }
-
-/// Unsafe
-// pub fn lsb_u64(u: u64) u6 {
-//     if (comptime lib.is_paranoid) assert(u != 0);
-//     return @truncate(@ctz(u));
-// }
 
 pub fn test_bit_u8(u: u8, bit: u3) bool {
     const one: u8 = @as(u8, 1) << bit;
@@ -225,7 +203,7 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
 
 /// Convert "mate in X moves" to an absolute "distance to mate".
 /// * `mv` is always the matevalue from the perspective of white: negative -> white loses, positive -> white wins.
-pub fn mate_to_dtm(mv: Value, stm: Color) Value {
+pub fn mate_to_dtm(mv: Score, stm: Color) Score {
     if (mv == 0) return 0;
     const white_wins: bool = mv > 0;
     const white_to_move: bool = stm.e == .white;
@@ -236,15 +214,12 @@ pub fn eql(input: []const u8, comptime line: []const u8) bool {
     return std.mem.eql(u8, input, line);
 }
 
-// TODO: smarter. there must be some std.mem function.
-pub fn in(input: u8, comptime line: []const u8) bool {
-    for (line) |e| { if (e == input) return true; } return false;
-}
-
+/// Not used.
 pub fn ptr_add(T: type, ptr: *const T, comptime delta: comptime_int) *T {
     return @ptrFromInt(@intFromPtr(ptr) + @sizeOf(T) * delta);
 }
 
+/// Not used.
 pub fn ptr_sub(T: type, ptr: *const T, comptime delta: comptime_int) *T {
     return @ptrFromInt(@intFromPtr(ptr) - @sizeOf(T) * delta);
 }
@@ -267,27 +242,9 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
     return s;
 }
 
-// pub fn float(i: comptime_int) comptime_float {
-//     return @floatFromInt(i);
-// }
-
 /// Convert any int to f32.
 pub fn float(i: anytype) f32 {
     return @floatFromInt(i);
-}
-
-// TODO: make result anytype
-pub fn int(f: Float) Value {
-    return @intFromFloat(f);
-}
-
-pub fn mul(i: Value, f: Float) Value {
-    return @intFromFloat(float(i) * f);
-}
-
-/// div trunc
-pub fn div(i: Value, d: Value) Value {
-    return @divTrunc(i, d);
 }
 
 pub fn percent(max: usize, count: usize) usize {
@@ -298,40 +255,10 @@ pub fn percent(max: usize, count: usize) usize {
 }
 
 pub fn permille(max: usize, count: usize) usize {
-    //assert(max > 0);
     if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
     const m: f32 = @floatFromInt(max);
     return @intFromFloat((c * 1000) / m);
-}
-
-/// Not used
-pub fn compress_board(pos: *const Position) [32]u8 {
-    var result: [32]u8 = @splat(0);
-    for (pos.board, 0..) |piece, index| {
-        const u: u8 = piece.u;
-        const idx = index / 2;
-        switch (index % 2) {
-            0 => result[idx] |= u,
-            1 => result[idx] |= (u << 4),
-            else => unreachable,
-        }
-    }
-    return result;
-}
-
-/// Not used
-pub fn decompress_board(src: [32]u8) [64]Piece {
-    var result: [64]Piece = @splat(Piece.NO_PIECE);
-    var sq: u8 = 0;
-    for (src) |u| {
-        const a: u8 = u & 0b1111;
-        const b: u8 = u >> 4;
-        result[sq]     = .{ .u = @truncate(a) };
-        result[sq + 1] = .{ .u = @truncate(b) };
-        sq += 2;
-    }
-    return result;
 }
 
 /// Debug only
@@ -357,7 +284,7 @@ pub fn print_bitboard(bb: u64) void {
 pub fn print_bits(u: u8) void {
     const x: std.bit_set.IntegerBitSet(8) = .{.mask = u};
     for (0..8) |bit| {
-        if (x.isSet(bit)) std.debug.print("1", .{}) else std.debug.print(".", .{});
+        if (x.isSet(bit)) lib.io.debugprint("1", .{}) else std.debug.print(".", .{});
     }
-    std.debug.print("\n", .{});
+    lib.io.debugprint("\n", .{});
 }

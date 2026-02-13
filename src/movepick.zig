@@ -14,8 +14,8 @@ const hcetables = @import("hcetables.zig");
 
 const assert = std.debug.assert;
 
-const Value = types.Value;
-const SmallValue = types.SmallValue;
+const Score = types.Score;
+const SmallScore = types.SmallScore;
 const Color = types.Color;
 const Square = types.Square;
 const Piece = types.Piece;
@@ -61,9 +61,9 @@ const ListMode = enum {
 };
 
 const Scores = struct {
-    const promotion    : Value = 2_000_000;
-    const capture      : Value = 1_000_000;
-    const bad_capture  : Value = -1_000_000;
+    const promotion    : Score = 2_000_000;
+    const capture      : Score = 1_000_000;
+    const bad_capture  : Score = -1_000_000;
 };
 
 /// A tiny shallow move ordering center bias.
@@ -315,7 +315,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
 
             var best_idx: u8 = idx;
-            var max_score: Value = extmoves[idx].score;
+            var max_score: Score = extmoves[idx].score;
 
             for (idx + 1..extmoves.len) |i| {
                 const e: ExtMove = extmoves[i];

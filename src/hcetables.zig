@@ -2,8 +2,8 @@
 
 const types = @import("types.zig");
 
-const SmallValue = types.SmallValue;
-const Value = types.Value;
+const SmallScore = types.SmallScore;
+const Score = types.Score;
 
 const ScorePair = types.ScorePair;
 const pair = types.pair;

@@ -384,3 +384,7 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
         .black => passed_pawn_masks_black[sq.u],
     };
 }
+
+pub fn forward_file(comptime us: Color, sq: Square) u64 {
+    return if (us.e == .white) bb_north[sq.u] else bb_south[sq.u];
+}

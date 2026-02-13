@@ -12,8 +12,8 @@ const ctx = lib.ctx;
 const wtf = lib.wtf;
 
 const Color = types.Color;
-const SmallValue = types.SmallValue;
-const Value = types.Value;
+const SmallScore = types.SmallScore;
+const Score = types.Score;
 const Move = types.Move;
 const ScorePair = types.ScorePair;
 
@@ -26,14 +26,14 @@ pub fn compute_tt_size(megabytes: usize) usize {
 }
 
 /// Adjust score for mate in X when storing.
-pub fn get_adjusted_score_for_tt_store(tt_score: Value, ply: u16) Value {
+pub fn get_adjusted_score_for_tt_store(tt_score: Score, ply: u16) Score {
     if (tt_score >= types.mate_threshold) return tt_score + ply
     else if (tt_score <= -types.mate_threshold) return tt_score - ply;
     return tt_score;
 }
 
 /// Adjust score for mate in X when probing.
-pub fn get_adjusted_score_for_tt_probe(tt_score: Value, ply: u16) Value {
+pub fn get_adjusted_score_for_tt_probe(tt_score: Score, ply: u16) Score {
     if (tt_score >= types.mate_threshold) return tt_score - ply
     else if (tt_score <= -types.mate_threshold) return tt_score + ply;
     return tt_score;
@@ -61,9 +61,9 @@ pub const Entry = packed struct {
     /// The best move according to search.
     move: Move,
     /// The evaluation according to search. no_score == null.
-    score: SmallValue,
+    score: SmallScore,
     /// The raw static eval of the evaluation function. Never when in check. no_score == null.
-    raw_static_eval: SmallValue,
+    raw_static_eval: SmallScore,
 
     //age: u5,
 
@@ -76,7 +76,7 @@ pub const Entry = packed struct {
         .raw_static_eval = no_score,
     };
 
-    pub fn is_score_usable_for_depth(self: *const Entry, alpha: Value, beta: Value, depth: i32) bool {
+    pub fn is_score_usable_for_depth(self: *const Entry, alpha: Score, beta: Score, depth: i32) bool {
         if (self.score == no_score or self.depth < depth) {
             return false;
         }
@@ -88,7 +88,7 @@ pub const Entry = packed struct {
         };
     }
 
-    pub fn is_score_usable(self: *const Entry, alpha: Value, beta: Value) bool {
+    pub fn is_score_usable(self: *const Entry, alpha: Score, beta: Score) bool {
         if (self.score == no_score) {
             return false;
         }
@@ -143,12 +143,12 @@ pub const TranspositionTable = struct {
     }
 
     /// Only store the raw static eval.
-    pub fn store_raw_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Value) void {
+    pub fn store_raw_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Score) void {
         self.store(.none, key, 0, 0, .empty, no_score, raw_static_eval);
     }
 
     /// Store the search score and the raw static eval, if any.
-    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Value, raw_static_eval: Value) void {
+    pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Score, raw_static_eval: Score) void {
 
         if (lib.bughunt) {
             verify_args(depth, score, raw_static_eval);
@@ -197,7 +197,7 @@ pub const TranspositionTable = struct {
         return null;
     }
 
-    fn verify_args(depth: i32, score: Value, raw_static_eval: Value) void {
+    fn verify_args(depth: i32, score: Score, raw_static_eval: Score) void {
         lib.not_in_release();
         if (depth < 0 or depth > 128) lib.crash("tt invalid depth {}", .{ depth });
         if (score > std.math.maxInt(i16) or score < std.math.minInt(i16)) lib.crash("tt invalid score {}", .{ score });

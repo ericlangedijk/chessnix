@@ -11,7 +11,7 @@ const funcs = @import("funcs.zig");
 const utils = @import("utils.zig");
 const uci = @import("uci.zig");
 
-const Value = types.Value;
+const Score = types.Score;
 const Color = types.Color;
 const Move = types.Move;
 const Position = position.Position;
@@ -53,9 +53,85 @@ pub const TimeManager = struct {
         .max_depth = 0,
     };
 
-    const default_move_overhead: u64 = 20;
-
     pub fn set(self: *TimeManager, go: *const uci.Go, us: Color) void {
+        self.* = .empty;
+        self.timer = .start();
+
+        if (go.infinite) {
+            self.termination = .infinite;
+            return;
+        }
+
+        if (go.movetime > 0) {
+            self.termination = .movetime;
+            self.max_movetime = go.movetime;
+            return;
+        }
+
+        if (go.depth > 0) {
+            self.termination = .depth;
+            // Cap the max depth here.
+            self.max_depth = @min(max_search_depth, @as(u8, @truncate(go.depth)));
+            return;
+        }
+
+        if (go.nodes > 0) {
+            self.termination = .nodes;
+            self.max_nodes = go.nodes;
+            return;
+        }
+
+        // From here we are in a tournament situation and need smart timing.
+        self.termination = .clock;
+
+        const time: u64 = go.time[us.u];
+        const inc: u64 = go.increment[us.u];
+
+        const half_inc: u64 = inc / 2;
+        // const half_inc: u64 = (inc * 300) / 400;
+
+        const move_overhead: u64 = @min(25, time / 2);
+        const cyclic_timecontrol: bool = go.movestogo > 0;
+        const movestogo: u64 = if (cyclic_timecontrol) @min(go.movestogo, 50) else 50;
+
+        var timeleft = @max(1, time + half_inc * (movestogo - 1));
+        const minus: u64 = move_overhead * (2 + movestogo);
+        if (minus < timeleft)
+            timeleft -= minus;
+         //else
+           // timeleft = 1;
+
+        var optscale: f32 = 0;
+        const mtg: f32 = @floatFromInt(movestogo);
+        const t: f32 = @floatFromInt(time);
+        const tl: f32 = @floatFromInt(timeleft);
+        const mo: f32 = @floatFromInt(move_overhead);
+
+        if (cyclic_timecontrol) {
+            optscale = @min(0.90 / mtg, 0.88 * t / tl);
+        } else {
+            optscale = @min(optscale_fixed, optscale_time_left * t / tl);
+        }
+
+        const optime: f32 = optscale * tl;
+        self.opt_movetime_base = @intFromFloat(optime);
+        self.opt_movetime = self.opt_movetime_base;
+
+        const max_factor: f32 = 0.75;
+        // if (cyclic_timecontrol and movestogo < 6 and movestogo > 1) {
+        //     max_factor = 0.45;
+        // }
+
+        const maxtime: f32 = max_factor * t - mo;
+        self.max_movetime = @intFromFloat(maxtime);
+        //lib.io.debugprint("max {} opt {}\n", .{ self.max_movetime, self.opt_movetime });
+
+    }
+
+    pub fn set_new(self: *TimeManager, go: *const uci.Go, us: Color) void {
+
+        const default_move_overhead: u64 = 20;
+
         // TODO: recalculate to endtimes in nanoseconds. that saves conversions to ms and we can just use timer.read().
         self.* = .empty;
         self.timer = .start();
@@ -114,15 +190,13 @@ pub const TimeManager = struct {
         self.opt_movetime_base = @intFromFloat(optime);
         self.opt_movetime = self.opt_movetime_base;
 
-        // Never use more than 75% of the time left.
-        // TODO: test if the engine is left with virtually no time a few moves before the time control.
-        const max_factor: f32 = 0.75;
-        // if (cyclic_timecontrol and movestogo < 6 and movestogo > 1) {
-        //     max_factor = 0.45;
-        // }
+        // TODO: the engine is sometimes left with virtually no time a few moves before the time control.
 
+        // Never use more than 75% of the time left.
+        const max_factor: f32 = 0.75;
         const maxtime: f32 = max_factor * t - mo;
         self.max_movetime = @intFromFloat(maxtime);
+
     }
 
     /// When in clockmode we call this function after each search iteration.
@@ -135,6 +209,7 @@ pub const TimeManager = struct {
         const opt: f32 = base * node_scaling_factor * best_move_scaling_factor * eval_scaling_factor;
         self.opt_movetime = @intFromFloat(opt);
         self.opt_movetime = @min(self.max_movetime, self.opt_movetime);
+        //lib.io.debugprint("    max {} opt {}\n", .{ self.max_movetime, self.opt_movetime });
     }
 
     pub fn max_time_reached(self: *TimeManager) bool {

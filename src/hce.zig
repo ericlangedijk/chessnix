@@ -21,8 +21,8 @@ const io = lib.io;
 const bitloop = funcs.bitloop;
 const popcnt = funcs.popcnt;
 
-const SmallValue = types.SmallValue;
-const Value = types.Value;
+const SmallScore = types.SmallScore;
+const Score = types.Score;
 const ScorePair = types.ScorePair;
 const Color = types.Color;
 const Piece = types.Piece;
@@ -81,7 +81,7 @@ pub const Evaluator = struct {
         };
     }
 
-    pub fn evaluate(self: *Self, pos: *const Position) Value {
+    pub fn evaluate(self: *Self, pos: *const Position) Score {
         // Init pos reference.
         self.pos = pos;
         // We can only use pinned pieces. Remember: pins include the enemy pinner.
@@ -185,7 +185,7 @@ pub const Evaluator = struct {
             }
 
             // Doubled pawn.
-            const pawns_ahead_on_file = funcs.forward_file(us, sq) & our_pawns;
+            const pawns_ahead_on_file = bitboards.forward_file(us, sq) & our_pawns;
             const is_doubled: bool = pawns_ahead_on_file != 0;
             if (is_doubled) {
                 score.inc(hcetables.doubled_pawn_penalty[file]);
@@ -609,7 +609,7 @@ pub const Evaluator = struct {
 };
 
 /// Returns true for castle, enpassant and promotions, regardless of the threshold.
-pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
+pub fn see(pos: *const Position, m: Move, threshold: Score) bool {
     if (m.is_castle() or m.is_ep() or m.is_promotion()) {
         return true;
     }
@@ -618,7 +618,7 @@ pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
     const to: Square = m.to;
 
     // Set the score to captured piece minus how much we are allowed to lose.
-    var score: Value = pos.board[to.u].value() - threshold;
+    var score: Score = pos.board[to.u].value() - threshold;
 
     if (score < 0) {
         return false;
@@ -654,7 +654,7 @@ pub fn see(pos: *const Position, m: Move, threshold: Value) bool {
             break :attackloop;
         }
         winner = winner.opp();
-        var next_attacker_value: Value = 0;
+        var next_attacker_value: Score = 0;
 
         // Get the least valuable next piece.
         get_next_attacker: inline for (PieceType.all) |piecetype| {
