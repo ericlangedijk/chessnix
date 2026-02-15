@@ -12,7 +12,7 @@ Chessnix is a UCI chess engine.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
-### Version 1.3 Work In Progress...
+### Version 1.3
 - Stronger: ~3200 ELO.
 - Added: Slight center bias in quiet move ordering for shallow depths (experimental).
 - Added: Search history pruning, history reduction.
