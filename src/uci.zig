@@ -1,6 +1,7 @@
 // zig fmt: off
 
 const std = @import("std");
+const builtin = @import("builtin");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
 const funcs = @import("funcs.zig");
@@ -299,11 +300,14 @@ const TTY = struct {
     }
 
     fn print_state() void {
+        io.print("builtmode: {t}\n", .{ builtin.mode });
+        io.print("cpu: {t}\n", .{ builtin.cpu.arch });
         io.print("engine busy: {}\n", .{ engine.is_busy()});
     }
 };
 
-/// The possible parameters for the go command. All fields not present in the go command are zero / false.
+/// The possible parameters for the go command.
+/// All fields to be treated as null are zero / false.
 pub const Go = struct {
     /// The white and black time left.
     time: [2]u64,
@@ -318,9 +322,9 @@ pub const Go = struct {
     /// The maximum time to search in milliseconds.
     movetime: u64,
     /// Infinite search. Overwrites the other limiting fields.
-    infinite: bool = false,
+    infinite: bool,
     /// Not supported yet.
-    ponder: bool = false,
+    ponder: bool,
 
     pub const empty: Go = .{
         .time = .{ 0, 0, },

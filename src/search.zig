@@ -244,6 +244,8 @@ pub const Engine = struct {
 };
 
 pub const Stats = struct {
+    /// Calls to search or quiescence search
+    search_calls: u64 = 0,
     /// The total amount of nodes.
     nodes: u64 = 0,
     /// The total amount of quiescent search nodes.
@@ -425,10 +427,11 @@ pub const Searcher = struct {
                 const elapsed_nanos = self.tm.timer.read();
                 const ms = elapsed_nanos / 1_000_000;
                 const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
+                const cps: u64 = funcs.nps(self.stats.search_calls, elapsed_nanos);
 
                 io.print_buffered(
-                    "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} eff {}% pv",
-                    .{ self.stats.depth, self.stats.seldepth, rootnode.score, self.stats.nodes, qnodes, ms, nps, search_efficiency }
+                    "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
+                    .{ self.stats.depth, self.stats.seldepth, rootnode.score, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
                 );
 
                 for (rootnode.pv.slice()) |move| {
@@ -512,7 +515,7 @@ pub const Searcher = struct {
         const is_pvs: bool = comptime mode == .pv;
         const is_root: bool = comptime rootmode == .root;
 
-        if (lib.bughunt) {
+        if (comptime lib.bughunt) {
             lib.verify(input_depth >= 0, "search() invalid input_depth {}", .{ input_depth });
             lib.verify(!is_root or is_pvs, "search() root must be pvs", .{});
             lib.verify(input_beta > input_alpha, "search() invalid alphabeta {} {}", .{ input_alpha, input_beta});
@@ -521,6 +524,8 @@ pub const Searcher = struct {
         assert(input_depth >= 0);
         assert(!is_root or is_pvs);
         assert(input_beta > input_alpha);
+
+        self.stats.search_calls += 1;
 
         const childnode: *Node = &self.nodes[node.ply + 1];
         node.clear(.clear_pv);
@@ -613,21 +618,23 @@ pub const Searcher = struct {
         }
 
         // Tricky stuff.
-        if (lib.bughunt) {
+        if (comptime lib.bughunt) {
             if (!is_check and !is_singular_extension and (raw_static_eval == no_score or node.static_eval == no_score or node.eval == no_score)) {
                 lib.crash("search() eval should be filled", .{});
             }
         }
 
-        // Check improvement compared to a previous node with the same side to move.
-        // Improvement is 0 or 1.
+        // Check improvement compared to a previous node with the same side to move. Improvement is 0 or 1.
         var improvement: Score = 0;
+        var complex: bool = false;
 
         if (!is_check and node.static_eval != no_score) {
             const prevnode: ?*const Node =
                 if (node.ply >= 2 and self.nodes[node.ply - 2].static_eval != no_score) &self.nodes[node.ply - 2]
                 else if (node.ply >= 4 and self.nodes[node.ply - 4].static_eval != no_score) &self.nodes[node.ply - 4]
                 else null;
+
+            complex = @abs(node.static_eval - raw_static_eval) > 84;
 
             if (prevnode != null) {
                 improvement = if (node.static_eval > prevnode.?.static_eval) 1 else 0;
@@ -674,7 +681,7 @@ pub const Searcher = struct {
             }
         }
 
-        // Internal Iterative Reduction: If we have no tt move move ordering is not optimal.
+        // Internal Iterative Reduction: If we have no tt move, move ordering is not optimal.
         if ((is_pvs or cutnode) and depth >= 8 and tt_move.is_empty() and !is_singular_extension) {
             depth -= 1;
         }
@@ -793,8 +800,7 @@ pub const Searcher = struct {
             var score: Score = -infinity;
             var new_depth: i32 = depth + extension - 1;
 
-            // Late Move Reduction.
-            // Try a reduced search on late moves.
+            // Late Move Reduction. Try a reduced search on late moves.
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
             if (depth >= 3 and moves_seen >= lmr_move_threshold) {
 
@@ -817,7 +823,7 @@ pub const Searcher = struct {
                 }
 
                 // And reduce less when this move gives check.
-                if (gives_check) {
+                if (gives_check or complex) {
                     reduction -= 1;
                 }
 
@@ -938,6 +944,8 @@ pub const Searcher = struct {
         if (comptime lib.is_paranoid) {
             assert(pos.stm.e == us.e);
         }
+
+        self.stats.search_calls +%= 1;
 
         const childnode: *Node = &self.nodes[node.ply + 1];
         node.clear(.clear_pv);
@@ -1142,10 +1150,12 @@ pub const Searcher = struct {
             return true;
         }
 
-        // Don't check too often: the search is running with at least 1 million nodes per second.
-        const node_interval: bool = self.stats.nodes % 1024 == 0;
+        self.stats.search_calls += 1;
 
-        if (!node_interval) {
+        // Don't check too often: the search is running with at least 1 million nodes per second.
+        const interval: bool = self.stats.search_calls % 1024 == 0;
+
+        if (!interval) {
             return false;
         }
 
@@ -1257,14 +1267,16 @@ pub const Options = struct {
     }
 };
 
-/// Retrieve default reduction from the lmr table.
+/// Retrieve default reduction from the lmr table. Access is safely restricted.
+/// The max reduction for noisy is 9.
+/// The max reduction for quiet is 13.
 fn get_lmr(is_quiet: bool, depth: i32, moves_seen: u8) u8 {
     const q: u1 = @intFromBool(is_quiet);
     const d: u8 = @intCast(@min(depth, max_search_depth));
     return lmr_table[q][d][moves_seen];
 }
 
-/// LMR. Contains late move depth reductions. Indexing: [quiet][depth][moves_seen]
+/// Contains late move depth reductions. Indexing: [quiet][depth][moves_seen]
 pub const LmrTable = [2][max_search_depth + 2][max_move_count]u8;
 
 pub const lmr_table: LmrTable = compute_lmr_table();

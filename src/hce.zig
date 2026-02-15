@@ -500,7 +500,7 @@ pub const Evaluator = struct {
         const rook_checks: u64 = attacks.get_rook_attacks(their_king_sq, occupied);
         const bishop_checks: u64 = attacks.get_bishop_attacks(their_king_sq, occupied);
         const safe: u64 = ~(self.pawn_attacks[them.u] | self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | attacks.get_king_attacks(their_king_sq));
-        //const safe: u64 = ~(self.all_attacks[them.u] | attacks.get_king_attacks(their_king_sq)); // #testing
+        //const safe: u64 = ~(self.all_attacks[them.u] | attacks.get_king_attacks(their_king_sq)); // also an option. I don't know anymore why the queens are excluded.
 
         const safe_knight_checks: u64 = not_us & safe & self.knight_attacks[us.u] & attacks.get_knight_attacks(their_king_sq);
         const safe_bishop_checks: u64 = not_us & safe & self.bishop_attacks[us.u] & bishop_checks;
@@ -525,7 +525,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_protection_scorepair(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) ScorePair {
-        if (lib.bughunt) {
+        if (comptime lib.bughunt) {
             verify_king_pawn_protection_area(us, our_king_sq, our_pawn_sq);
         }
 
@@ -571,7 +571,7 @@ pub const Evaluator = struct {
 
         // We cannot handle these pins, because they are not there.
         // Remember the position pins include the opponents pieces. That is the tricky part.
-        if (lib.bughunt) {
+        if (comptime lib.bughunt) {
             lib.verify(us.e == self.pos.stm.e, "hce legalize_moves stm error. us = {}, from = {}, fen = {f}", .{ us.e, from.e, self.pos });
         }
 

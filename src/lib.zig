@@ -76,8 +76,8 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
-        // stdin = std.fs.File.stdin().reader(&in_buffer);
-        stdin = std.fs.File.stdin().readerStreaming(&in_buffer); // NOTE: this seems to be safer
+        stdin = std.fs.File.stdin().reader(&in_buffer);
+        // stdin = std.fs.File.stdin().readerStreaming(&in_buffer); // NOTE: this seems to be safer
         stdout = std.fs.File.stdout().writer(&out_buffer);
         return .{
             .in = &stdin.interface,

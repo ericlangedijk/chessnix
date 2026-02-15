@@ -150,7 +150,7 @@ pub const TranspositionTable = struct {
     /// Store the search score and the raw static eval, if any.
     pub fn store(self: *TranspositionTable, bound: Bound, key: u64, depth: i32, ply: u16, move: Move, score: Score, raw_static_eval: Score) void {
 
-        if (lib.bughunt) {
+        if (comptime lib.bughunt) {
             verify_args(depth, score, raw_static_eval);
         }
 
@@ -199,7 +199,7 @@ pub const TranspositionTable = struct {
 
     fn verify_args(depth: i32, score: Score, raw_static_eval: Score) void {
         lib.not_in_release();
-        if (depth < 0 or depth > 128) lib.crash("tt invalid depth {}", .{ depth });
+        if (depth < 0 or depth > types.max_search_depth + 16) lib.crash("tt invalid depth {}", .{ depth });
         if (score > std.math.maxInt(i16) or score < std.math.minInt(i16)) lib.crash("tt invalid score {}", .{ score });
         if (raw_static_eval > std.math.maxInt(i16) or raw_static_eval < std.math.minInt(i16)) lib.crash("tt invalid raw static eval {}", .{ raw_static_eval });
     }

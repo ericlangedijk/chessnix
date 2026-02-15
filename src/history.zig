@@ -48,8 +48,7 @@ fn HistoryBonus(comptime scale: SmallScore, comptime max_bonus: SmallScore, comp
         /// `bonus - score * abs(bonus) / max_score`.
         fn scale_bonus(score: SmallScore, bonus: SmallScore) SmallScore {
             const s: Score = score;
-            //return @intCast(bonus - @divTrunc(s * @abs(bonus), max_score));
-            return @intCast(bonus - @divFloor(s * @abs(bonus), max_score)); // #testing
+            return @intCast(bonus - @divFloor(s * @abs(bonus), max_score));
         }
     };
 }
@@ -71,7 +70,7 @@ pub const History = struct {
 
     /// Increase the score of the node's move. If the node move is quiet, punish the quiets.
     pub fn record_beta_cutoff(self: *History, depth: i32, ply: u16, ex: ExtMove, nodes: []const Node, bad_quiets: []const ExtMove) void {
-        if (lib.bughunt) {
+        if (comptime lib.bughunt) {
             self.continuation.verify_node(&nodes[ply]);
         }
 
@@ -164,7 +163,7 @@ pub const CaptureHistory = struct {
 pub const ContinuationHistory = struct {
 
     /// The previous plies of which we update the score.
-    const depths_delta: [3]u16 = .{ 1, 2, 4 }; // #testing
+    const depths_delta: [3]u16 = .{ 1, 2, 4 };
 
     /// Move pair scores. Indexing: [prevpiece][to][piece][to]
     table: [12][64][12][64]SmallScore,
@@ -272,15 +271,18 @@ pub const CorrectionHistory = struct {
         const w: Score = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
         const b: Score = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
 
+
         // The 2 is no typo. Maybe it is 'wrong' but it performed quite ok.
+        // The maximum correction diff is 96.
         const correction: Score = @divFloor(p + w + b, corr_scale * 2);
+
         const result: Score = clamp(raw_static_eval + correction, -types.mate_threshold + 1, types.mate_threshold - 1);
         return result;
     }
 
     fn update_entry(entry: *SmallScore, scaled_err: Score, weight: Score) void {
         var score: Score = entry.*;
-        score = @divFloor(score * (corr_scale - weight) + scaled_err * weight, corr_scale);
+        score = @divFloor(score * (corr_scale - weight) + (scaled_err * weight), corr_scale);
         score = clamp(score, corr_scale * -corr_max, corr_scale * corr_max);
         entry.* = @intCast(score);
     }

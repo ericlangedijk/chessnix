@@ -820,7 +820,7 @@ pub const no_score: Score = -32002;
 pub const infinity: Score = 32000;
 pub const mate: Score = 30000;
 pub const draw: Score = 0;
-pub const mate_threshold = mate - max_search_depth; // - 256; #testing bug with huge mate scores.
+pub const mate_threshold = mate - max_search_depth;
 pub const stalemate: Score = 0;
 pub const invalid_movescore: Score = std.math.minInt(Score);
 
@@ -855,7 +855,7 @@ pub const phase_table: [13]u8 = .{
 };
 
 pub fn phased_score(phase: u8, score: ScorePair) Score {
-    if (lib.is_paranoid) {
+    if (comptime lib.is_paranoid) {
         assert(phase <= 24);
     }
     const mg: Score = score.mg;

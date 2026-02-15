@@ -30,8 +30,8 @@ pub const pawn_phalanx_bonus: [8]ScorePair = .{
 
 /// By [rank].
 pub const passed_pawn_bonus: [8]ScorePair = .{
-    // pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
-    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 86), pair(0, 0),
+ // pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0),
+    pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 86), pair(0, 0), // adjusted
 };
 
 /// By [rank].
@@ -195,9 +195,8 @@ pub const pawn_push_threat_table: [13]ScorePair = .{
 
 /// By [piecetype]
 pub const safe_check_bonus: [6]ScorePair = .{
-    // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0), // original
+ // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0),
     pair(0, 0), pair(48, 8), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // adjusted
-
 };
 
 /// By [piecetype][square]
