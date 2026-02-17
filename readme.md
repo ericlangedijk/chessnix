@@ -6,14 +6,18 @@
 </p>
 <br/>
 
+I decided I don't understand anything of chess programming.
+Not before my brain is upgraded, which will probably never happen, there will be no new version.
+
 Chessnix is a UCI chess engine.
 
 - Needs Zig 0.15.2 to compile.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
+
 ### Version 1.3
-- Stronger: ~3200 ELO.
+- Stronger: ~3200 ELO I thought... but it is a drama.
 - Added: Slight center bias in quiet move ordering for shallow depths (experimental).
 - Added: Search history pruning, history reduction.
 - Added: Store raw static evaluation in TT.
