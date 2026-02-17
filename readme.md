@@ -7,7 +7,7 @@
 <br/>
 
 I decided I don't understand anything of chess programming.
-Not before my brain is upgraded, which will probably never happen, there will be no new version.
+There will not be a new version before my brain is upgraded, which will probably never happen.
 
 Chessnix is a UCI chess engine.
 
