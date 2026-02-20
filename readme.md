@@ -7,7 +7,6 @@
 <br/>
 
 I decided I don't understand anything of chess programming.
-There will not be a new version before my brain is upgraded, which will probably never happen.
 
 Chessnix is a UCI chess engine.
 
@@ -15,6 +14,15 @@ Chessnix is a UCI chess engine.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
+### Version 1.4 Work in Progress...
+- Working on it, not pretending to understand anything. Waiting for Zig 0.16.
+- Changed: Time management.
+- Changed. bitloop function inlined.
+- Changed: Prefetch TT address.
+- Changed: Some noalias arguments.
+- Changed: Depth reduction after alpha.
+- Changed: Only update pv when pv-node.
+- Bug solved: Parsing negative time.
 
 ### Version 1.3
 - Stronger: ~3200 ELO I thought... but it is a drama.
