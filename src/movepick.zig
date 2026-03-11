@@ -67,7 +67,7 @@ const Scores = struct {
 };
 
 /// A tiny shallow move ordering center bias.
-const move_ordering_square_bias: [64]u3 = .{
+const move_ordering_square_bias: [64]i8 = .{
     0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,
     0,0,1,1,1,1,0,0,
@@ -76,6 +76,16 @@ const move_ordering_square_bias: [64]u3 = .{
     0,0,1,1,1,1,0,0,
     0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,
+
+ // #testing
+    // 0,0,0,0,0,0,0,0,
+    // 0,1,0,0,0,0,1,0,
+    // 0,0,2,2,2,2,0,0,
+    // 0,0,2,3,3,2,0,0,
+    // 0,0,2,3,3,2,0,0,
+    // 0,0,2,2,2,2,0,0,
+    // 0,1,0,0,0,0,1,0,
+    // 0,0,0,0,0,0,0,0,
 };
 
 /// There is no staged move generation (which is much slower).
@@ -194,7 +204,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         }
 
         /// Required function for movegen.
-        pub fn store(self: *Self, extmove: ExtMove) ?void {
+        pub fn store(self: *Self, extmove: ExtMove) void {
             self.move_count += 1;
             // Copy
             var ex: ExtMove = extmove;
@@ -300,6 +310,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             else if (listmode == .quiets) {
                 ex.score = hist.get_quiet_score(ex.*, self.node.ply, &self.searcher.nodes);
                 ex.score += move_ordering_square_bias[ex.move.to.u];
+                //if (pos.phase > 12) // #testing
+                //ex.score += (move_ordering_square_bias[ex.move.to.u] - move_ordering_square_bias[ex.move.from.u]);
+                //if (!hce.see(pos, ex.move, 0)) ex.score -= 20; // #testing
             }
             // Bad noisy moves are already handled.
             else {

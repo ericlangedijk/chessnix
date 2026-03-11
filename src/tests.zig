@@ -200,12 +200,12 @@ pub const ParseDepthError = error
     NoSemiColon, NoDepthChar, ExpectedNodes, TooManyPartsInDepth
 };
 
-pub const FenDepths = lib.BoundedArray(u64, 16);
+pub const FenDepths = utils.BoundedArray(u64, 16);
 
 /// "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324"
 /// "1B6/1r3Bk1/8/Pp6/4KN1p/8/5b1R/8 b - -;23;728;14764;461899;9440955;292742932"
 fn decode_depths(fen: []const u8) ParseDepthError!FenDepths {
-    var depths: lib.BoundedArray(u64, 16) = .{};
+    var depths: utils.BoundedArray(u64, 16) = .{};
     depths.append_assume_capacity(0);
 
     const first_semicolon: usize = index_of(fen, ';') orelse return ParseDepthError.NoSemiColon;

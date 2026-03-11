@@ -27,7 +27,8 @@ var engine: *Engine = undefined;
 pub fn run() void {
     const is_tty: bool = lib.is_tty();
     uci_loop(is_tty) catch |err| {
-        io.print("info error: {s}", .{ @errorName(err) });
+        //io.print("info error: {s}", .{ @errorName(err) });
+        lib.wtf("fatal error in uci loop: {s}" , .{ @errorName(err) });
     };
 }
 
@@ -183,7 +184,7 @@ const UCI = struct {
         const next = tokenizer.next() orelse return;
         if (eql(next, "fen")) {
             var fen_and_moves = std.mem.splitSequence(u8, tokenizer.rest(), "moves");
-            try engine.set_position(fen_and_moves.next() orelse wtf(), fen_and_moves.next());
+            try engine.set_position(fen_and_moves.next() orelse wtf("no fen", .{}), fen_and_moves.next());
         }
         else if (eql(next, "startpos")) {
             if (tokenizer.next()) |n| {
@@ -203,28 +204,28 @@ const UCI = struct {
 
         while (tokenizer.next()) |next| {
             if (eql(next, "wtime")) {
-                result.time[0] = try parse_64(tokenizer.next());
+                result.time[0] = parse_i64(tokenizer.next()) catch return error.go_invalid_w_time;
             }
             else if (eql(next, "btime")) {
-                result.time[1] = try parse_64(tokenizer.next());
+                result.time[1] = parse_i64(tokenizer.next()) catch return error.go_invalid_b_time;
             }
             else if (eql(next, "winc")) {
-                result.increment[0] = try parse_64(tokenizer.next());
+                result.increment[0] = parse_i64(tokenizer.next()) catch return error.go_invalid_w_inc;
             }
             else if (eql(next, "binc")) {
-                result.increment[1] = try parse_64(tokenizer.next());
+                result.increment[1] = parse_i64(tokenizer.next()) catch return error.go_invalid_b_inc;
             }
             else if (eql(next, "movestogo")) {
-                result.movestogo = try parse_64(tokenizer.next());
+                result.movestogo = parse_i64(tokenizer.next()) catch return error.go_invalid_movestogo;
             }
             else if (eql(next, "movetime")) {
-                result.movetime = try parse_64(tokenizer.next());
+                result.movetime = parse_i64(tokenizer.next()) catch return error.go_invalid_movetime;
             }
             else if (eql(next, "nodes")) {
-                result.nodes = try parse_64(tokenizer.next());
+                result.nodes = parse_i64(tokenizer.next()) catch return error.go_invalid_nodes;
             }
             else if (eql(next, "depth")) {
-                result.depth = try parse_64(tokenizer.next());
+                result.depth = parse_i64(tokenizer.next()) catch return error.go_invalid_depth;
             }
             else if (eql(next, "infinite")) {
                 result.infinite = true;
@@ -233,21 +234,16 @@ const UCI = struct {
                 result.ponder = true;
             }
         }
+
+        result.sanitize();
         return result;
     }
 
-    fn parse_64(str: ?[]const u8) Error!u64 {
+    fn parse_i64(str: ?[]const u8) !i64 {
         if (str == null) {
-            return Error.ParsingError;
+            return error.cannot_parse_number;
         }
-        return std.fmt.parseInt(u64, str.?, 10) catch Error.ParsingError;
-    }
-
-    fn parse_32(str: ?[]const u8) Error!i32 {
-        if (str == null) {
-            return Error.ParsingError;
-        }
-        return std.fmt.parseInt(i32, str.?, 10) catch Error.ParsingError;
+        return std.fmt.parseInt(i64, str.?, 10) catch error.cannot_parse_number;
     }
 };
 
@@ -310,35 +306,49 @@ const TTY = struct {
 /// All fields to be treated as null are zero / false.
 pub const Go = struct {
     /// The white and black time left.
-    time: [2]u64,
+    time: [2]?i64,
     /// The white and black increment per move.
-    increment: [2]u64,
+    increment: [2]?i64,
     /// The number of moves until the next time control.
-    movestogo: u64,
+    movestogo: ?i64,
     /// The maximum depth to search.
-    depth: u64,
+    depth: ?i64,
     /// The maximum nodes to search.
-    nodes: u64,
+    nodes: ?i64,
     /// The maximum time to search in milliseconds.
-    movetime: u64,
+    movetime: ?i64,
     /// Infinite search. Overwrites the other limiting fields.
-    infinite: bool,
+    infinite: ?bool,
     /// Not supported yet.
-    ponder: bool,
+    ponder: ?bool,
 
     pub const empty: Go = .{
-        .time = .{ 0, 0, },
-        .increment = .{ 0, 0, },
-        .movestogo = 0,
-        .depth = 0,
-        .nodes = 0,
-        .movetime = 0,
-        .infinite = false,
-        .ponder = false,
+        .time = .{ null, null, },
+        .increment = .{ null, null, },
+        .movestogo = null,
+        .depth = null,
+        .nodes = null,
+        .movetime = null,
+        .infinite = null,
+        .ponder = null,
     };
+
+    /// Ensure no negatives.
+    fn sanitize(self: *Go) void {
+        if (self.time[0] != null) self.time[0].? = @max(0, self.time[0].?);
+        if (self.time[1] != null) self.time[1].? = @max(0, self.time[1].?);
+        if (self.increment[0] != null) self.increment[0].? = @max(0, self.increment[0].?);
+        if (self.increment[1] != null) self.increment[1].? = @max(0, self.increment[1].?);
+        if (self.movestogo != null) self.movestogo.? = @max(0, self.movestogo.?);
+        if (self.depth != null) self.depth.? = @max(0, self.depth.?);
+        if (self.nodes != null) self.nodes.? = @max(0, self.nodes.?);
+        if (self.movetime != null) self.movetime.? = @max(0, self.movetime.?);
+    }
 };
 
-/// Error parsing UCI string.
-const Error = error {
-    ParsingError,
-};
+// Error parsing UCI string.
+// const Error = error {
+//     ParsingError,
+//     InvalidGo,
+// };
+

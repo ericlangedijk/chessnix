@@ -3,13 +3,13 @@
 //! Basic types and consts, used almost everywhere.
 
 const std = @import("std");
+const utils = @import("utils.zig");
 const bitboards = @import("bitboards.zig");
 const position = @import("position.zig");
 const funcs = @import("funcs.zig");
 const lib = @import("lib.zig");
 
 const assert = std.debug.assert;
-const wtf = lib.wtf();
 const io = lib.io;
 
 /// Used for evaluations.
@@ -279,8 +279,8 @@ pub const Square = packed union {
 
     /// Only used during initialization.
     /// * Returns a ray of squares in the direction `dir`, not including self.
-    pub fn ray(self: Square, dir: Direction) lib.BoundedArray(Square, 8) {
-        var result: lib.BoundedArray(Square, 8) = .{};
+    pub fn ray(self: Square, dir: Direction) utils.BoundedArray(Square, 8) {
+        var result: utils.BoundedArray(Square, 8) = .{};
         var run: Square = self;
         while (true) {
             if (run.next(dir)) |n| {
@@ -432,16 +432,16 @@ pub const Piece = packed union {
 
     pub const NO_PIECE : Piece = .{ .e = .no_piece };
 
-    pub fn create(pt: PieceType, side: Color) Piece {
+    pub fn init(pt: PieceType, side: Color) Piece {
         return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
     }
 
-    pub fn from_usize(u: usize) Piece {
-        if (comptime lib.is_paranoid) {
-            assert(u <= 11);
-        }
-        return .{ .u = @truncate(u)};
-    }
+    // pub fn from_usize(u: usize) Piece {
+    //     if (comptime lib.is_paranoid) {
+    //         assert(u <= 11);
+    //     }
+    //     return .{ .u = @truncate(u)};
+    // }
 
     pub fn idx(self: Piece) usize {
         return self.u;
@@ -484,7 +484,7 @@ pub const Piece = packed union {
         if (self.is_empty()) {
             return Piece.NO_PIECE;
         }
-        return if (self.color().e == .white ) .{.u = self.u + 6} else .{ .u = self.u - 6 };
+        return if (self.color().e == .white ) .{ .u = self.u + 6 } else .{ .u = self.u - 6 };
     }
 
     pub fn is_pawn(self: Piece) bool {
@@ -741,9 +741,17 @@ pub fn ExtMoveList(max: u8) type {
             return .{ .extmoves = undefined, .count = 0 };
         }
 
+        /// Assumes witin bounds.
         pub fn add(self: *Self, ex: ExtMove) void {
             self.extmoves[self.count] = ex;
             self.count += 1;
+        }
+
+        /// Only adds if possible.
+        pub fn try_add(self: *Self, ex: ExtMove) void {
+            if (self.count < max) {
+                self.add(ex);
+            }
         }
 
         pub fn slice(self: *Self) []ExtMove {
@@ -792,7 +800,14 @@ pub fn pair(mg: SmallScore, eg: SmallScore) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
-pub const GamePhase = enum { opening, midgame, endgame };
+pub fn is_mate_score(score: Score) bool {
+    const s: Score = @intCast(@abs(score));
+    return s <= mate and score >= mate_threshold;
+}
+
+pub const GamePhase = enum(u2) {
+    opening, midgame, endgame
+};
 
 pub const ParsingError = error {
     /// Garbage piece inside fen string.
@@ -845,22 +860,19 @@ const piece_values: [13]Score = .{
     0,
 };
 
-pub const max_phase: u8 = 24;
-
 /// Game phase table. Indexing by [piece]
 pub const phase_table: [13]u8 = .{
     0, 1, 1, 2, 4, 0,
     0, 1, 1, 2, 4, 0,
     0
 };
+pub const max_phase: u8 = 24;
 
 pub fn phased_score(phase: u8, score: ScorePair) Score {
-    if (comptime lib.is_paranoid) {
-        assert(phase <= 24);
-    }
+    const ph: u8 = @min(max_phase, phase);
     const mg: Score = score.mg;
     const eg: Score = score.eg;
-    return @divFloor(mg * phase + eg * (max_phase - phase), max_phase);
+    return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
 
 /// Not used.

@@ -173,10 +173,41 @@ pub fn first_square(bitboard: u64) Square {
 }
 
 /// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
-pub fn bitloop(bitboard: *u64) ?Square {
+pub inline fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
     defer bitboard.* &= (bitboard.* - 1);
     return .{ .u = @intCast(@ctz(bitboard.*)) };
+}
+
+/// Note: This requires x86-64 and the BMI2 instruction set.
+pub fn get_nth_set_bit_or_null(bitboard: u64, n: u6) ?u6 {
+    // Return null if we are asking for a bit that doesn't exist
+    if (@popCount(bitboard) <= n) return null;
+
+    const nth_bit = @as(u64, 1) << n;
+
+    // PDEP (Parallel Bit Deposit) magic via inline assembly
+    const isolated = asm (
+        "pdep %[mask], %[val], %[out]"
+        : [out] "=r" (-> u64),
+        : [val] "r" (nth_bit),
+          [mask] "r" (bitboard),
+    );
+
+    return @intCast(@ctz(isolated));
+}
+
+/// Note: This requires x86-64 and the BMI2 instruction set.
+pub fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
+    const nth_bit = @as(u64, 1) << n;
+    // PDEP (Parallel Bit Deposit) magic via inline assembly
+    const isolated = asm (
+        "pdep %[mask], %[val], %[out]"
+        : [out] "=r" (-> u64),
+        : [val] "r" (nth_bit),
+          [mask] "r" (bitboard),
+    );
+    return @intCast(@ctz(isolated));
 }
 
 pub fn clear_square(bitboard: *u64, sq: Square) void {
@@ -244,6 +275,10 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
 
 /// Convert any int to f32.
 pub fn float(i: anytype) f32 {
+    return @floatFromInt(i);
+}
+
+pub fn float64(i: anytype) f64 {
     return @floatFromInt(i);
 }
 

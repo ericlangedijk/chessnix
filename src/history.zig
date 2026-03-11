@@ -9,6 +9,7 @@ const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
 const tt = @import("tt.zig");
+const consts = @import("consts.zig");
 
 const assert = std.debug.assert;
 const clamp = std.math.clamp;
@@ -26,32 +27,29 @@ const Nodes = search.Nodes;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
-const hist_scale: SmallScore = 146;
-const hist_max_bonus: SmallScore = 1282;
-const hist_max_score: SmallScore = 16384;
+const tunables = consts.tunables;
 
-const hist_calc = HistoryBonus(hist_scale, hist_max_bonus, hist_max_score);
+const HistCalc = struct {
+    /// `depth * scale`.
+    fn get_bonus(depth: i32) SmallScore {
+        return @intCast(clamp(depth * tunables.history_scale, -tunables.history_max_bonus, tunables.history_max_bonus));
+    }
 
-/// The 3 functions to handle history bonus.
-fn HistoryBonus(comptime scale: SmallScore, comptime max_bonus: SmallScore, comptime max_score: SmallScore) type {
-    return struct {
-        /// `depth * scale`.
-        fn get_bonus(depth: i32) SmallScore {
-            return @intCast(clamp(depth * scale, -max_bonus, max_bonus));
-        }
+    // fn get_malus(depth: i32) SmallScore {
+    //     return @intCast(clamp(depth * tunables.history_scale, -tunables.history_max_malus, tunables.history_max_malus));
+    // }
 
-        /// Add scaled bonus to the entry.
-        fn apply_bonus(entry: *SmallScore, bonus: SmallScore) void {
-            entry.* += scale_bonus(entry.*, bonus);
-        }
+    /// Add scaled bonus to the entry.
+    fn apply_bonus(entry: *SmallScore, bonus: SmallScore) void {
+        entry.* += scale_bonus(entry.*, bonus);
+    }
 
-        /// `bonus - score * abs(bonus) / max_score`.
-        fn scale_bonus(score: SmallScore, bonus: SmallScore) SmallScore {
-            const s: Score = score;
-            return @intCast(bonus - @divFloor(s * @abs(bonus), max_score));
-        }
-    };
-}
+    /// `bonus - score * abs(bonus) / max_score`.
+    fn scale_bonus(score: SmallScore, bonus: SmallScore) SmallScore {
+        const s: Score = score;
+        return @intCast(bonus - @divFloor(s * @abs(bonus), tunables.history_max_score));
+    }
+};
 
 /// Container for all history heuristics.
 pub const History = struct {
@@ -105,16 +103,17 @@ pub const QuietHistory = struct {
     table: [12][64][64]SmallScore,
 
     fn update(self: *QuietHistory, depth: i32, ex: ExtMove, quiets: []const ExtMove) void {
-        const bonus: SmallScore = hist_calc.get_bonus(depth);
+        const bonus: SmallScore = HistCalc.get_bonus(depth);
+        //const malus: SmallScore = hist_calc.get_malus(depth);
 
         // Increase score for this move.
         const v: *SmallScore = self.get_score_ptr(ex);
-        hist_calc.apply_bonus(v, bonus);
+        HistCalc.apply_bonus(v, bonus);
 
         // Decrease score of previous moves. These did not cause a beta cutoff.
         for (quiets) |prev| {
             const p: *SmallScore = self.get_score_ptr(prev);
-            hist_calc.apply_bonus(p, -bonus);
+            HistCalc.apply_bonus(p, -bonus);
         }
     }
 
@@ -134,19 +133,20 @@ pub const CaptureHistory = struct {
     table: [12][64][6]SmallScore,
 
     pub fn update(self: *CaptureHistory, depth: i32, ex: ExtMove) void {
-        const bonus: SmallScore = hist_calc.get_bonus(depth);
+        const bonus: SmallScore = HistCalc.get_bonus(depth);
 
         // Increase score for this move.
         const v: *SmallScore = self.get_score_ptr(ex);
-        hist_calc.apply_bonus(v, bonus);
+        HistCalc.apply_bonus(v, bonus);
     }
 
     pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
-        const bonus: SmallScore = hist_calc.get_bonus(depth);
+        const bonus: SmallScore = HistCalc.get_bonus(depth);
+        //const malus: SmallScore = hist_calc.get_malus(depth);
         // Decrease score of capture moves (that did not raise alpha).
         for (captures) |prev| {
             const p: *SmallScore = self.get_score_ptr(prev);
-            hist_calc.apply_bonus(p, -bonus);
+            HistCalc.apply_bonus(p, -bonus);
         }
     }
 
@@ -174,7 +174,8 @@ pub const ContinuationHistory = struct {
             return;
         }
 
-        const bonus: SmallScore = hist_calc.get_bonus(depth);
+        const bonus: SmallScore = HistCalc.get_bonus(depth);
+        //const malus: SmallScore = hist_calc.get_malus(depth);
 
         // Increase score for this move.
         inline for (depths_delta) |d| {
@@ -197,7 +198,7 @@ pub const ContinuationHistory = struct {
     fn update_single_score(node: *const Node, ex: ExtMove, bonus: SmallScore) void {
         if (node.continuation_entry) |entry| {
             const v: *SmallScore = &entry[ex.piece.u][ex.move.to.u];
-            hist_calc.apply_bonus(v, bonus);
+            HistCalc.apply_bonus(v, bonus);
         }
     }
 
@@ -218,15 +219,15 @@ pub const ContinuationHistory = struct {
     fn verify_node(self: *const ContinuationHistory, node: *const Node) void {
         lib.not_in_release();
         if (node.current_move.move.is_empty()) {
-            lib.verify(node.continuation_entry == null, "continuation history verify_node() error. currentmove is empty but continuation_entry is not null", .{});
+            lib.verify(node.continuation_entry == null, "verify_node #1", .{});
         }
         if (!node.current_move.move.is_empty()) {
-            lib.verify(node.continuation_entry != null, "continuation history verify_node() error. currentmove is not empty but continuation_entry is null", .{});
+            lib.verify(node.continuation_entry != null, "verify_node #2", .{});
         }
         if (node.continuation_entry == null) {
             return;
         }
-        lib.verify(node.continuation_entry == &self.table[node.current_move.piece.u][node.current_move.move.to.u], "continuation history verify_node() error. continuation_entry address mismatch", .{});
+        lib.verify(node.continuation_entry == &self.table[node.current_move.piece.u][node.current_move.move.to.u], "verify_node #3", .{});
     }
 };
 
@@ -238,10 +239,10 @@ pub const ContinuationHistory = struct {
 /// 3) After retrieving a new raw static eval we adjust it using `apply`.
 /// 4) the size of the table is twice as big as I usually see in other engines.
 pub const CorrectionHistory = struct {
-    const table_size: usize = 16384 * 2;
+    const table_size: usize = 16384;// * 2; // #testing smaller
 
     const corr_scale: Score = 256;
-    const corr_max: Score = 64;
+    const corr_max: Score = 64;// * 3; // 128;
 
     /// Entries for pawns
     pawn_table: [2][table_size]SmallScore,
@@ -271,10 +272,26 @@ pub const CorrectionHistory = struct {
         const w: Score = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
         const b: Score = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
 
+        //_ = w;
+        //_ = b;
 
         // The 2 is no typo. Maybe it is 'wrong' but it performed quite ok.
         // The maximum correction diff is 96.
+
+        //const d: Score =  700; //512;corr_scale * 2
+        //const f: f32 = funcs.float(p + w + b) / 512.0; // #testing again..............
+        //const correction: Score = @intFromFloat(f);//   @divFloor(p + w + b, d);
+
+        //lib.io.debugprint("[{} = {}], ", .{ correction, @divFloor(p + w + b, 512)});
+
         const correction: Score = @divFloor(p + w + b, corr_scale * 2);
+        // const correction: Score = @divFloor(p + w + b, corr_scale * 3);
+
+        //const correction: Score = @divFloor(p, corr_scale);
+
+
+        // The maximum correction diff is 64.
+        //const correction: Score = @divFloor(p + w + b, corr_scale * 3);
 
         const result: Score = clamp(raw_static_eval + correction, -types.mate_threshold + 1, types.mate_threshold - 1);
         return result;

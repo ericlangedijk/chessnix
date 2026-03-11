@@ -16,16 +16,19 @@ Chessnix is a UCI chess engine.
 
 ### Version 1.4 Work in Progress...
 - Working on it, not pretending to understand anything. Waiting for Zig 0.16.
+- Stronger: I hope.
+- Changed: Alpha Raises Reduction LMR (instead of depth reduction) after score > alpha.
+- Changed: Only update pv when pv-node. Removed update pv in qsearch.
 - Changed: Time management.
-- Changed. bitloop function inlined.
-- Changed: Prefetch TT address.
-- Changed: Some noalias arguments.
-- Changed: Depth reduction after alpha.
-- Changed: Only update pv when pv-node.
+- Changed: TT structure and entry replacement strategy.
+- Changed: Prefetch TT for a slight speed boost.
+- Changed: Some minor optimizations.
+- Removed: Reward / punish moves in qsearch.
+- Bug solved: Another terrible one: qsearch comparing a zero score with TT score instead of the eval.
 - Bug solved: Parsing negative time.
 
 ### Version 1.3
-- Stronger: ~3200 ELO I thought... but it is a drama.
+- Stronger: ~3168 ELO on CCRL.
 - Added: Slight center bias in quiet move ordering for shallow depths (experimental).
 - Added: Search history pruning, history reduction.
 - Added: Store raw static evaluation in TT.
@@ -104,11 +107,11 @@ To be continued...
 
 ### Thanks
 Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3) to get me started (from chessnix 2.0 onwards I will do my own tuning).
-Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
-The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Lishex, Mess, Monty, OpenCritter, PlentyChess, Priessnitz, Seawall, Seredina, Shallow, Shallowguess, Stash, Stockfish, Supernova, Teki.
+Jonthan, Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
+The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Linx, Lishex, Mess, Monty, OpenCritter, PlentyChess, Pounce, Priessnitz, Seawall, Seredina, Shallow, Shallowguess, Simbelmine, Stash, Supernova, Teki, Yakka.
 Some extra thanks to these people who made their engine support chess960.
 I also learned a lot from the source code of all these engines.
-Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Alexandria, Cwtch, Lambergar, Integral, PlentyChess, Stockfish and probably others).
+Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Alexandria, Cwtch, Lambergar, Integral, PlentyChess, Pawnocchio, Stockfish and probably others).
 
 ### The name
 I spent many years on Lemmix, the DOS Lemmings clone. So in my feeling the name had to end with "ix" as well.

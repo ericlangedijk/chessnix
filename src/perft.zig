@@ -71,7 +71,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
             if (is_leaf) {
                 var counter: JustCount = .init();
                 next_pos.generate_all_moves(them, &counter); // just count
-                count = counter.moves;
+                count = counter.counted;
                 nodes += count;
             }
             else {

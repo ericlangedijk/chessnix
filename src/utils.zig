@@ -16,11 +16,9 @@ pub const Timer = struct {
 
     std_timer: std.time.Timer,
 
-    /// NOTE: at program startup we check once if timer is available, otherwise quit.
-    /// From then on we assume it is there.
     pub fn start() Timer {
         return .{
-            .std_timer = std.time.Timer.start() catch wtf()
+            .std_timer = std.time.Timer.start() catch wtf("no timer", .{})
         };
     }
 
@@ -115,6 +113,10 @@ pub const TextFileReader = struct {
         //     return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
         // };
         // return std.mem.trimEnd(u8, line, "\r\n");
+    }
+
+    pub fn reset(self: *TextFileReader) void {
+        self.reader.seekTo(0);
     }
 };
 

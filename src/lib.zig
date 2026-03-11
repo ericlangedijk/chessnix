@@ -2,17 +2,14 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const assert = std.debug.assert;
+const utils = @import("utils.zig");
 
 pub fn initialize() !void {
-    if (lib_is_initialized) return;
-
-    // If no timer available, the program is useless. In the rest of the code we use utils.Timer which assumes a timer is available.
-    _ = try std.time.Timer.start();
-
+    if (lib_is_initialized) {
+        return;
+    }
     memory_context = .init();
     io_context = .init();
-
     lib_is_initialized = true;
 }
 
@@ -22,22 +19,40 @@ pub fn finalize() void {
     memory_context.deinit();
 }
 
-/// For now we put it here.
-pub const BoundedArray = @import("utils.zig").BoundedArray;
-
 ////////////////////////////////////////////////////////////////
 // Globals.
 ////////////////////////////////////////////////////////////////
-pub const version = "1.3";
+pub const Program = enum {
+    /// We are a chess engine.
+    engine,
+    /// We are convering the lichess json eval dataset.
+    generating_lichess_dataset,
+    /// We are running a hce tuning.
+    tuning,
+
+    nothing,
+};
+
+pub const program: Program = .engine;
+//pub const program: Program = .nothing;
+
+
+// Running tuner. Otherwise running uci engine.
+pub const is_tuning: bool = program == .tuning;
+
+// pub const time_logging: bool = true;
+
+pub const version = "1.4";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 
-/// Using this for time consuming checks.
+/// Only when debugging we use time consumming checks.
 pub const is_paranoid: bool = is_debug;
 
 /// Using this for tricky bug hunting. Never in releasemode.
-/// In ReleaseSafe mode we also create a logfile with the eror when calling crash().
+/// In ReleaseSafe mode we also create a logfile when we crash.
 pub const bughunt: bool = builtin.mode == .ReleaseSafe or builtin.mode == .Debug;
+
 
 // Input output
 pub const ctx: *const MemoryContext = &memory_context;
@@ -76,8 +91,7 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
-        stdin = std.fs.File.stdin().reader(&in_buffer);
-        // stdin = std.fs.File.stdin().readerStreaming(&in_buffer); // NOTE: this seems to be safer
+        stdin = std.fs.File.stdin().readerStreaming(&in_buffer);
         stdout = std.fs.File.stdout().writer(&out_buffer);
         return .{
             .in = &stdin.interface,
@@ -94,44 +108,22 @@ const IoContext = struct {
 
     /// By default print and flush.
     pub fn print(self: *const IoContext, comptime str: []const u8, args: anytype) void {
-        self.out.print(str, args) catch wtf();
-        self.out.flush() catch wtf();
+        self.out.print(str, args) catch wtf("print", .{});
+        self.out.flush() catch wtf("flush", .{});
     }
 
     /// uci only.
     pub fn print_buffered(self: *const IoContext, comptime str: []const u8, args: anytype) void {
-        self.out.print(str, args) catch wtf();
+        self.out.print(str, args) catch wtf("print", .{});
     }
 
     /// If `print_buffered` was used.
     pub fn flush(self: *const IoContext) void {
-        self.out.flush() catch wtf();
-    }
-
-    /// Output depends on debug or releasesafe mode
-    pub fn printerror(self: *const IoContext, comptime str: []const u8, args: anytype) void {
-        not_in_release();
-        if (is_debug) {
-            std.debug.print(str, args);
-        }
-        else {
-            self.print(str, args);
-        }
+        self.out.flush() catch wtf("flush", .{});
     }
 
     /// Debug only.
     pub fn debugprint(_: *const IoContext, comptime str: []const u8, args: anytype) void {
-        not_in_release();
-        std.debug.print(str, args);
-    }
-
-    pub fn dpr(_: *const IoContext, comptime str: []const u8) void {
-        not_in_release();
-        std.debug.print("{s}\n", .{ str });
-    }
-
-    /// Allowed during UCI.
-    pub fn errorprint(_: *const IoContext, comptime str: []const u8, args: anytype) void {
         not_in_release();
         std.debug.print(str, args);
     }
@@ -147,30 +139,26 @@ pub fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }
 
-pub fn wtf() noreturn {
-    @panic("wtf"); // TODO: finetune
-}
-
-/// Only in ReleaseSafe
-pub fn verify(ok: bool, comptime str: []const u8, args: anytype) void {
-    not_in_release();
-    if (!ok) {
-        crash(str, args);
-    }
-}
-
-pub fn crash(comptime str: []const u8, args: anytype) noreturn {
-    not_in_release();
-    if (builtin.mode == .ReleaseSafe) {
-        log_crash(str, args);
+pub fn wtf(comptime str: []const u8, args: anytype) noreturn {
+    if (bughunt) {
+        log_wtf(str, args);
     }
     std.debug.panic(str, args);
 }
 
-/// Internal function
-fn log_crash(comptime str: []const u8,  args: anytype) void {
+/// Only in ReleaseSafe.
+pub fn verify(ok: bool, comptime str: []const u8, args: anytype) void {
     not_in_release();
-    var writer = @import("utils.zig").TextFileWriter.init_cwd("chessnix.log", ctx.galloc, 256) catch return;
+    if (!ok) {
+        wtf(str, args);
+    }
+}
+
+/// Only in ReleaseSafe.
+fn log_wtf(comptime str: []const u8, args: anytype) void {
+    not_in_release();
+    var writer = utils.TextFileWriter.init_cwd("chessnix.log", ctx.galloc, 256) catch return;
     defer writer.deinit();
     writer.writeline(str, args) catch return;
 }
+
