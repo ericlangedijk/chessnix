@@ -52,5 +52,3 @@ const Tunables = struct {
     tt_entry_depth_weight: i32,
     tt_entry_age_weight: i32,
 };
-
-

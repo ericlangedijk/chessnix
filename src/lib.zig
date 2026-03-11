@@ -51,8 +51,7 @@ pub const is_paranoid: bool = is_debug;
 
 /// Using this for tricky bug hunting. Never in releasemode.
 /// In ReleaseSafe mode we also create a logfile when we crash.
-pub const bughunt: bool = builtin.mode == .ReleaseSafe or builtin.mode == .Debug;
-
+pub const bughunt: bool = builtin.mode == .ReleaseSafe or builtin.mode == .Debug; // TODO: maybe rename to verifications
 
 // Input output
 pub const ctx: *const MemoryContext = &memory_context;
@@ -91,8 +90,9 @@ const IoContext = struct {
     out: *std.Io.Writer,
 
     fn init() IoContext {
+        // Thanks to Jonathan Hallström.
         stdin = std.fs.File.stdin().readerStreaming(&in_buffer);
-        stdout = std.fs.File.stdout().writer(&out_buffer);
+        stdout = std.fs.File.stdout().writerStreaming(&out_buffer);
         return .{
             .in = &stdin.interface,
             .out = &stdout.interface,

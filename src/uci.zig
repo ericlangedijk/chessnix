@@ -34,7 +34,7 @@ pub fn run() void {
 
 fn uci_loop(is_tty: bool) !void {
     if (is_tty) {
-        // Enable cls and maybe later some fancy coloring.
+        // Enable cls (clear screen) and maybe later some fancy coloring.
         _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
         TTY.print_hello();
     }
@@ -345,10 +345,3 @@ pub const Go = struct {
         if (self.movetime != null) self.movetime.? = @max(0, self.movetime.?);
     }
 };
-
-// Error parsing UCI string.
-// const Error = error {
-//     ParsingError,
-//     InvalidGo,
-// };
-

@@ -486,13 +486,13 @@ pub const Searcher = struct {
                 return 0;
             }
 
-            // Alpha: fail low
+            // Alpha: fail low.
             if (score <= alpha) {
                 beta = @divFloor(alpha + beta, 2);
                 alpha = @max(-infinity, score - delta);
                 searchdepth = depth;
             }
-            // Beta: fail high
+            // Beta: fail high.
             else if (score >= beta) {
                 beta = @min(infinity, score + delta);
                 if (alpha < 2000) {
@@ -503,7 +503,7 @@ pub const Searcher = struct {
             else {
                 break;
             }
-            delta = @divTrunc(delta *  155, 100);
+            delta = @divTrunc(delta * 155, 100);
         }
         return score;
     }
