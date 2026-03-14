@@ -17,7 +17,6 @@ const pawns_shift = funcs.pawns_shift;
 const pawn_from = funcs.pawn_from;
 const bitloop = funcs.bitloop;
 
-const Score = types.Score;
 const Orientation = types.Orientation;
 const Direction = types.Direction;
 const Color = types.Color;
@@ -55,7 +54,7 @@ const empty_layout: *const Layout = &EMPTY_LAYOUT;
 const CLASSIC_LAYOUT: Layout = Layout.init(Square.A1.u, Square.H1.u, Square.E1.u, Square.A8.u, Square.H8.u, Square.E8.u);
 const classic_layout: *const Layout = &CLASSIC_LAYOUT;
 
-/// A dictionary with load on demand chess960 positions.
+/// A dictionary with load on demand chess960 / chess324 / dfrc layouts.
 pub var alternative_layout_map: std.AutoHashMapUnmanaged(LayoutKey, Layout) = .empty;
 
 /// Hard constant. Indexing [color][castletype].
@@ -116,7 +115,7 @@ pub const Position = struct {
     pins_diagonal: u64,
     /// Bitboard with the orthogonal pin rays (**excluded** the king, **included** the attacker).
     pins_orthogonal: u64,
-    /// Indicates chess 960. Also suitable for chess 324.
+    /// Indicates chess 960.
     is_960: bool,
 
     /// An (invalid) empty position.
@@ -450,7 +449,6 @@ pub const Position = struct {
         }
 
         // Update state just by mirroring the bitboards.
-        //self.checkers = funcs.mirror_vertically(self.checkers);
         self.checkmask = funcs.mirror_vertically(self.checkmask);
         self.pins_diagonal = funcs.mirror_vertically(self.pins_diagonal);
         self.pins_orthogonal = funcs.mirror_vertically(self.pins_orthogonal);
@@ -478,7 +476,7 @@ pub const Position = struct {
         }
 
         if (comptime lib.is_paranoid) {
-            assert(self.pos_ok());
+            self.assert_pos_ok();
         }
     }
 
@@ -498,7 +496,6 @@ pub const Position = struct {
         pawnkey.* = 0;
         white_nonpawnkey.* = 0;
         black_nonpawnkey.* = 0;
-        // Loop through occupied squares.
         var occ: u64 = self.all();
         while (bitloop(&occ)) |sq| {
             const pc = self.get(sq);
@@ -616,11 +613,7 @@ pub const Position = struct {
         return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_color(us);
     }
 
-    // pub fn is_check(self: *const Position) bool {
-    //     return self.state.checkers > 0;
-    // }
-
-    // /// Returns a bitboard of our pinned pieces.
+    /// Returns a bitboard of our pins. Remember these are rays.
     pub fn our_pins(self: *const Position) u64 {
         return self.pins_diagonal | self.pins_orthogonal;
     }
@@ -666,8 +659,6 @@ pub const Position = struct {
             const same_color = ((our_bishops & bitboards.bb_black_squares) == 0) == ((their_bishops & bitboards.bb_black_squares) == 0);
             if (same_color) return true;
         }
-
-        // TODO: strange case: many 1 colored bishops against 1 king is draw.
 
         return false;
     }
@@ -759,7 +750,7 @@ pub const Position = struct {
     pub fn do_move(self: *Position, comptime us: Color, ex: ExtMove) void {
         if (comptime lib.is_paranoid) {
             assert(us.e == self.stm.e);
-            assert(self.pos_ok());
+            self.assert_pos_ok();
         }
 
         const them: Color = comptime us.opp();
@@ -978,7 +969,7 @@ pub const Position = struct {
         self.update_state(them);
 
         if (comptime lib.is_paranoid) {
-            assert(self.pos_ok());
+            self.assert_pos_ok();
         }
     }
 
@@ -1006,7 +997,7 @@ pub const Position = struct {
         const to: Square = ex.move.to;
         const pc: Piece = ex.piece;
 
-        if (lib.bughunt) {
+        if (lib.verifications) {
             const ok = ex.move.is_empty() or self.get(from).e == ex.piece.e;
             lib.verify(ok, "predict_key() invalid move", .{});
         }
@@ -1600,7 +1591,7 @@ pub const Position = struct {
 
     /// Store one move to the storage.
     fn store(from: Square, to: Square, flags: u4, piece: Piece, captured: Piece, noalias storage: anytype) void {
-        storage.store(ExtMove.create(from, to, flags, piece, captured));
+        storage.store(ExtMove.init(from, to, flags, piece, captured));
     }
 
     /// Tricky one. An ep move can uncover a check.
@@ -1663,29 +1654,25 @@ pub const Position = struct {
         return true;
     }
 
-    /// Debug only.
-    pub fn pos_ok(self: *const Position) bool {
+    /// Paranoid only.
+    pub fn assert_pos_ok(self: *const Position) void {
         lib.not_in_release();
 
         if (self.phase == 0 and (self.pieces_except_pawns_and_kings(Color.WHITE) | self.pieces_except_pawns_and_kings(Color.BLACK)) != 0) {
-            lib.io.debugprint("PHASE ERROR", .{});
-            self.draw();
-            return false;
+            lib.wtf("pos phase error", .{});
         }
 
         if (popcnt(self.kings(Color.WHITE)) != 1) {
-            lib.io.debugprint("WHITE KING ERROR", .{});
-            return false;
+            lib.wtf("pos white king error", .{});
         }
 
         if (popcnt(self.kings(Color.BLACK)) != 1) {
-            lib.io.debugprint("BLACK KING ERROR", .{});
+            lib.wtf("pos black king error", .{});
             return false;
         }
 
         if (popcnt(self.all()) > 32) {
-            lib.io.debugprint("TOO MANY PIECES", .{});
-            return false;
+            lib.wtf("pos too many pieces", .{});
         }
 
         var key: u64 = undefined;
@@ -1695,24 +1682,16 @@ pub const Position = struct {
 
         self.compute_hashkeys(&key, &pawnkey, &white_nonpawnkey, &black_nonpawnkey);
         if (key != self.key) {
-            lib.io.debugprint("KEY {} <> {}\n", .{ self.key, key });
-            self.draw();
-            return false;
+            lib.wtf("pos key", .{});
         }
         if (pawnkey != self.pawnkey) {
-            lib.io.debugprint("PAWNKEY {} <> {}\n", .{ self.pawnkey, pawnkey });
-            self.draw();
-            return false;
+            lib.wtf("pos pawnkey", .{});
         }
         if (white_nonpawnkey != self.nonpawnkeys[0]) {
-            lib.io.debugprint("WHITE NONPAWNKEY {} <> {}\n", .{ self.nonpawnkeys[0], white_nonpawnkey });
-            self.draw();
-            return false;
+            lib.wtf("pos white nonpawnkey", .{});
         }
         if (black_nonpawnkey != self.nonpawnkeys[1]) {
-            lib.io.debugprint("BLACK NONPAWNKEY {} <> {}\n", .{ self.nonpawnkeys[1], black_nonpawnkey });
-            self.draw();
-            return false;
+            lib.wtf("pos black nonpawnkey", .{});
         }
 
         // In check and not to move.
@@ -1720,17 +1699,12 @@ pub const Position = struct {
         const king_sq_black = self.king_square(Color.BLACK);
 
         if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.stm.e != .white) {
-            lib.io.debugprint("WHITE IN CHECK AND NOT TO MOVE white king_sq = {t} black king_sq = {t}\n", .{ king_sq_white.e, king_sq_black.e });
-            self.draw();
-            return false;
+            lib.wtf("pos white in check and not to move", .{});
         }
 
         if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.stm.e != .black) {
-            lib.io.debugprint("BLACK IN CHECK AND NOT TO MOVE white king_sq = {t} black king_sq = {t}\n", .{ king_sq_white.e, king_sq_black.e });
-            self.draw();
-            return false;
+            lib.wtf("pos black in check and not to move", .{});
         }
-        return true;
     }
 
     /// Zig-format. Writes the FEN string.
@@ -1942,12 +1916,15 @@ pub const MoveFinder = struct {
     /// The required to square.
     to: Square,
     /// The required promotion piece **without** capture flag.
-    prom_flags: u4,
+    prom_piece_flags: u4,
     /// The move, if found.
     extmove: ExtMove,
 
-    pub fn init(from: Square, to: Square, prom_flags: u4) MoveFinder {
-        return .{ .from = from, .to = to, .prom_flags = prom_flags, .extmove = .empty };
+    pub fn init(from: Square, to: Square, prom_piece_flags: u4) MoveFinder {
+        if (comptime lib.is_paranoid) {
+            assert(prom_piece_flags & Move.capture == 0);
+        }
+        return .{ .from = from, .to = to, .prom_piece_flags = prom_piece_flags, .extmove = .empty };
     }
 
     /// Required function.
@@ -1957,8 +1934,7 @@ pub const MoveFinder = struct {
 
     /// Required function.
     pub fn store(self: *MoveFinder, extmove: ExtMove) void {
-        // TODO: could there be a bug here with this comparison?
-        if (self.from.u == extmove.move.from.u and self.to.u == extmove.move.to.u and (self.prom_flags == 0 or self.prom_flags == extmove.move.flags & ~Move.capture)) {
+        if (self.from.u == extmove.move.from.u and self.to.u == extmove.move.to.u and (self.prom_piece_flags == 0 or self.prom_piece_flags == extmove.move.flags & ~Move.capture)) {
             self.extmove = extmove;
         }
     }
@@ -2002,7 +1978,7 @@ pub const LayoutKey = struct {
     b_king: ?u6,
 };
 
-/// Layout stuff for castling.
+/// Layout stuff for castling. Supports theoretically FRC (960), DFRC and Chess324.
 pub const Layout = struct {
     /// Indexing: [color][castletype].
     rook_start_squares: [2][2]Square,

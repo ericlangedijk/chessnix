@@ -11,7 +11,6 @@ const funcs = @import("funcs.zig");
 const utils = @import("utils.zig");
 const uci = @import("uci.zig");
 
-const Score = types.Score;
 const Color = types.Color;
 const Move = types.Move;
 const Position = position.Position;
@@ -108,8 +107,9 @@ pub const TimeManager = struct {
         movestogo = if (cyclic_timecontrol) @min(movestogo, 50) else 50;
 
         const increment_per_move: u64 = inc;
+        // Add 3/4 of total increment to the time.
         const partial_inc: u64 = (increment_per_move * 750) / 1000;
-        const move_overhead: u64 = 20; // #testing
+        const move_overhead: u64 = 20;
 
         var timeleft = @max(1, time + partial_inc * (movestogo - 1));
         const total_move_overhead: u64 = move_overhead * (movestogo + 1);
@@ -159,6 +159,10 @@ pub const TimeManager = struct {
     pub fn optimal_time_reached(self: *TimeManager) bool {
         return self.timer.read() >= self.opt_endtime;
     }
+
+    // pub fn get_maxtime_ms(self: *const TimeManager) u64 {
+    //     return @divTrunc(self.max_endtime - self.started, 1_000_000);
+    // }
 };
 
 const node_tm_base: f64 = 1.53;

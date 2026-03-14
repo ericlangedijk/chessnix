@@ -10,12 +10,9 @@ const position = @import("position.zig");
 const search = @import("search.zig");
 const history = @import("history.zig");
 const hce = @import("hce.zig");
-const hcetables = @import("hcetables.zig");
 
 const assert = std.debug.assert;
 
-const Score = types.Score;
-const SmallScore = types.SmallScore;
 const Color = types.Color;
 const Square = types.Square;
 const Piece = types.Piece;
@@ -61,9 +58,9 @@ const ListMode = enum {
 };
 
 const Scores = struct {
-    const promotion    : Score = 2_000_000;
-    const capture      : Score = 1_000_000;
-    const bad_capture  : Score = -1_000_000;
+    const promotion    : i32 =  2_000_000;
+    const capture      : i32 =  1_000_000;
+    const bad_capture  : i32 = -1_000_000;
 };
 
 /// A tiny shallow move ordering center bias.
@@ -76,16 +73,6 @@ const move_ordering_square_bias: [64]i8 = .{
     0,0,1,1,1,1,0,0,
     0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,
-
- // #testing
-    // 0,0,0,0,0,0,0,0,
-    // 0,1,0,0,0,0,1,0,
-    // 0,0,2,2,2,2,0,0,
-    // 0,0,2,3,3,2,0,0,
-    // 0,0,2,3,3,2,0,0,
-    // 0,0,2,2,2,2,0,0,
-    // 0,1,0,0,0,0,1,0,
-    // 0,0,0,0,0,0,0,0,
 };
 
 /// There is no staged move generation (which is much slower).
@@ -99,9 +86,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         // This saves some stack space during quiescence search.
         const max_quiets: u8 = if (gentype == .search) 224 else 128;
+        const max_noisies = types.max_noisy_count;
 
         /// The current stage.
-        /// TODO: make the stages cleaner, reflecting the actual current atage without these half baked score nonsense in between.
         stage: Stage,
         /// Reference to the position (on the stack during search).
         pos: *const Position,
@@ -118,11 +105,11 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         /// Readonly. Used for looping through the current atage-moves.
         move_idx: u8,
         /// Noisy move list.
-        noisies: ExtMoveList(128),
+        noisies: ExtMoveList(max_noisies),
         /// Quiet move list.
         quiets: ExtMoveList(max_quiets),
         /// Bad capture list.
-        bad_noisies: ExtMoveList(128),
+        bad_noisies: ExtMoveList(max_noisies),
 
         pub fn init(pos: *const Position, searcher: *const Searcher, node: *const Node, tt_move: Move) Self {
             return .{
@@ -247,9 +234,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         /// Set the score and is_bad_capture flag.
         fn score_move(self: *Self, ex: *ExtMove, comptime listmode: ListMode) void {
-            // The idea for capture scores is MVV-LVA scoring. When history kicked in that will overwrite the LVA part.
-
-            // Some paranoid checks.
             if (comptime lib.is_paranoid) {
                 assert(listmode != .bad_noisies);
                 if (listmode == .noisies) { assert(ex.move.is_noisy()); }
@@ -273,7 +257,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                         ex.score += hist.get_capture_score(ex.*);
 
-                        // Right here, when scoring is complete, we add the move to the bad noisy moves.
+                        // Right here, when scoring is complete, we add a bad capture move to the bad noisy moves.
                         if (ex.is_bad_capture) {
                             self.bad_noisies.add(ex.*);
                         }
@@ -310,9 +294,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             else if (listmode == .quiets) {
                 ex.score = hist.get_quiet_score(ex.*, self.node.ply, &self.searcher.nodes);
                 ex.score += move_ordering_square_bias[ex.move.to.u];
-                //if (pos.phase > 12) // #testing
-                //ex.score += (move_ordering_square_bias[ex.move.to.u] - move_ordering_square_bias[ex.move.from.u]);
-                //if (!hce.see(pos, ex.move, 0)) ex.score -= 20; // #testing
             }
             // Bad noisy moves are already handled.
             else {
@@ -328,12 +309,12 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
 
             var best_idx: u8 = idx;
-            var max_score: Score = extmoves[idx].score;
+            var max_score: i32 = extmoves[idx].score;
 
             for (idx + 1..extmoves.len) |i| {
-                const e: ExtMove = extmoves[i];
-                if (e.score > max_score) {
-                    max_score = e.score;
+                const score: i32 = extmoves[i].score;
+                if (score > max_score) {
+                    max_score = score;
                     best_idx = @intCast(i);
                 }
             }
@@ -343,6 +324,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 return null;
             }
 
+            // Selection sort.
             if (best_idx != idx) {
                 std.mem.swap(ExtMove, &extmoves[best_idx], &extmoves[idx]);
             }

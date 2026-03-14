@@ -29,29 +29,23 @@ pub const Program = enum {
     generating_lichess_dataset,
     /// We are running a hce tuning.
     tuning,
-
-    nothing,
 };
 
 pub const program: Program = .engine;
-//pub const program: Program = .nothing;
 
-
-// Running tuner. Otherwise running uci engine.
+/// Not used.
 pub const is_tuning: bool = program == .tuning;
-
-// pub const time_logging: bool = true;
 
 pub const version = "1.4";
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
+pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 
 /// Only when debugging we use time consumming checks.
 pub const is_paranoid: bool = is_debug;
 
-/// Using this for tricky bug hunting. Never in releasemode.
-/// In ReleaseSafe mode we also create a logfile when we crash.
-pub const bughunt: bool = builtin.mode == .ReleaseSafe or builtin.mode == .Debug; // TODO: maybe rename to verifications
+/// Using this for tricky bug hunting. Never in releasemode. Only in ReleaseSafe mode we also create a logfile when we crash.
+pub const verifications: bool = is_debug or is_release_safe;
 
 // Input output
 pub const ctx: *const MemoryContext = &memory_context;
@@ -79,7 +73,6 @@ pub const MemoryContext = struct {
     }
 };
 
-// TODO: I cannot find a solution for these vars, which I would like to have inside IoContext.
 var in_buffer: [8192]u8 = @splat(0);
 var out_buffer: [4096]u8 = @splat(0);
 var stdin: std.fs.File.Reader = undefined;
@@ -140,7 +133,7 @@ pub fn not_in_release() void {
 }
 
 pub fn wtf(comptime str: []const u8, args: anytype) noreturn {
-    if (bughunt) {
+    if (is_release_safe) {
         log_wtf(str, args);
     }
     std.debug.panic(str, args);

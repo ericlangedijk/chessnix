@@ -10,7 +10,6 @@ const types = @import("types.zig");
 const attacks = @import("attacks.zig");
 const position = @import("position.zig");
 
-const Score = types.Score;
 const Direction = types.Direction;
 const Color = types.Color;
 const Piece = types.Piece;
@@ -147,20 +146,9 @@ pub fn popcnt(bitboard: u64) u7 {
     return @popCount(bitboard);
 }
 
-// Convenient popcount.
-// pub fn popcnt_v(bitboard: u64) Score {
-//     return @popCount(bitboard);
-// }
-
 pub fn contains_square(bitboard: u64, sq: Square) bool {
     return test_bit_64(bitboard, sq.u);
 }
-
-// pub fn first_square_or_null(bitboard: u64) ?Square {
-//     if (bitboard == 0) return null;
-//     const lsb: u6 = @truncate(@ctz(bitboard));
-//     return Square.from(lsb);
-// }
 
 /// Unsafe lsb
 pub fn first_square(bitboard: u64) Square {
@@ -224,8 +212,9 @@ pub fn test_bit_64(u: u64, bit: u6) bool {
     return u & one != 0;
 }
 
+/// Assumes movenr > 0. Only used in `Position.set()`.
 pub fn movenumber_to_ply(movenr: u16, stm: Color) u16 {
-    return @max(2 * (movenr - 1), 0) + (stm.u); // TODO: make safe for underflow.
+    return @max(2 * (movenr - 1), 0) + (stm.u);
 }
 
 pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
@@ -234,7 +223,7 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
 
 /// Convert "mate in X moves" to an absolute "distance to mate".
 /// * `mv` is always the matevalue from the perspective of white: negative -> white loses, positive -> white wins.
-pub fn mate_to_dtm(mv: Score, stm: Color) Score {
+pub fn mate_to_dtm(mv: i32, stm: Color) i32 {
     if (mv == 0) return 0;
     const white_wins: bool = mv > 0;
     const white_to_move: bool = stm.e == .white;

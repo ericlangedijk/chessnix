@@ -164,9 +164,9 @@ pub fn test_flipped_eval() !usize {
     for (testpositions) |str| {
         try pos.set(str, false);
         var ev: hce.Evaluator = .init();
-        const eval1: types.Score = ev.evaluate(&pos);
+        const eval1: i32 = ev.evaluate(&pos);
         flipped_pos = pos.flipped();
-        const eval2: types.Score = ev.evaluate(&flipped_pos);
+        const eval2: i32 = ev.evaluate(&flipped_pos);
         io.debugprint("{} ==? {}\n", .{ eval1, eval2 });
         done += 1;
     }

@@ -240,3 +240,24 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
         }
     };
 }
+
+pub const SearchLog = struct {
+
+    csv: TextFileWriter,
+
+    pub fn init() !SearchLog {
+        const instant: std.time.Instant = try .now();
+        var buf: [32]u8 = undefined; // enough for u64
+        const filename = try std.fmt.bufPrint(&buf, "{:0>20}.csv", .{ instant.timestamp });
+        var result: SearchLog = undefined;
+        result.csv = try .init_cwd(filename, ctx.galloc, 1024);
+        try result.csv.writeline("gamenr;ply;time;inc;maxtime;usedtime;score", .{});
+        try result.csv.flush();
+        return result;
+    }
+
+    pub fn deinit(self: *SearchLog) void {
+        self.csv.deinit();
+    }
+
+};

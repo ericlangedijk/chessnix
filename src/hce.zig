@@ -14,15 +14,13 @@ const position = @import("position.zig");
 const utils = @import("utils.zig");
 const tt = @import("tt.zig");
 const search = @import("search.zig");
-const hcetables = @import("hcetables.zig");
+const hceterms = @import("hceterms.zig");
 
 const io = lib.io;
 
 const bitloop = funcs.bitloop;
 const popcnt = funcs.popcnt;
 
-const SmallScore = types.SmallScore;
-const Score = types.Score;
 const ScorePair = types.ScorePair;
 const Color = types.Color;
 const Piece = types.Piece;
@@ -32,7 +30,7 @@ const CastleType = types.CastleType;
 const Move = types.Move;
 const Position = position.Position;
 
-const terms = hcetables.terms;
+const terms = hceterms.terms;
 
 pub const Evaluator = struct {
 
@@ -83,11 +81,7 @@ pub const Evaluator = struct {
         };
     }
 
-    // fn count(sp: *const ScorePair) {
-
-    // }
-
-    pub fn evaluate(self: *Self, pos: *const Position) Score {
+    pub fn evaluate(self: *Self, pos: *const Position) i32 {
         // Init pos reference.
         self.pos = pos;
         // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner.
@@ -157,17 +151,10 @@ pub const Evaluator = struct {
 
     /// Register scorepair usage during tuning.
     fn register(sp: *const ScorePair, comptime color: ?Color) void {
+        _ = color;
         if (comptime lib.is_tuning) {
             @import("tuner.zig").register_scorepair_usage(sp);
         }
-        _ = color;
-        // if (comptime lib.is_debug) {
-        //     const f: hcetables.Terms.Feature = terms.feature_of(sp) orelse lib.wtf("feature error", .{});
-        //     if (color) |c|
-        //         lib.io.debugprint("feature {t} {t} mg {} eg {}\n", .{ c.e, f, sp.mg, sp.eg })
-        //     else
-        //         lib.io.debugprint("feature nocol {t} mg {} eg {}\n", .{ f, sp.mg, sp.eg });
-        // }
     }
 
     fn eval_pawns(self: *Self, comptime us: Color) ScorePair {
@@ -300,6 +287,14 @@ pub const Evaluator = struct {
             if (self.is_outpost(sq, us)) {
                 score.inc(terms.knight_outpost_table[relative_sq.u]);
                 register(&terms.knight_outpost_table[relative_sq.u], us);
+
+                // Knight outpost is also blocking an enemy pawn. Experimental addition.
+                const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
+                const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them);
+                if (is_blocking) {
+                    score.inc(terms.knight_outpost_is_blocking_enemy_pawn);
+                    register(&terms.knight_outpost_is_blocking_enemy_pawn, us);
+                }
             }
         }
         return score;
@@ -505,10 +500,6 @@ pub const Evaluator = struct {
         var score: ScorePair = .empty;
         var bb: u64 = undefined;
 
-        // const center_control: u7 = popcnt(self.all_attacks[us.u] & bitboards.bb_center);
-        // const sp: ScorePair = types.pair(1, 0);
-        // score.inc(sp.mul(center_control));
-
         // Their pawn threats.
         bb = self.pawn_attacks[them.u] & our_pieces;
         while (bitloop(&bb)) |sq| {
@@ -566,23 +557,22 @@ pub const Evaluator = struct {
         const rook_checks: u64 = attacks.get_rook_attacks(their_king_sq, occupied);
         const bishop_checks: u64 = attacks.get_bishop_attacks(their_king_sq, occupied);
         const safe: u64 = ~(self.pawn_attacks[them.u] | self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | attacks.get_king_attacks(their_king_sq));
-        //const safe: u64 = ~(self.all_attacks[them.u] | attacks.get_king_attacks(their_king_sq)); // also an option. I don't know why the queens are excluded.
 
-        // #buggy
+        // Bugged version.
         // const safe_knight_checks: u64 = safe & self.knight_attacks[us.u] & attacks.get_knight_attacks(their_king_sq);
         // const safe_bishop_checks: u64 = safe & self.bishop_attacks[us.u] & bishop_checks;
         // const safe_rook_checks: u64 = safe & self.rook_attacks[us.u] & rook_checks;
         // const safe_queen_checks: u64 = safe & self.queen_attacks[us.u] & (rook_checks | bishop_checks);
 
-        const not_pawns: u64 = ~pos.pawns(us); // #testing
+        // Only filter pawns.
+        const not_pawns: u64 = ~pos.pawns(us);
 
-        // #used
         const safe_knight_checks: u64 = not_pawns & safe & self.knight_attacks[us.u] & attacks.get_knight_attacks(their_king_sq);
         const safe_bishop_checks: u64 = not_pawns & safe & self.bishop_attacks[us.u] & bishop_checks;
         const safe_rook_checks: u64 = not_pawns & safe & self.rook_attacks[us.u] & rook_checks;
         const safe_queen_checks: u64 = not_pawns & safe & self.queen_attacks[us.u] & (rook_checks | bishop_checks);
 
-        // NOTE: First there was a bug, not filtering out our occupied squares. That is why I changed the safe_check_bonus table slightly.
+        // First there was a bug, not filtering out our occupied squares. That is why I changed the safe_check_bonus table slightly.
         score.inc(terms.safe_check_bonus[PieceType.KNIGHT.u].mul(popcnt(safe_knight_checks)));
         score.inc(terms.safe_check_bonus[PieceType.BISHOP.u].mul(popcnt(safe_bishop_checks)));
         score.inc(terms.safe_check_bonus[PieceType.ROOK.u].mul(popcnt(safe_rook_checks)));
@@ -607,7 +597,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_protection_scorepair(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) *const ScorePair {
-        if (comptime lib.bughunt) {
+        if (comptime lib.verifications) {
             verify_king_pawn_protection_area(us, our_king_sq, our_pawn_sq);
         }
 
@@ -625,7 +615,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_storm_scorepair(comptime us: Color, their_king_sq: Square, our_pawn_sq: Square) *const ScorePair {
-        if (lib.bughunt) {
+        if (lib.verifications) {
             verify_king_pawn_storm_area(us, their_king_sq, our_pawn_sq);
         }
 
@@ -653,7 +643,7 @@ pub const Evaluator = struct {
 
         // We cannot handle these pins, because they are not there.
         // Remember the position pins include the opponents pieces. That is the tricky part.
-        if (comptime lib.bughunt) {
+        if (comptime lib.verifications) {
             lib.verify(us.e == self.pos.stm.e, "legalize_moves()", .{});
         }
 
@@ -691,7 +681,7 @@ pub const Evaluator = struct {
 };
 
 /// Returns true for castle, enpassant and promotions, regardless of the threshold.
-pub fn see(pos: *const Position, m: Move, threshold: Score) bool {
+pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
     if (m.is_castle() or m.is_ep() or m.is_promotion()) {
         return true;
     }
@@ -700,7 +690,7 @@ pub fn see(pos: *const Position, m: Move, threshold: Score) bool {
     const to: Square = m.to;
 
     // Set the score to captured piece minus how much we are allowed to lose.
-    var score: Score = pos.board[to.u].value() - threshold;
+    var score: i32 = pos.board[to.u].value() - threshold;
 
     if (score < 0) {
         return false;
@@ -736,7 +726,7 @@ pub fn see(pos: *const Position, m: Move, threshold: Score) bool {
             break :attackloop;
         }
         winner = winner.opp();
-        var next_attacker_value: Score = 0;
+        var next_attacker_value: i32 = 0;
 
         // Get the least valuable next piece.
         get_next_attacker: inline for (PieceType.all) |piecetype| {

@@ -12,11 +12,6 @@ const lib = @import("lib.zig");
 const assert = std.debug.assert;
 const io = lib.io;
 
-/// Used for evaluations.
-pub const Score = i32;
-/// Used for stored evaluations to save memory.
-pub const SmallScore = i16;
-
 pub const Axis = enum(u2) {
     none, orth, diag,
 };
@@ -371,7 +366,7 @@ pub const PieceType = packed union {
         return self.u;
     }
 
-    pub fn value(self: PieceType) Score {
+    pub fn value(self: PieceType) i32 {
         return piece_values[self.u];
     }
 
@@ -434,17 +429,6 @@ pub const Piece = packed union {
 
     pub fn init(pt: PieceType, side: Color) Piece {
         return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
-    }
-
-    // pub fn from_usize(u: usize) Piece {
-    //     if (comptime lib.is_paranoid) {
-    //         assert(u <= 11);
-    //     }
-    //     return .{ .u = @truncate(u)};
-    // }
-
-    pub fn idx(self: Piece) usize {
-        return self.u;
     }
 
     pub fn is_empty(self: Piece) bool {
@@ -518,7 +502,7 @@ pub const Piece = packed union {
     }
 
     /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
-    pub fn value(self: Piece) Score {
+    pub fn value(self: Piece) i32 {
         return piece_values[self.u];
     }
 
@@ -587,7 +571,7 @@ pub const Move = packed struct(u16) {
 
     pub const empty: Move = .{};
 
-    pub fn create(from: Square, to: Square, flags: u4) Move {
+    pub fn init(from: Square, to: Square, flags: u4) Move {
         return .{ .from = from, .to = to, .flags = flags };
     }
 
@@ -706,6 +690,7 @@ pub const Move = packed struct(u16) {
 };
 
 pub const ExtMove = packed struct {
+    /// Set during move generation.
     move: Move = .empty,
     /// Set during move generation.
     piece: Piece = Piece.NO_PIECE,
@@ -720,7 +705,7 @@ pub const ExtMove = packed struct {
 
     pub const empty: ExtMove = .{};
 
-    pub fn create(from: Square, to: Square, flags: u4, piece: Piece, captured: Piece) ExtMove {
+    pub fn init(from: Square, to: Square, flags: u4, piece: Piece, captured: Piece) ExtMove {
         return .{
             .move = .{ .from = from, .to = to, .flags = flags },
             .piece = piece,
@@ -729,7 +714,7 @@ pub const ExtMove = packed struct {
     }
 };
 
-/// Simple array wrapper.
+/// Simple array wrapper with a know maximum length.
 pub fn ExtMoveList(max: u8) type {
     return struct {
         const Self = @This();
@@ -762,13 +747,13 @@ pub fn ExtMoveList(max: u8) type {
 
 pub const ScorePair = struct {
     /// Middlegame
-    mg: SmallScore,
+    mg: i16,
     /// Endgame
-    eg: SmallScore,
+    eg: i16,
 
     pub const empty: ScorePair = .{ .mg = 0, .eg = 0 };
 
-    pub fn init(mg: SmallScore, eg: SmallScore) ScorePair {
+    pub fn init(mg: i16, eg: i16) ScorePair {
         return .{ .mg = mg, .eg = eg };
     }
 
@@ -796,12 +781,12 @@ pub const ScorePair = struct {
 };
 
 /// Easy initialization function for eval tables.
-pub fn pair(mg: SmallScore, eg: SmallScore) ScorePair {
+pub fn pair(mg: i16, eg: i16) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
-pub fn is_mate_score(score: Score) bool {
-    const s: Score = @intCast(@abs(score));
+pub fn is_mate_score(score: i32) bool {
+    const s: i32 = @intCast(@abs(score));
     return s <= mate and score >= mate_threshold;
 }
 
@@ -823,38 +808,39 @@ pub const ParsingError = error {
 ////////////////////////////////////////////////////////////////
 pub const megabyte: usize = 1024 * 1024;
 
+/// This is how far we go.
 pub const max_game_length: usize = 1024;
-
 /// The absoluta maximum number of moves.
 pub const max_move_count: u8 = 224;
 pub const max_noisy_count: u8 = 128;
 /// Our max search depth during search. All arrays are a bit oversized for safety.
 pub const max_search_depth: u8 = 128;
 // A score which means "nothing" and should be treated as such or discarded during search.
-pub const no_score: Score = -32002;
-pub const infinity: Score = 32000;
-pub const mate: Score = 30000;
-pub const draw: Score = 0;
+pub const no_score: i32 = -32002;
+pub const infinity: i32 = 32000;
+pub const mate: i32 = 30000;
+pub const draw: i32 = 0;
 pub const mate_threshold = mate - max_search_depth;
-pub const stalemate: Score = 0;
-pub const invalid_movescore: Score = std.math.minInt(Score);
+pub const stalemate: i32 = 0;
+pub const invalid_movescore: i32 = std.math.minInt(i32);
 
 // Simple scores for SEE and move ordering.
-pub const value_pawn: Score = 98;
-pub const value_knight: Score = 299;
-pub const value_bishop: Score = 300;
-pub const value_rook: Score = 533;
-pub const value_queen: Score = 921;
-pub const value_king: Score = 0;
+pub const value_pawn: i32 = 98;
+pub const value_knight: i32 = 299;
+pub const value_bishop: i32 = 300;
+pub const value_rook: i32 = 533;
+pub const value_queen: i32 = 921;
+pub const value_king: i32 = 0;
 
-// pub const value_pawn: Score = 100;
-// pub const value_knight: Score = 300;
-// pub const value_bishop: Score = 300;
-// pub const value_rook: Score = 500;
-// pub const value_queen: Score = 900;
-// pub const value_king: Score = 0;
+// #testing KISS
+// pub const value_pawn: i32 = 100;
+// pub const value_knight: i32 = 300;
+// pub const value_bishop: i32 = 300;
+// pub const value_rook: i32 = 500;
+// pub const value_queen: i32 = 900;
+// pub const value_king: i32 = 0;
 
-const piece_values: [13]Score = .{
+const piece_values: [13]i32 = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     0,
@@ -868,10 +854,10 @@ pub const phase_table: [13]u8 = .{
 };
 pub const max_phase: u8 = 24;
 
-pub fn phased_score(phase: u8, score: ScorePair) Score {
+pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const ph: u8 = @min(max_phase, phase);
-    const mg: Score = score.mg;
-    const eg: Score = score.eg;
+    const mg: i32 = score.mg;
+    const eg: i32 = score.eg;
     return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
 

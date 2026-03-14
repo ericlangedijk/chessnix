@@ -10,12 +10,13 @@ I decided I don't understand anything of chess programming.
 
 Chessnix is a UCI chess engine.
 
-- Needs Zig 0.15.2 to compile.
+- Needs Zig to compile.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
 ### Version 1.4 Work in Progress...
-- Working on it, not pretending to understand anything. Waiting for Zig 0.16.
+- Compiler: Zig 0.15.2. Waiting for Zig 0.16 before release.
+- Working on it, not pretending to understand anything.
 - Stronger: I hope.
 - Changed: Alpha Raises Reduction LMR (instead of depth reduction) after score > alpha.
 - Changed: Only update pv when pv-node. Removed update pv in qsearch.
@@ -24,10 +25,12 @@ Chessnix is a UCI chess engine.
 - Changed: Prefetch TT for a slight speed boost.
 - Changed: Some minor optimizations.
 - Removed: Reward / punish moves in qsearch.
+- Changed: Razoring changed + always returns score.
 - Bug solved: Another terrible one: qsearch comparing a zero score with TT score instead of the eval.
 - Bug solved: Parsing negative time.
 
 ### Version 1.3
+- Compiler: Zig 0.15.2.
 - Stronger: ~3168 ELO on CCRL.
 - Added: Slight center bias in quiet move ordering for shallow depths (experimental).
 - Added: Search history pruning, history reduction.
@@ -49,6 +52,7 @@ Chessnix is a UCI chess engine.
 - Bug solved: Corrected 'id name' uci output.
 
 ### Version 1.2
+- Compiler: Zig 0.15.2.
 - Stronger: ~3015 ELO on CCRL.
 - Added: Chess960 support.
 - Added: Staged movepicking.
@@ -107,7 +111,7 @@ To be continued...
 
 ### Thanks
 Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3) to get me started (from chessnix 2.0 onwards I will do my own tuning).
-Jonthan, Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
+Jonathan, Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.
 The authors of the engines I used for testing: Bbc, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Linx, Lishex, Mess, Monty, OpenCritter, PlentyChess, Pounce, Priessnitz, Seawall, Seredina, Shallow, Shallowguess, Simbelmine, Stash, Supernova, Teki, Yakka.
 Some extra thanks to these people who made their engine support chess960.
 I also learned a lot from the source code of all these engines.

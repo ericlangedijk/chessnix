@@ -6,8 +6,6 @@ const types = @import("types.zig");
 
 const is_tuning = lib.is_tuning;
 
-const SmallScore = types.SmallScore;
-const Score = types.Score;
 const ScorePair = types.ScorePair;
 const pair = types.pair;
 
@@ -29,6 +27,7 @@ pub const Terms = struct {
     queen_mobility_table: [28]ScorePair,
     attack_power: [6][8]ScorePair,
     knight_outpost_table: [64]ScorePair,
+    knight_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_outpost_table: [64]ScorePair,
     rook_on_file_bonus: [2][8]ScorePair,
     pawn_protection_table: [12]ScorePair,
@@ -42,6 +41,7 @@ pub const Terms = struct {
     safe_check_bonus: [6]ScorePair,
     piece_square_table: [6][64]ScorePair,
 
+    /// Just experimenting. Not used.
     pub const Feature = enum {
         piece_value,
         king_passed_pawn_distance,
@@ -60,6 +60,7 @@ pub const Terms = struct {
         queen_mobility,
         attack_power,
         knight_outpost,
+        knight_outpost_is_blocking_enemy_pawn,
         bishop_outpost,
         rook_on_file,
         pawn_protection,
@@ -94,9 +95,10 @@ pub const Terms = struct {
         return @divTrunc(sp_ptr - self_ptr, @sizeOf(ScorePair));
     }
 
+    /// Just experimenting. Not used.
     pub fn feature_of(self: *const Terms, sp: *const ScorePair) ?Feature {
         const addr: usize = @intFromPtr(sp) - @intFromPtr(self);
-        var result: Feature = .piece_square; //@enumFromInt(last_feature - 1);
+        var result: Feature = .piece_square;
         const info = @typeInfo(Terms).@"struct";
 
         inline for (0..info.fields.len) |i| {
@@ -123,7 +125,6 @@ pub const terms = if (is_tuning) &tuning_terms else &default_terms;
 
 var tuning_terms: Terms = default_terms;
 
-// THE ORIGINAL
 pub const default_terms: Terms = .{
     .piece_value_table = .{
         pair(75, 141), pair(301, 321), pair(331, 356), pair(439, 612), pair(874, 1080), pair(0, 0),
@@ -142,8 +143,7 @@ pub const default_terms: Terms = .{
     },
 
     .passed_pawn_bonus = .{
-        //pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 66), pair(0, 0), // old
-        pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 86), pair(0, 0), // used
+        pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 86), pair(0, 0),
     },
 
     .protected_pawn_bonus = .{
@@ -204,6 +204,8 @@ pub const default_terms: Terms = .{
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 7
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 8
     },
+
+    .knight_outpost_is_blocking_enemy_pawn = pair(4, 4),
 
     .bishop_outpost_table = .{
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 1
@@ -286,7 +288,6 @@ pub const default_terms: Terms = .{
     },
 
     .safe_check_bonus = .{
-        // pair(0, 0), pair(47, 7), pair(19, 21), pair(59, -2), pair(28, 13), pair(0, 0), // #testing
         pair(0, 0), pair(48, 8), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // used
     },
 
@@ -354,6 +355,7 @@ pub const default_terms: Terms = .{
     },
 };
 
+/// Sloppy but working. In case we are going to tune.
 const TermsPrinter = struct {
 
     /// Used for outputting source code when tuning.

@@ -2,8 +2,7 @@
 
 //! Transposition Table for search.
 
-// Attempts to use three entries per bucket (aligning a bucket to 32 bytes) failed miserably in playing strength.
-// The indexing of a bucket is a simple % length, thus the stored u16 entry key uses the 16 highest bits.
+// The indexing of a bucket is a simple % length (uses the lower bits) thus the stored u16 entry key uses the 16 highest bits.
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -16,35 +15,36 @@ const ctx = lib.ctx;
 const wtf = lib.wtf;
 
 const Color = types.Color;
-const SmallScore = types.SmallScore;
-const Score = types.Score;
 const Move = types.Move;
 const ScorePair = types.ScorePair;
 
 const no_score = types.no_score;
-const tunables = consts.tunables;
+const tuned = consts.tuned;
 
-// Using two entries per bucket we need to assert these sizes.
+/// Entries per bucket (2 or 3).
+pub const EPB: usize = 2;
+
+// Using 2 or 3 entries per bucket we assert the sizes.
 comptime {
     assert(Entry.STRUCTSIZE == 10);
-    assert(Bucket.STRUCTSIZE == 20);
+    assert(Bucket.STRUCTSIZE == if (EPB == 2) 20 else if (EPB == 3) 32 else @compileError("invalid bucket definition"));
 }
 
 /// Returns number of bytes. Minimum is 16 MB.
-pub fn compute_tt_size(megabytes: usize) usize {
+pub fn compute_tt_size_in_bytes(megabytes: usize) usize {
     const required_mb: usize = @max(16, megabytes);
     return required_mb * types.megabyte;
 }
 
-/// Adjust score for mate in X when storing.
-pub fn score_to_tt(tt_score: Score, ply: u16) Score {
+/// Adjust score if mate in X when storing.
+pub fn score_to_tt(tt_score: i32, ply: u16) i32 {
     if (tt_score >= types.mate_threshold) return tt_score + ply
     else if (tt_score <= -types.mate_threshold) return tt_score - ply;
     return tt_score;
 }
 
-/// Adjust score for mate in X when probing.
-pub fn score_from_tt(tt_score: Score, ply: u16) Score {
+/// Adjust score if mate in X when probing.
+pub fn score_from_tt(tt_score: i32, ply: u16) i32 {
     if (tt_score >= types.mate_threshold) return tt_score - ply
     else if (tt_score <= -types.mate_threshold) return tt_score + ply;
     return tt_score;
@@ -57,7 +57,7 @@ pub const Bound = enum(u2) {
     alpha,
     /// Lower bound.
     beta,
-    /// Exact score.
+    /// Exact bound.
     exact,
 };
 
@@ -76,9 +76,9 @@ pub const Entry = struct {
     /// The compressed position hash key (the 16 highest bits are used, because the bucket indexing uses %).
     key: u16,
     /// The evaluation according to search. no_score == null.
-    score: SmallScore,
+    score: i16,
     /// The raw static eval of the evaluation function. Never when in check. no_score == null.
-    raw_static_eval: SmallScore,
+    raw_static_eval: i16,
     /// The best move according to search.
     move: Move,
     /// The search depth when this entry was stored,
@@ -95,7 +95,7 @@ pub const Entry = struct {
         .flags = .{ .bound = .none, .age = 0 },
     };
 
-    pub fn is_score_usable_for_depth(self: *const Entry, alpha: Score, beta: Score, depth: i32) bool {
+    pub fn is_score_usable_for_depth(self: *const Entry, alpha: i32, beta: i32, depth: i32) bool {
         if (self.score == no_score or self.depth < depth) {
             return false;
         }
@@ -107,7 +107,7 @@ pub const Entry = struct {
         };
     }
 
-    pub fn is_score_usable(self: *const Entry, alpha: Score, beta: Score) bool {
+    pub fn is_score_usable(self: *const Entry, alpha: i32, beta: i32) bool {
         if (self.score == no_score) {
             return false;
         }
@@ -130,8 +130,23 @@ pub const Entry = struct {
     /// Score for TT entry replacement. Lower is less valuable.
     fn get_replacement_value(self: *const Entry, current_age: i32) i32 {
         const age_penalty: i32 = (current_age - self.flags.age) & 31;
-        const score: i32 = tunables.tt_entry_depth_weight * self.depth - tunables.tt_entry_age_weight * age_penalty;
+        const score: i32 =
+            tuned.tt_entry_depth_weight * self.depth -
+            tuned.tt_entry_age_penalty_weight * age_penalty;
         return score;
+
+        // TODO: can we get 3 entries per bucket working stronger than 2 entries?.
+        // const depth_value: i32 = tuned.tt_entry_depth_weight * self.depth;
+        // const age_value: i32 = tuned.tt_entry_age_weight * age_penalty;
+        // const bound_value: i32 = switch(self.flags.bound) {
+        //     .none => 0,
+        //     .alpha => tuned.tt_entry_alpha_weight,
+        //     .beta => tuned.tt_entry_beta_weight,
+        //     .exact => tuned.tt_entry_exact_weight,
+        // };
+        // const move_value: i32 = if (self.move.is_empty()) 0 else tuned.tt_entry_move_weight;
+        // const s: i32 = depth_value - age_value + bound_value + move_value;
+        // return s;
     }
 
     inline fn compress_key(key: u64) u16 {
@@ -140,12 +155,15 @@ pub const Entry = struct {
 };
 
 pub const Bucket = struct {
-    /// Must be 20 bytes
+    /// Must be 20 or 32 bytes, depending on EPB.
     pub const STRUCTSIZE: usize = @sizeOf(Bucket);
 
-    entries: [2]Entry,
+    const Padding: type = if (EPB == 3) u16 else void;
 
-    pub const empty: Bucket = .{ .entries = @splat(.empty) };
+    entries: [EPB]Entry,
+    _padding: Padding,
+
+    pub const empty: Bucket = if (EPB == 2) .{ .entries = @splat(.empty), ._padding = {} } else .{ .entries = @splat(.empty), ._padding = 0 };
 };
 
 /// The main transposition table.
@@ -179,18 +197,19 @@ pub const TranspositionTable = struct {
     }
 
     /// Only store the raw static eval.
-    pub fn store_raw_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: Score) void {
+    pub fn store_raw_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: i32) void {
         self.store(0, key, no_score, raw_static_eval, Move.empty, 0, Bound.none);
     }
 
     /// Store the search score and the raw static eval.
-    pub fn store(self: *TranspositionTable, ply: u16, key: u64, score: Score, raw_static_eval: Score, move: Move, depth: i32, bound: Bound) void {
-        if (comptime lib.bughunt) {
+    pub fn store(self: *TranspositionTable, ply: u16, key: u64, score: i32, raw_static_eval: i32, move: Move, depth: i32, bound: Bound) void {
+        if (comptime lib.verifications) {
             verify_args(depth, score, raw_static_eval);
         }
 
         const ck: u16 = Entry.compress_key(key);
 
+        // First we select a fitting or least valuable entry to overwrite.
         const entry: *Entry = blk: {
             const bucket: *Bucket = self.hash.get(key);
             var best_value: i32 = std.math.maxInt(i32);
@@ -210,6 +229,7 @@ pub const TranspositionTable = struct {
             break :blk best_entry;
         };
 
+        // Only do a complete overwrite in this case.
         const overwrite: bool = entry.key != ck or bound == .exact or depth + 4 > entry.depth or entry.flags.age != self.age;
 
         if (!overwrite) {
@@ -243,7 +263,7 @@ pub const TranspositionTable = struct {
         return .empty;
     }
 
-    fn verify_args(depth: i32, score: Score, raw_static_eval: Score) void {
+    fn verify_args(depth: i32, score: i32, raw_static_eval: i32) void {
         lib.not_in_release();
         if (depth < 0 or depth > types.max_search_depth + 16) lib.wtf("tt invalid depth", .{});
         if (score > std.math.maxInt(i16) or score < std.math.minInt(i16)) lib.wtf("tt invalid score", .{});

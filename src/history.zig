@@ -14,8 +14,6 @@ const consts = @import("consts.zig");
 const assert = std.debug.assert;
 const clamp = std.math.clamp;
 
-const Score = types.Score;
-const SmallScore = types.SmallScore;
 const Color = types.Color;
 const Square = types.Square;
 const Piece = types.Piece;
@@ -27,27 +25,27 @@ const Nodes = search.Nodes;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
-const tunables = consts.tunables;
+const tuned = consts.tuned;
 
 const HistCalc = struct {
     /// `depth * scale`.
-    fn get_bonus(depth: i32) SmallScore {
-        return @intCast(clamp(depth * tunables.history_scale, -tunables.history_max_bonus, tunables.history_max_bonus));
+    fn get_bonus(depth: i32) i16 {
+        return @intCast(clamp(depth * tuned.history_scale, -tuned.history_max_bonus, tuned.history_max_bonus));
     }
 
-    // fn get_malus(depth: i32) SmallScore {
-    //     return @intCast(clamp(depth * tunables.history_scale, -tunables.history_max_malus, tunables.history_max_malus));
+    // fn get_malus(depth: i32) i16 {
+    //     return @intCast(clamp(depth * tuned.history_scale, -tuned.history_max_malus, tuned.history_max_malus));
     // }
 
     /// Add scaled bonus to the entry.
-    fn apply_bonus(entry: *SmallScore, bonus: SmallScore) void {
+    fn apply_bonus(entry: *i16, bonus: i16) void {
         entry.* += scale_bonus(entry.*, bonus);
     }
 
     /// `bonus - score * abs(bonus) / max_score`.
-    fn scale_bonus(score: SmallScore, bonus: SmallScore) SmallScore {
-        const s: Score = score;
-        return @intCast(bonus - @divFloor(s * @abs(bonus), tunables.history_max_score));
+    fn scale_bonus(score: i16, bonus: i16) i16 {
+        const s: i32 = score;
+        return @intCast(bonus - @divFloor(s * @abs(bonus), tuned.history_max_score));
     }
 };
 
@@ -68,7 +66,7 @@ pub const History = struct {
 
     /// Increase the score of the node's move. If the node move is quiet, punish the quiets.
     pub fn record_beta_cutoff(self: *History, depth: i32, ply: u16, ex: ExtMove, nodes: []const Node, bad_quiets: []const ExtMove) void {
-        if (comptime lib.bughunt) {
+        if (comptime lib.verifications) {
             self.continuation.verify_node(&nodes[ply]);
         }
 
@@ -82,8 +80,8 @@ pub const History = struct {
     }
 
     /// Returns the history score of a quiet move. Used for move ordering and pruning decisions.
-    pub fn get_quiet_score(self: *const History, ex: ExtMove, ply: u16, nodes: []const Node) Score {
-        var v: Score = self.quiet.get_score(ex);
+    pub fn get_quiet_score(self: *const History, ex: ExtMove, ply: u16, nodes: []const Node) i32 {
+        var v: i32 = self.quiet.get_score(ex);
         if (ply >= 1) v += ContinuationHistory.get_single_score(&nodes[ply - 1], ex);
         if (ply >= 2) v += ContinuationHistory.get_single_score(&nodes[ply - 2], ex);
         if (ply >= 4) v += ContinuationHistory.get_single_score(&nodes[ply - 4], ex);
@@ -91,7 +89,7 @@ pub const History = struct {
     }
 
     /// Returns the history score of a capture move. Used for move ordering and pruning decisions.
-    pub fn get_capture_score(self: *const History, ex: ExtMove) Score {
+    pub fn get_capture_score(self: *const History, ex: ExtMove) i32 {
         return self.capture.get_score(ex);
     }
 };
@@ -100,28 +98,28 @@ pub const History = struct {
 pub const QuietHistory = struct {
 
     /// Quiet move scores. Indexing: [piece][from][to]
-    table: [12][64][64]SmallScore,
+    table: [12][64][64]i16,
 
     fn update(self: *QuietHistory, depth: i32, ex: ExtMove, quiets: []const ExtMove) void {
-        const bonus: SmallScore = HistCalc.get_bonus(depth);
-        //const malus: SmallScore = hist_calc.get_malus(depth);
+        const bonus: i16 = HistCalc.get_bonus(depth);
+        //const malus: i16 = hist_calc.get_malus(depth);
 
         // Increase score for this move.
-        const v: *SmallScore = self.get_score_ptr(ex);
+        const v: *i16 = self.get_score_ptr(ex);
         HistCalc.apply_bonus(v, bonus);
 
         // Decrease score of previous moves. These did not cause a beta cutoff.
         for (quiets) |prev| {
-            const p: *SmallScore = self.get_score_ptr(prev);
+            const p: *i16 = self.get_score_ptr(prev);
             HistCalc.apply_bonus(p, -bonus);
         }
     }
 
-    fn get_score_ptr(self: *QuietHistory, ex: ExtMove) *SmallScore {
+    fn get_score_ptr(self: *QuietHistory, ex: ExtMove) *i16 {
         return &self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
 
-    fn get_score(self: *const QuietHistory, ex: ExtMove) Score {
+    fn get_score(self: *const QuietHistory, ex: ExtMove) i32 {
         return self.table[ex.piece.u][ex.move.from.u][ex.move.to.u];
     }
 };
@@ -130,34 +128,36 @@ pub const QuietHistory = struct {
 pub const CaptureHistory = struct {
 
     /// Capture move scores. Indexing: [piece][to][captured-piecetype]
-    table: [12][64][6]SmallScore,
+    table: [12][64][6]i16,
 
     pub fn update(self: *CaptureHistory, depth: i32, ex: ExtMove) void {
-        const bonus: SmallScore = HistCalc.get_bonus(depth);
+        const bonus: i16 = HistCalc.get_bonus(depth);
 
         // Increase score for this move.
-        const v: *SmallScore = self.get_score_ptr(ex);
+        const v: *i16 = self.get_score_ptr(ex);
         HistCalc.apply_bonus(v, bonus);
     }
 
     pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
-        const bonus: SmallScore = HistCalc.get_bonus(depth);
-        //const malus: SmallScore = hist_calc.get_malus(depth);
+        const bonus: i16 = HistCalc.get_bonus(depth);
+        //const malus: i16 = hist_calc.get_malus(depth);
         // Decrease score of capture moves (that did not raise alpha).
         for (captures) |prev| {
-            const p: *SmallScore = self.get_score_ptr(prev);
+            const p: *i16 = self.get_score_ptr(prev);
             HistCalc.apply_bonus(p, -bonus);
         }
     }
 
-    fn get_score_ptr(self: *CaptureHistory, ex: ExtMove) *SmallScore {
+    fn get_score_ptr(self: *CaptureHistory, ex: ExtMove) *i16 {
         return &self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 
-    fn get_score(self: *const CaptureHistory, ex: ExtMove) SmallScore {
+    fn get_score(self: *const CaptureHistory, ex: ExtMove) i16 {
         return self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 };
+
+pub const ContinuationEntry = *[12][64]i16;
 
 /// Heuristics for quiet continuation moves.
 pub const ContinuationHistory = struct {
@@ -166,7 +166,7 @@ pub const ContinuationHistory = struct {
     const depths_delta: [3]u16 = .{ 1, 2, 4 };
 
     /// Move pair scores. Indexing: [prevpiece][to][piece][to]
-    table: [12][64][12][64]SmallScore,
+    table: [12][64][12][64]i16,
 
     /// The node's continuation_entry is used, so we do not need Self.
     pub fn update(depth: i32, ex: ExtMove, ply: u16, nodes: []const Node, bad_quiets: []const ExtMove) void {
@@ -174,8 +174,8 @@ pub const ContinuationHistory = struct {
             return;
         }
 
-        const bonus: SmallScore = HistCalc.get_bonus(depth);
-        //const malus: SmallScore = hist_calc.get_malus(depth);
+        const bonus: i16 = HistCalc.get_bonus(depth);
+        //const malus: i16 = hist_calc.get_malus(depth);
 
         // Increase score for this move.
         inline for (depths_delta) |d| {
@@ -195,15 +195,15 @@ pub const ContinuationHistory = struct {
     }
 
     /// The node's continuation_entry is used, so we do not need Self.
-    fn update_single_score(node: *const Node, ex: ExtMove, bonus: SmallScore) void {
+    fn update_single_score(node: *const Node, ex: ExtMove, bonus: i16) void {
         if (node.continuation_entry) |entry| {
-            const v: *SmallScore = &entry[ex.piece.u][ex.move.to.u];
+            const v: *i16 = &entry[ex.piece.u][ex.move.to.u];
             HistCalc.apply_bonus(v, bonus);
         }
     }
 
     /// The node's continuation_entry is used, so we do not need Self.
-    fn get_single_score(node: *const Node, ex: ExtMove) Score {
+    fn get_single_score(node: *const Node, ex: ExtMove) i32 {
         if (node.continuation_entry) |entry| {
             return entry[ex.piece.u][ex.move.to.u];
         }
@@ -211,11 +211,11 @@ pub const ContinuationHistory = struct {
     }
 
     /// Chess programming is crazy. In the node we store a pointer to an entry in the table.
-    pub fn get_node_entry(self: *ContinuationHistory, ex: ExtMove) *[12][64]SmallScore {
+    pub fn get_continuation_entry_for_node(self: *ContinuationHistory, ex: ExtMove) ContinuationEntry {
         return &self.table[ex.piece.u][ex.move.to.u];
     }
 
-    /// bughunt function.
+    /// verifications function.
     fn verify_node(self: *const ContinuationHistory, node: *const Node) void {
         lib.not_in_release();
         if (node.current_move.move.is_empty()) {
@@ -239,27 +239,27 @@ pub const ContinuationHistory = struct {
 /// 3) After retrieving a new raw static eval we adjust it using `apply`.
 /// 4) the size of the table is twice as big as I usually see in other engines.
 pub const CorrectionHistory = struct {
-    const table_size: usize = 16384;// * 2; // #testing smaller
+    const table_size: usize = 16384;
 
-    const corr_scale: Score = 256;
-    const corr_max: Score = 64;// * 3; // 128;
+    const corr_scale: i32 = 256;
+    const corr_max: i32 = 64;
 
     /// Entries for pawns
-    pawn_table: [2][table_size]SmallScore,
+    pawn_table: [2][table_size]i16,
     /// Entries for white pieces
-    white_table: [2][table_size]SmallScore,
+    white_table: [2][table_size]i16,
     /// Entries for black pieces.
-    black_table: [2][table_size]SmallScore,
+    black_table: [2][table_size]i16,
 
     /// Updates the error values: the difference between the search score and the raw static eval.
-    pub fn update(self: *CorrectionHistory, comptime us: Color, pos: *const Position, depth: i32, search_score: Score, raw_static_eval: Score) void {
-        const err: Score = search_score - raw_static_eval;
-        const scaled_err: Score = err * corr_scale;
-        const weight: Score = @min(1 + depth, 16);
+    pub fn update(self: *CorrectionHistory, comptime us: Color, pos: *const Position, depth: i32, search_score: i32, raw_static_eval: i32) void {
+        const err: i32 = search_score - raw_static_eval;
+        const scaled_err: i32 = err * corr_scale;
+        const weight: i32 = @min(1 + depth, 16);
 
-        const pawn_entry: *SmallScore = &self.pawn_table[us.u][pos.pawnkey % table_size];
-        const white_entry: *SmallScore = &self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
-        const black_entry: *SmallScore = &self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
+        const pawn_entry: *i16 = &self.pawn_table[us.u][pos.pawnkey % table_size];
+        const white_entry: *i16 = &self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
+        const black_entry: *i16 = &self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
 
         update_entry(pawn_entry, scaled_err, weight);
         update_entry(white_entry, scaled_err, weight);
@@ -267,38 +267,26 @@ pub const CorrectionHistory = struct {
     }
 
     /// Returns a corrected raw static eval.
-    pub fn apply(self: *const CorrectionHistory, comptime us: Color, pos: *const Position, raw_static_eval: Score) Score {
-        const p: Score = self.pawn_table[us.u][pos.pawnkey % table_size];
-        const w: Score = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
-        const b: Score = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
+    pub fn apply(self: *const CorrectionHistory, comptime us: Color, pos: *const Position, raw_static_eval: i32) i32 {
+        const p: i32 = self.pawn_table[us.u][pos.pawnkey % table_size];
+        const w: i32 = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
+        const b: i32 = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
 
-        //_ = w;
-        //_ = b;
-
-        // The 2 is no typo. Maybe it is 'wrong' but it performed quite ok.
-        // The maximum correction diff is 96.
-
-        //const d: Score =  700; //512;corr_scale * 2
-        //const f: f32 = funcs.float(p + w + b) / 512.0; // #testing again..............
-        //const correction: Score = @intFromFloat(f);//   @divFloor(p + w + b, d);
-
-        //lib.io.debugprint("[{} = {}], ", .{ correction, @divFloor(p + w + b, 512)});
-
-        const correction: Score = @divFloor(p + w + b, corr_scale * 2);
-        // const correction: Score = @divFloor(p + w + b, corr_scale * 3);
-
-        //const correction: Score = @divFloor(p, corr_scale);
-
-
-        // The maximum correction diff is 64.
-        //const correction: Score = @divFloor(p + w + b, corr_scale * 3);
-
-        const result: Score = clamp(raw_static_eval + correction, -types.mate_threshold + 1, types.mate_threshold - 1);
+        // The 2 is no typo. Maybe it is 'wrong' but it performed quite ok. The maximum correction diff is 96.
+        const correction: i32 = @divFloor(p + w + b, corr_scale * 2);
+        const result: i32 = clamp(raw_static_eval + correction, -types.mate_threshold + 1, types.mate_threshold - 1);
         return result;
     }
 
-    fn update_entry(entry: *SmallScore, scaled_err: Score, weight: Score) void {
-        var score: Score = entry.*;
+    pub fn is_complex(self: *const CorrectionHistory, comptime us: Color, pos: *const Position,) bool {
+        const p: i32 = self.pawn_table[us.u][pos.pawnkey % table_size];
+        const w: i32 = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
+        const b: i32 = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
+        return !((p >= 0 and w >= 0 and b >= 0) or (p < 0 and w < 0 and b < 0));
+    }
+
+    fn update_entry(entry: *i16, scaled_err: i32, weight: i32) void {
+        var score: i32 = entry.*;
         score = @divFloor(score * (corr_scale - weight) + (scaled_err * weight), corr_scale);
         score = clamp(score, corr_scale * -corr_max, corr_scale * corr_max);
         entry.* = @intCast(score);
