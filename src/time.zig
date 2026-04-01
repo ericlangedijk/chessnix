@@ -109,7 +109,7 @@ pub const TimeManager = struct {
         const increment_per_move: u64 = inc;
         // Add 3/4 of total increment to the time.
         const partial_inc: u64 = (increment_per_move * 750) / 1000;
-        const move_overhead: u64 = 20;
+        const move_overhead: u64 = 20; // 10; #testing
 
         var timeleft = @max(1, time + partial_inc * (movestogo - 1));
         const total_move_overhead: u64 = move_overhead * (movestogo + 1);

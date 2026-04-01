@@ -1,6 +1,11 @@
 // zig fmt: off
 
-//! Non-chess utilities.
+//! Generic non-chess utility structs.
+//! Timer
+//! Random
+//! TextFileReader
+//! TextFileWriter
+//! BoundedArray
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -10,6 +15,7 @@ const io = lib.io;
 const assert = std.debug.assert;
 const wtf = lib.wtf;
 
+// TODO: Write my own timer. It will be removed from Zig 0.16
 /// A little wrapper around the std timer.
 pub const Timer = struct {
     pub const empty: Timer = std.mem.zeroes(Timer);
@@ -83,7 +89,7 @@ pub const Random = struct {
     }
 };
 
-/// A little convenient line reader. Max linesize must be known.
+/// A little sloppy but convenient line reader. Max linesize must be known.
 pub const TextFileReader = struct {
     allocator: std.mem.Allocator,
     buffer: []u8,
@@ -109,10 +115,6 @@ pub const TextFileReader = struct {
             return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
         };
         return std.mem.trimEnd(u8, line, "\r\n");
-        // const line = self.reader.interface.takeDelimiterExclusive('\n') catch |err| {
-        //     return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
-        // };
-        // return std.mem.trimEnd(u8, line, "\r\n");
     }
 
     pub fn reset(self: *TextFileReader) void {
@@ -120,7 +122,7 @@ pub const TextFileReader = struct {
     }
 };
 
-/// A little convenient line writer.
+/// A little sloppy but convenient line writer.
 pub const TextFileWriter = struct {
     allocator: std.mem.Allocator,
     buffer: []u8,
@@ -240,24 +242,3 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
         }
     };
 }
-
-pub const SearchLog = struct {
-
-    csv: TextFileWriter,
-
-    pub fn init() !SearchLog {
-        const instant: std.time.Instant = try .now();
-        var buf: [32]u8 = undefined; // enough for u64
-        const filename = try std.fmt.bufPrint(&buf, "{:0>20}.csv", .{ instant.timestamp });
-        var result: SearchLog = undefined;
-        result.csv = try .init_cwd(filename, ctx.galloc, 1024);
-        try result.csv.writeline("gamenr;ply;time;inc;maxtime;usedtime;score", .{});
-        try result.csv.flush();
-        return result;
-    }
-
-    pub fn deinit(self: *SearchLog) void {
-        self.csv.deinit();
-    }
-
-};

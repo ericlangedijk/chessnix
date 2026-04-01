@@ -301,9 +301,15 @@ const TTY = struct {
     fn print_state() void {
         io.print("builtmode: {t}\n", .{ builtin.mode });
         io.print("cpu: {t}\n", .{ builtin.cpu.arch });
-        io.print("compiled for cpu: {t}\n", .{ builtin.cpu.arch }); // TODO: figure out how to display often used stuff like .avx2,.bmi,.bmi2,.sse,.sse2,.sse3,
         io.print("engine busy: {}\n", .{ engine.is_busy()});
         io.print("tt size: {}, buckets: {}, entries per bucket: {} bucketsize: {}, entry size: {} \n", .{ engine.options.hash_size, engine.transpositiontable.hash.data.len, tt.EPB, tt.Bucket.STRUCTSIZE, tt.Entry.STRUCTSIZE });
+
+        // for (@import("history.zig").corr_stats, 0..) |c, i| {
+        //     var ii: i32 = @intCast(i);
+        //     ii -= 160;
+        //     io.print("{} {}\n", .{ ii, c } );
+        // }
+
     }
 };
 

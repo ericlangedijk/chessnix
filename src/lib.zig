@@ -22,19 +22,8 @@ pub fn finalize() void {
 ////////////////////////////////////////////////////////////////
 // Globals.
 ////////////////////////////////////////////////////////////////
-pub const Program = enum {
-    /// We are a chess engine.
-    engine,
-    /// We are convering the lichess json eval dataset.
-    generating_lichess_dataset,
-    /// We are running a hce tuning.
-    tuning,
-};
 
-pub const program: Program = .engine;
-
-/// Not used.
-pub const is_tuning: bool = program == .tuning;
+// pub const search_log: bool = true; //false;
 
 pub const version = "1.4";
 pub const is_debug: bool = builtin.mode == .Debug;
@@ -154,4 +143,3 @@ fn log_wtf(comptime str: []const u8, args: anytype) void {
     defer writer.deinit();
     writer.writeline(str, args) catch return;
 }
-

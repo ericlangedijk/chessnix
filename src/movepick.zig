@@ -10,6 +10,7 @@ const position = @import("position.zig");
 const search = @import("search.zig");
 const history = @import("history.zig");
 const hce = @import("hce.zig");
+//const hcetables = @import("hcetables.zig");
 
 const assert = std.debug.assert;
 

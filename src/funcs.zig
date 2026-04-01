@@ -5,6 +5,7 @@
 const std = @import("std");
 
 const lib = @import("lib.zig");
+const utils = @import("utils.zig");
 const bitboards = @import("bitboards.zig");
 const types = @import("types.zig");
 const attacks = @import("attacks.zig");
@@ -263,7 +264,7 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
 }
 
 /// Convert any int to f32.
-pub fn float(i: anytype) f32 {
+pub fn float32(i: anytype) f32 {
     return @floatFromInt(i);
 }
 
@@ -284,6 +285,21 @@ pub fn permille(max: usize, count: usize) usize {
     const m: f32 = @floatFromInt(max);
     return @intFromFloat((c * 1000) / m);
 }
+
+
+/// WIP experimental stuff to ease some Zig math Pain.
+pub const IntMath = struct {
+
+    /// multiply any int with float.
+    pub fn fmul(i: anytype, f: f32) @TypeOf(i) {
+        return @intFromFloat(float32(i) * f);
+    }
+
+    pub fn muldiv(i: i32, m: i32, d: i32) i32 {
+        return @divFloor(i * m, d);
+    }
+
+};
 
 /// Debug only
 pub fn print_bitboard(bb: u64) void {
@@ -312,3 +328,22 @@ pub fn print_bits(u: u8) void {
     }
     lib.io.debugprint("\n", .{});
 }
+
+
+
+
+// fn float(x: anytype) f64 {
+//     return switch (@typeInfo(@TypeOf(x))) {
+//         .int, .comptime_int => @floatFromInt(x),
+//         .float, .comptime_float => @floatCast(x),
+//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+//     };
+// }
+
+// fn int(comptime T: type, x: anytype) T {
+//     return switch (@typeInfo(@TypeOf(x))) {
+//         .int, .comptime_int => @intCast(x),
+//         .float, .comptime_float => @intFromFloat(x),
+//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+//     };
+// }

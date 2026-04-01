@@ -690,7 +690,6 @@ pub const Move = packed struct(u16) {
 };
 
 pub const ExtMove = packed struct {
-    /// Set during move generation.
     move: Move = .empty,
     /// Set during move generation.
     piece: Piece = Piece.NO_PIECE,
@@ -714,7 +713,7 @@ pub const ExtMove = packed struct {
     }
 };
 
-/// Simple array wrapper with a know maximum length.
+/// Simple array wrapper.
 pub fn ExtMoveList(max: u8) type {
     return struct {
         const Self = @This();
@@ -785,11 +784,6 @@ pub fn pair(mg: i16, eg: i16) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
-pub fn is_mate_score(score: i32) bool {
-    const s: i32 = @intCast(@abs(score));
-    return s <= mate and score >= mate_threshold;
-}
-
 pub const GamePhase = enum(u2) {
     opening, midgame, endgame
 };
@@ -810,35 +804,20 @@ pub const megabyte: usize = 1024 * 1024;
 
 /// This is how far we go.
 pub const max_game_length: usize = 1024;
-/// The absoluta maximum number of moves.
+/// The absoluta maximum number of moves in a position.
 pub const max_move_count: u8 = 224;
+/// The absoluta maximum number of noisy moves in a position.
 pub const max_noisy_count: u8 = 128;
 /// Our max search depth during search. All arrays are a bit oversized for safety.
 pub const max_search_depth: u8 = 128;
-// A score which means "nothing" and should be treated as such or discarded during search.
-pub const no_score: i32 = -32002;
-pub const infinity: i32 = 32000;
-pub const mate: i32 = 30000;
-pub const draw: i32 = 0;
-pub const mate_threshold = mate - max_search_depth;
-pub const stalemate: i32 = 0;
-pub const invalid_movescore: i32 = std.math.minInt(i32);
 
-// Simple scores for SEE and move ordering.
+// Scores for SEE and move ordering.
 pub const value_pawn: i32 = 98;
 pub const value_knight: i32 = 299;
 pub const value_bishop: i32 = 300;
 pub const value_rook: i32 = 533;
 pub const value_queen: i32 = 921;
 pub const value_king: i32 = 0;
-
-// #testing KISS
-// pub const value_pawn: i32 = 100;
-// pub const value_knight: i32 = 300;
-// pub const value_bishop: i32 = 300;
-// pub const value_rook: i32 = 500;
-// pub const value_queen: i32 = 900;
-// pub const value_king: i32 = 0;
 
 const piece_values: [13]i32 = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,

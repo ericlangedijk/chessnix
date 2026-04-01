@@ -45,7 +45,6 @@ pub const bb_queenside: u64 = bb_file_a | bb_file_b | bb_file_d | bb_file_d;
 pub const bb_kingside: u64 = bb_file_e | bb_file_f | bb_file_g | bb_file_h;
 pub const bb_center: u64 = (bb_file_c | bb_file_d | bb_file_e | bb_file_f) & (bb_rank_3 | bb_rank_4 | bb_rank_5 | bb_rank_6);
 pub const bb_mini_center: u64 = (bb_file_d | bb_file_e) & (bb_rank_4 | bb_rank_5);
-pub const bb_colored_squares: [2]u64 = .{ bb_white_squares, bb_black_squares };
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
 

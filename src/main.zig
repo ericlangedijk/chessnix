@@ -15,12 +15,5 @@ pub fn main() !void {
         try @import("tests.zig").run_silent_debugmode_tests();
     }
 
-    switch (lib.program) {
-        .engine => {
-            uci.run();
-        },
-        else => {
-            unreachable;
-        },
-    }
+    uci.run();
 }

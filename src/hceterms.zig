@@ -4,8 +4,6 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 
-const is_tuning = lib.is_tuning;
-
 const ScorePair = types.ScorePair;
 const pair = types.pair;
 
@@ -29,6 +27,8 @@ pub const Terms = struct {
     knight_outpost_table: [64]ScorePair,
     knight_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_outpost_table: [64]ScorePair,
+    bishop_pawns_same_color_penalty: [7]ScorePair,
+    bishop_long_diagonal: ScorePair,
     rook_on_file_bonus: [2][8]ScorePair,
     pawn_protection_table: [12]ScorePair,
     pawn_storm_table: [21]ScorePair,
@@ -40,90 +40,9 @@ pub const Terms = struct {
     pawn_push_threat_table: [13]ScorePair,
     safe_check_bonus: [6]ScorePair,
     piece_square_table: [6][64]ScorePair,
-
-    /// Just experimenting. Not used.
-    pub const Feature = enum {
-        piece_value,
-        king_passed_pawn_distance,
-        enemy_king_passed_pawn_distance,
-        pawn_phalanx,
-        passed_pawn,
-        protected_pawn,
-        doubled_pawn,
-        isolated_pawn,
-        king_cannot_reach_passed_pawn,
-        bishop_pair,
-        tempo,
-        knight_mobility,
-        bishop_mobility,
-        rook_mobility,
-        queen_mobility,
-        attack_power,
-        knight_outpost,
-        knight_outpost_is_blocking_enemy_pawn,
-        bishop_outpost,
-        rook_on_file,
-        pawn_protection,
-        pawn_storm,
-        king_on_file,
-        threatened_by_pawn,
-        threatened_by_knight,
-        threatened_by_bishop,
-        threatened_by_rook,
-        pawn_push_threat,
-        safe_check,
-        piece_square,
-    };
-
-    /// Only available when tuning.
-    pub fn flattened(self: *Terms) []ScorePair {
-        return @ptrCast(self);
-    }
-
-    /// Always available as const.
-    pub fn flattened_const(self: *const Terms) []const ScorePair {
-        return @ptrCast(self);
-    }
-
-    pub inline fn score_pair_count() usize {
-        return @divExact(@sizeOf(Terms), @sizeOf(ScorePair));
-    }
-
-    pub fn index_of(self: *const Terms, sp: *const ScorePair) usize {
-        const self_ptr: usize = @intFromPtr(self);
-        const sp_ptr: usize = @intFromPtr(sp);
-        return @divTrunc(sp_ptr - self_ptr, @sizeOf(ScorePair));
-    }
-
-    /// Just experimenting. Not used.
-    pub fn feature_of(self: *const Terms, sp: *const ScorePair) ?Feature {
-        const addr: usize = @intFromPtr(sp) - @intFromPtr(self);
-        var result: Feature = .piece_square;
-        const info = @typeInfo(Terms).@"struct";
-
-        inline for (0..info.fields.len) |i| {
-            const field = info.fields[info.fields.len - 1 - i];
-            const offset = @offsetOf(Terms, field.name);
-            if (addr >= offset) {
-                return result;
-            }
-            if (@intFromEnum(result) == 0) {
-                return null;
-            }
-            result = @enumFromInt(@intFromEnum(result) - 1);
-        }
-        return null;
-    }
-
-    /// Used for outputting source code when tuning.
-    pub fn format(self: *const Terms, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try TermsPrinter.format_terms(self, writer);
-    }
 };
 
-pub const terms = if (is_tuning) &tuning_terms else &default_terms;
-
-var tuning_terms: Terms = default_terms;
+pub const terms = &default_terms;
 
 pub const default_terms: Terms = .{
     .piece_value_table = .{
@@ -218,6 +137,13 @@ pub const default_terms: Terms = .{
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 8
     },
 
+    .bishop_pawns_same_color_penalty = .{
+        //pair(4, 20), pair(5, 19), pair(4, 11), pair(1, 4), pair(-2, -5), pair(-2, -18), pair(-5, -30),
+        pair(3, 15), pair(3, 12), pair(3, 8), pair(1, 3), pair(-1, -4), pair(-1, -7), pair(-3, -24), // #testing: this more cautious values seem a bit better in autoplay
+    },
+
+    .bishop_long_diagonal = pair(8, 4),
+
     .rook_on_file_bonus = .{
         .{ pair(22, 5), pair(19, 3), pair(17, 9), pair(18, 8), pair(19, 13), pair(31, 3), pair(39, 3), pair(66, -1) },
         .{ pair(9, 33), pair(9, 9), pair(11, 9), pair(18, 0), pair(14, 1), pair(14, -2), pair(21, 0), pair(16, 19) },
@@ -289,6 +215,7 @@ pub const default_terms: Terms = .{
 
     .safe_check_bonus = .{
         pair(0, 0), pair(48, 8), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // used
+        //pair(0, 0), pair(52, 12), pair(26, 28), pair(66, 15), pair(35, 20), pair(0, 0), // #testing
     },
 
     .piece_square_table = .{
@@ -353,108 +280,4 @@ pub const default_terms: Terms = .{
             pair(74, -91), pair(82, -49), pair(60, -27), pair(-46, 9), pair(-19, -7), pair(-91, 11), pair(-24, -7), pair(101, -114), // rank 8
         }
     },
-};
-
-/// Sloppy but working. In case we are going to tune.
-const TermsPrinter = struct {
-
-    /// Used for outputting source code when tuning.
-    fn format_terms(t: *const Terms, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("const default_terms: Terms =\n.{{\n", .{});
-
-        try print_array_1d("piece_value_table", 1, t.piece_value_table, writer);
-        try print_array_1d("king_passed_pawn_distance_table", 1, t.king_passed_pawn_distance_table, writer);
-        try print_array_1d("enemy_king_passed_pawn_distance_table", 1, t.enemy_king_passed_pawn_distance_table, writer);
-        try print_array_1d("pawn_phalanx_bonus", 1, t.pawn_phalanx_bonus, writer);
-        try print_array_1d("passed_pawn_bonus", 1, t.passed_pawn_bonus, writer);
-        try print_array_1d("protected_pawn_bonus", 1, t.protected_pawn_bonus, writer);
-        try print_array_1d("doubled_pawn_penalty", 1, t.doubled_pawn_penalty, writer);
-        try print_array_1d("isolated_pawn_penalty", 1, t.isolated_pawn_penalty, writer);
-        try print_one_scorepair("king_cannot_reach_passed_pawn_bonus", 1, t.king_cannot_reach_passed_pawn_bonus, writer);
-        try print_one_scorepair("bishop_pair_bonus", 1, t.bishop_pair_bonus, writer);
-        try print_one_scorepair("tempo_bonus", 1, t.tempo_bonus, writer);
-        try print_array_1d("knight_mobility_table", 1, t.knight_mobility_table, writer);
-        try print_array_1d("bishop_mobility_table", 1, t.bishop_mobility_table, writer);
-        try print_array_1d("rook_mobility_table", 1, t.rook_mobility_table, writer);
-        try print_array_1d("queen_mobility_table", 1, t.queen_mobility_table, writer);
-        try print_array_2d("attack_power", 1, t.attack_power, writer);
-        try print_array_1d("knight_outpost_table", 1, t.knight_outpost_table, writer);
-        try print_array_1d("bishop_outpost_table", 1, t.bishop_outpost_table, writer);
-        try print_array_2d("rook_on_file_bonus", 1, t.rook_on_file_bonus, writer);
-        try print_array_1d("pawn_protection_table", 1, t.pawn_protection_table, writer);
-        try print_array_1d("pawn_storm_table", 1, t.pawn_storm_table, writer);
-        try print_array_2d("king_on_file_penalty", 1, t.king_on_file_penalty, writer);
-        try print_array_2d("threatened_by_pawn_penalty", 1, t.threatened_by_pawn_penalty, writer);
-        try print_array_2d("threatened_by_knight_penalty", 1, t.threatened_by_knight_penalty, writer);
-        try print_array_2d("threatened_by_bishop_penalty", 1, t.threatened_by_bishop_penalty, writer);
-        try print_array_2d("threatened_by_rook_penalty", 1, t.threatened_by_rook_penalty, writer);
-        try print_array_1d("pawn_push_threat_table", 1, t.pawn_push_threat_table, writer);
-        try print_array_1d("safe_check_bonus", 1, t.safe_check_bonus, writer);
-        try print_array_2d("piece_square_table", 1, t.piece_square_table, writer);
-
-        try writer.print("}};\n", .{});
-    }
-
-    fn print_array_1d(name: ?[]const u8, indent: usize, array: anytype, writer: *std.io.Writer) std.io.Writer.Error!void {
-        if (name) |n| {
-            try print_indent(writer, indent);
-            try writer.print(".{s} = \n", .{ n });
-        }
-
-        //const small: bool = array.len <= 8;
-        const lf = "\n";
-        // const ind: usize = if (small) 0 else indent;
-
-        try print_indent(writer, indent);
-        try writer.print(".{{{s}", .{lf});
-        try print_indent(writer, indent + 1);
-        try print_indent(writer, 1); // one space after {
-
-        var idx: u3 = 0;
-        for (array, 0..) |sp, nr| {
-            try print_scorepair(sp, writer);
-            idx +%= 1;
-            if (idx == 0 and nr < array.len - 1) {
-                try writer.print("\n", .{});
-                try print_indent(writer, indent + 1);
-            }
-        }
-        try writer.print("{s}", .{lf});
-        try print_indent(writer, indent);
-        try writer.print("}},\n", .{});
-    }
-
-    fn print_array_2d(name: ?[]const u8, indent: usize, array: anytype, writer: *std.io.Writer) std.io.Writer.Error!void {
-        if (name) |n| {
-            try print_indent(writer, indent);
-            try writer.print(".{s} = \n", .{ n });
-        }
-
-        try print_indent(writer, indent);
-        try writer.print(".{{\n", .{});
-
-        for (array) |ar| {
-            try print_array_1d(null, indent + 1, ar, writer);
-        }
-
-        //try writer.print("\n", .{});
-        try print_indent(writer, indent);
-        try writer.print("}},\n", .{});
-
-    }
-
-    fn print_scorepair(sp: ScorePair, writer: *std.io.Writer) !void {
-        try writer.print("pair({}, {}), ", .{ sp.mg, sp.eg });
-    }
-
-    fn print_one_scorepair(name: []const u8, indent: usize, sp: ScorePair, writer: *std.io.Writer) !void {
-        try print_indent(writer, indent);
-        try writer.print("{s} = pair({}, {});\n", .{ name, sp.mg, sp.eg });
-    }
-
-    fn print_indent(writer: *std.io.Writer, ind: usize) !void {
-        for (0..ind * 4) |_| {
-            try writer.print(" ", .{});
-        }
-    }
 };

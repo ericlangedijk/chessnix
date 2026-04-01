@@ -109,6 +109,10 @@ pub const Position = struct {
     pawnkey: u64,
     /// Key for each side for non pawns. Used for correction history.
     nonpawnkeys: [2]u64,
+    /// Key for all minors + kings. Used for correction history.
+    minorkey: u64,
+    /// Key for all minors + kings. Used for correction history.
+    majorkey: u64,
     /// The paths from the enemy slider checkers to the king (**excluded** the king, **included** the checker). Pawns and knights of course included but without path.
     checkmask: u64,
     /// Bitboard with the diagonal pin rays (**excluded** the king, **included** the attacker).
@@ -140,6 +144,8 @@ pub const Position = struct {
             .key = 0,
             .pawnkey = 0,
             .nonpawnkeys = @splat(0),
+            .minorkey = 0,
+            .majorkey = 0,
             .checkmask = 0,
             .pins_diagonal = 0,
             .pins_orthogonal = 0,
@@ -172,6 +178,8 @@ pub const Position = struct {
             .key = 0,
             .pawnkey = 0,
             .nonpawnkeys = @splat(0),
+            .minorkey = 0,
+            .majorkey = 0,
             .checkmask = 0,
             .pins_diagonal = 0,
             .pins_orthogonal = 0,
@@ -419,8 +427,10 @@ pub const Position = struct {
         // Local hash keys.
         var key: u64 = 0;
         var pawnkey: u64 = 0;
-        var white_nonpawnkey: u64 = 0;
-        var black_nonpawnkey: u64 = 0;
+        var nonpawnkeys: [2]u64 = @splat(0);
+        //var black_nonpawnkey: u64 = 0;
+        var minorkey: u64 = 0;
+        var majorkey: u64 = 0;
 
         // Put flipped pieces on flipped squares.
         while (bitloop(&bb)) |sq| {
@@ -439,11 +449,13 @@ pub const Position = struct {
                 pawnkey ^= hash_delta;
             }
             else {
-                if (new_pc.color().e == .white) {
-                    white_nonpawnkey ^= hash_delta;
+                const color: Color = new_pc.color();
+                nonpawnkeys[color.u] ^= hash_delta;
+                if (new_pc.is_minor()) {
+                    minorkey ^= hash_delta;
                 }
-                else  {
-                    black_nonpawnkey ^= hash_delta;
+                else if (new_pc.is_major()) {
+                    majorkey ^= hash_delta;
                 }
             }
         }
@@ -469,14 +481,16 @@ pub const Position = struct {
 
         self.key = key;
         self.pawnkey = pawnkey;
-        self.nonpawnkeys = .{ white_nonpawnkey, black_nonpawnkey };
+        self.nonpawnkeys = nonpawnkeys;
+        self.minorkey = minorkey;
+        self.majorkey = majorkey;
 
         if (self.is_960) {
             self.select_layout();
         }
 
         if (comptime lib.is_paranoid) {
-            self.assert_pos_ok();
+            self.assert_pos_ok(.empty);
         }
     }
 
@@ -488,14 +502,16 @@ pub const Position = struct {
     }
 
     fn init_hash(self: *Position) void {
-        self.compute_hashkeys(&self.key, &self.pawnkey, &self.nonpawnkeys[0], &self.nonpawnkeys[1]);
+        self.compute_hashkeys(&self.key, &self.pawnkey, &self.nonpawnkeys[0], &self.nonpawnkeys[1], &self.minorkey, &self.majorkey);
     }
 
-    fn compute_hashkeys(self: *const Position, key: *u64, pawnkey: *u64, white_nonpawnkey: *u64, black_nonpawnkey: *u64) void {
+    fn compute_hashkeys(self: *const Position, key: *u64, pawnkey: *u64, white_nonpawnkey: *u64, black_nonpawnkey: *u64, minorkey: *u64, majorkey: *u64) void {
         key.* = 0;
         pawnkey.* = 0;
         white_nonpawnkey.* = 0;
         black_nonpawnkey.* = 0;
+        minorkey.* = 0;
+        majorkey.* = 0;
         var occ: u64 = self.all();
         while (bitloop(&occ)) |sq| {
             const pc = self.get(sq);
@@ -505,10 +521,13 @@ pub const Position = struct {
                 pawnkey.* ^= z_key;
             }
             else {
-                if (pc.color().e == .white)
-                    white_nonpawnkey.* ^= z_key
-                else
-                    black_nonpawnkey.* ^= z_key;
+                if (pc.color().e == .white) white_nonpawnkey.* ^= z_key else black_nonpawnkey.* ^= z_key;
+                if (pc.is_minor()) {
+                    minorkey.* ^= z_key;
+                }
+                else if (pc.is_major()) {
+                    majorkey.* ^= z_key;
+                }
             }
         }
         key.* ^= zobrist.castling(self.castling_rights);
@@ -684,9 +703,10 @@ pub const Position = struct {
         return false;
     }
 
-    /// Update board, bitboards, values and keys.
+    /// Update board, bitboards, phase and keys.
     pub fn add_piece_ex(self: *Position, pc: Piece, sq: Square) void {
-        switch (pc.color().e) {
+        const color: Color = pc.color();
+        switch (color.e) {
             .white => self.add_piece(Color.WHITE, pc, sq),
             .black => self.add_piece(Color.BLACK, pc, sq),
         }
@@ -696,16 +716,17 @@ pub const Position = struct {
             self.pawnkey ^= k;
         }
         else {
-            if (pc.is_white()) {
-                self.nonpawnkeys[0] ^= k;
+            self.nonpawnkeys[color.u] ^= k;
+            if (pc.is_minor()) {
+                self.minorkey ^= k;
             }
-            else {
-                self.nonpawnkeys[1] ^= k;
+            else if (pc.is_major()) {
+                self.majorkey ^= k;
             }
         }
     }
 
-    /// Update board, bitboards, values, phase. Not keys.
+    /// Update board, bitboards, phase. Not keys.
     fn add_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
         if (comptime lib.is_paranoid) {
             assert(self.get(sq).is_empty());
@@ -719,7 +740,7 @@ pub const Position = struct {
         self.phase += types.phase_table[pc.u];
     }
 
-    /// Update board, bitboards, values, phase. Not keys.
+    /// Update board, bitboards, phase. Not keys.
     fn remove_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
         if (comptime lib.is_paranoid) {
             assert(self.get(sq).e == pc.e);
@@ -732,7 +753,7 @@ pub const Position = struct {
         self.phase -= types.phase_table[pc.u];
     }
 
-    /// Update board, bitboards, values, phase. Not keys.
+    /// Update board, bitboards, phase. Not keys.
     fn move_piece(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void {
         if (comptime lib.is_paranoid) {
             assert(self.get(from).e == pc.e);
@@ -750,7 +771,7 @@ pub const Position = struct {
     pub fn do_move(self: *Position, comptime us: Color, ex: ExtMove) void {
         if (comptime lib.is_paranoid) {
             assert(us.e == self.stm.e);
-            self.assert_pos_ok();
+            self.assert_pos_ok(ex);
         }
 
         const them: Color = comptime us.opp();
@@ -766,6 +787,8 @@ pub const Position = struct {
         var key: u64 = self.key ^ zobrist.btm() ^ zobrist.enpassant(self.ep_square);
         var pawnkey: u64 = self.pawnkey;
         var nonpawnkeys: [2]u64 = self.nonpawnkeys;
+        var minorkey: u64 = self.minorkey;
+        var majorkey: u64 = self.majorkey;
 
         // Update some stuff.
         self.stm = them;
@@ -784,7 +807,7 @@ pub const Position = struct {
             }
         }
 
-        // Switch is in numerical order.
+        // The switch is in numerical order.
         sw: switch (ex.move.flags) {
             Move.silent => {
                 self.move_piece(us, pc, from, to);
@@ -796,6 +819,12 @@ pub const Position = struct {
                 else {
                     self.rule50 += 1;
                     nonpawnkeys[us.u] ^= key_delta;
+                    if (pc.is_minor()) {
+                        minorkey ^= key_delta;
+                    }
+                    else if (pc.is_major()) {
+                        majorkey ^= key_delta;
+                    }
                 }
             },
             Move.double_push => {
@@ -826,9 +855,14 @@ pub const Position = struct {
                     self.move_piece(us, king, from, king_to);
                     self.move_piece(us, rook, to, rook_to);
                 }
-                const castle_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
+                // split in king + major
+                const king_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to);
+                const rook_delta: u64 = zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
+                const castle_delta: u64 = king_delta ^ rook_delta;
+//                const castle_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 key ^= castle_delta;
                 nonpawnkeys[us.u] ^= castle_delta;
+                majorkey ^= rook_delta;
             },
             Move.castle_long => {
                 self.rule50 += 1;
@@ -846,9 +880,14 @@ pub const Position = struct {
                     self.move_piece(us, king, from, king_to);
                     self.move_piece(us, rook, to, rook_to);
                 }
-                const castle_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
+                // split in king + major
+                const king_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to);
+                const rook_delta: u64 = zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
+                const castle_delta: u64 = king_delta ^ rook_delta;
+                //const castle_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 key ^= castle_delta;
                 nonpawnkeys[us.u] ^= castle_delta;
+                majorkey ^= rook_delta;
             },
             Move.knight_promotion => {
                 self.rule50 = 0;
@@ -859,6 +898,7 @@ pub const Position = struct {
                 key ^= zobrist.piece_square(pawn, from) ^ zobrist.piece_square(prom, to);
                 pawnkey ^= zobrist.piece_square(pawn, from);
                 nonpawnkeys[us.u] ^= zobrist.piece_square(prom, to);
+                minorkey ^= zobrist.piece_square(prom, to);
             },
             Move.bishop_promotion => {
                 self.rule50 = 0;
@@ -869,6 +909,7 @@ pub const Position = struct {
                 key ^= zobrist.piece_square(pawn, from) ^ zobrist.piece_square(prom, to);
                 pawnkey ^= zobrist.piece_square(pawn, from);
                 nonpawnkeys[us.u] ^= zobrist.piece_square(prom, to);
+                minorkey ^= zobrist.piece_square(prom, to);
             },
             Move.rook_promotion => {
                 self.rule50 = 0;
@@ -879,6 +920,7 @@ pub const Position = struct {
                 key ^= zobrist.piece_square(pawn, from) ^ zobrist.piece_square(prom, to);
                 pawnkey ^= zobrist.piece_square(pawn, from);
                 nonpawnkeys[us.u] ^= zobrist.piece_square(prom, to);
+                majorkey ^= zobrist.piece_square(prom, to);
             },
             Move.queen_promotion => {
                 self.rule50 = 0;
@@ -889,6 +931,7 @@ pub const Position = struct {
                 key ^= zobrist.piece_square(pawn, from) ^ zobrist.piece_square(prom, to);
                 pawnkey ^= zobrist.piece_square(pawn, from);
                 nonpawnkeys[us.u] ^= zobrist.piece_square(prom, to);
+                majorkey ^= zobrist.piece_square(prom, to);
             },
             Move.capture => {
                 const capt: Piece = ex.captured;
@@ -905,6 +948,12 @@ pub const Position = struct {
                 }
                 else {
                     nonpawnkeys[us.u] ^= key_delta;
+                    if (pc.is_minor()) {
+                        minorkey ^= key_delta;
+                    }
+                    else if (pc.is_major()) {
+                        majorkey ^= key_delta;
+                    }
                 }
 
                 // Captured piece key.
@@ -913,6 +962,12 @@ pub const Position = struct {
                 }
                 else {
                     nonpawnkeys[them.u] ^= capt_delta;
+                    if (capt.is_minor()) {
+                        minorkey ^= capt_delta;
+                    }
+                    else if (capt.is_major()) {
+                        majorkey ^= capt_delta;
+                    }
                 }
             },
             Move.ep => {
@@ -931,6 +986,12 @@ pub const Position = struct {
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
                 nonpawnkeys[them.u] ^= capt_delta;
+                if (capt.is_minor()) {
+                    minorkey ^= capt_delta;
+                }
+                else {
+                    majorkey ^= capt_delta;
+                }
                 continue :sw Move.knight_promotion;
             },
             Move.bishop_promotion_capture => {
@@ -939,6 +1000,12 @@ pub const Position = struct {
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
                 nonpawnkeys[them.u] ^= capt_delta;
+                if (capt.is_minor()) {
+                    minorkey ^= capt_delta;
+                }
+                else {
+                    majorkey ^= capt_delta;
+                }
                 continue :sw Move.bishop_promotion;
             },
             Move.rook_promotion_capture => {
@@ -947,6 +1014,12 @@ pub const Position = struct {
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
                 nonpawnkeys[them.u] ^= capt_delta;
+                if (capt.is_minor()) {
+                    minorkey ^= capt_delta;
+                }
+                else {
+                    majorkey ^= capt_delta;
+                }
                 continue :sw Move.rook_promotion;
             },
             Move.queen_promotion_capture => {
@@ -955,6 +1028,12 @@ pub const Position = struct {
                 const capt_delta: u64 = zobrist.piece_square(capt, to);
                 key ^= capt_delta;
                 nonpawnkeys[them.u] ^= capt_delta;
+                if (capt.is_minor()) {
+                    minorkey ^= capt_delta;
+                }
+                else {
+                    majorkey ^= capt_delta;
+                }
                 continue :sw Move.queen_promotion;
             },
             else => {
@@ -965,11 +1044,13 @@ pub const Position = struct {
         self.key = key;
         self.pawnkey = pawnkey;
         self.nonpawnkeys = nonpawnkeys;
+        self.minorkey = minorkey;
+        self.majorkey = majorkey;
 
         self.update_state(them);
 
         if (comptime lib.is_paranoid) {
-            self.assert_pos_ok();
+            self.assert_pos_ok(ex);
         }
     }
 
@@ -1147,7 +1228,6 @@ pub const Position = struct {
                 }
             }
         }
-        //self.checkers = self.checkmask & bb_all;
     }
 
     /// Not used, but we keep it around.
@@ -1655,7 +1735,7 @@ pub const Position = struct {
     }
 
     /// Paranoid only.
-    pub fn assert_pos_ok(self: *const Position) void {
+    pub fn assert_pos_ok(self: *const Position, ex: ExtMove) void {
         lib.not_in_release();
 
         if (self.phase == 0 and (self.pieces_except_pawns_and_kings(Color.WHITE) | self.pieces_except_pawns_and_kings(Color.BLACK)) != 0) {
@@ -1679,8 +1759,10 @@ pub const Position = struct {
         var pawnkey: u64 = undefined;
         var white_nonpawnkey: u64 = undefined;
         var black_nonpawnkey: u64 = undefined;
+        var minorkey: u64 = undefined;
+        var majorkey: u64 = undefined;
 
-        self.compute_hashkeys(&key, &pawnkey, &white_nonpawnkey, &black_nonpawnkey);
+        self.compute_hashkeys(&key, &pawnkey, &white_nonpawnkey, &black_nonpawnkey, &minorkey, &majorkey);
         if (key != self.key) {
             lib.wtf("pos key", .{});
         }
@@ -1692,6 +1774,14 @@ pub const Position = struct {
         }
         if (black_nonpawnkey != self.nonpawnkeys[1]) {
             lib.wtf("pos black nonpawnkey", .{});
+        }
+        if (minorkey != self.minorkey) {
+            self.draw();
+            lib.wtf("pos minorkey {t} {t}", .{ ex.move.from.e, ex.move.to.e });
+        }
+        if (majorkey != self.majorkey) {
+            self.draw();
+            lib.wtf("pos majorkey {t} {t}", .{ ex.move.from.e, ex.move.to.e });
         }
 
         // In check and not to move.
@@ -1802,7 +1892,7 @@ pub const Position = struct {
 
         // Info.
         io.print_buffered("fen: {f}\n", .{ self });
-        io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1] });
+        io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16} minorkey: {x:0>16} majorkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1], self.minorkey, self.majorkey });
         io.print_buffered("rule50: {}\n", .{ self.rule50 });
         io.print_buffered("phase: {}\n", .{ self.phase });
         io.print_buffered("checkers: ", .{});
@@ -1817,34 +1907,11 @@ pub const Position = struct {
     }
 
     /// Debug only.
-    /// - The function is quite inconvenient. Zig cannot compare unions by default.
     pub fn equals(self: *const Position, other: *const Position) bool {
         lib.not_in_release();
-
-        // Not directly binary comparable with Zig std.
-        inline for (0..64) |i| if (self.board[i].u != other.board[i].u) return false;
-
-        const eql: bool =
-            self.layout == other.layout and
-            std.meta.eql(self.bitboards_by_type, other.bitboards_by_type) and
-            std.meta.eql(self.bitboards_by_color, other.bitboards_by_color) and
-            self.phase == other.phase and
-            self.ply_from_root == other.ply_from_root and
-            self.game_ply == other.game_ply and
-            self.nullmove_state == other.nullmove_state and
-            self.rule50 == other.rule50 and
-            self.ep_square.u == other.ep_square.u and
-            self.castling_rights == other.castling_rights and
-            self.key == other.key and
-            self.pawnkey == other.pawnkey and
-            self.nonpawnkeys[0] == other.nonpawnkeys[0] and
-            self.nonpawnkeys[1] == other.nonpawnkeys[1] and
-            //self.checkers == other.checkers and
-            self.checkmask == other.checkmask and
-            self.pins_diagonal == other.pins_diagonal and
-            self.pins_orthogonal == other.pins_orthogonal;
-
-        return eql;
+        const a: []const u8 = std.mem.asBytes(self);
+        const b: []const u8 = std.mem.asBytes(other);
+        return std.mem.eql(u8, a, b);
     }
 };
 
@@ -2069,3 +2136,57 @@ pub const Layout = struct {
         return result;
     }
 };
+
+
+
+// pub const Material = packed union {
+
+// //    pub const Operation = enum { inc, dec };
+
+//     pub const PieceCounts = packed struct {
+//         w_pawns: u4,
+//         w_knights: u4,
+//         w_bishops: u4,
+//         w_rooks: u4,
+//         w_queens: u4,
+
+//         b_pawns: u4,
+//         b_knights: u4,
+//         b_bishops: u4,
+//         b_rooks: u4,
+//         b_queens: u4,
+//     };
+
+//     piececounts: PieceCounts,
+//     key: u40,
+
+//     // pub fn inc(self: *Material, comptime piece: Piece) void {
+
+//     // }
+
+//     pub fn inc(self: *Material, comptime piece: Piece) void {
+//         switch (piece.e) {
+//             .w_pawn => self.piececounts.w_pawns += 1,
+//             .w_knight => self.piececounts.w_knights += 1,
+//             .w_bishop => self.piececounts.w_bishops += 1,
+//             .w_rook => self.piececounts.w_rooks += 1,
+//             .w_queen => self.piececounts.w_queens += 1,
+
+//             .b_pawn => self.piececounts.b_pawns += 1,
+//             .b_knight => self.piececounts.b_knights += 1,
+//             .b_bishop => self.piececounts.b_bishops += 1,
+//             .b_rook => self.piececounts.b_rooks += 1,
+//             .b_queen => self.piececounts.b_queens += 1,
+
+//             else => {},
+//         }
+//     }
+
+//     // pub fn get_endgame(self: *const Material) u40 {
+
+//     // }
+
+//     // pub fn update(self: *Material, piece: comptime Piece, operation: Operation) void {
+
+//     // }
+// };

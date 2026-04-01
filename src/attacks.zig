@@ -385,11 +385,11 @@ fn get_file_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.vertical, sq, occ);
 }
 
-fn get_diagmain_attacks(sq: Square, occ: u64) u64 {
+pub fn get_diagmain_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.diagmain, sq, occ);
 }
 
-fn get_diaganti_attacks(sq: Square, occ: u64) u64 {
+pub fn get_diaganti_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.diaganti, sq, occ);
 }
 
@@ -420,7 +420,7 @@ pub fn get_king_attacks(sq: Square) u64 {
     return king_attacks[sq.u];
 }
 
-pub fn get_piece_attacks(sq: Square, occ: u64, comptime pc: PieceType, comptime us: Color) u64 {
+pub fn get_piece_attacks(sq: Square, occ: u64, pc: PieceType, comptime us: Color) u64 {
     return switch (pc.e) {
         .pawn => get_pawn_attacks(sq, us),
         .knight => get_knight_attacks(sq),
