@@ -230,7 +230,7 @@ pub const ContinuationHistory = struct {
 
 
 /// Small entitities
-pub const CorrHist1 = struct {
+pub const CorrectionHistory = struct {
     const table_size: usize = 16384;
 
     /// Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
@@ -246,7 +246,7 @@ pub const CorrHist1 = struct {
 
     /// Updates the error values: the difference between the search score and the static eval.
     /// The static_eval argument must be the value after correction to prevent explosion.
-    pub fn update(self: *CorrHist1, comptime us: Color, pos: *const Position, depth: i32, search_score: i32, static_eval: i32) void {
+    pub fn update(self: *CorrectionHistory, comptime us: Color, pos: *const Position, depth: i32, search_score: i32, static_eval: i32) void {
         const err: i32 = search_score - static_eval;
 
         if (@abs(err) <= 8) {
@@ -270,7 +270,7 @@ pub const CorrHist1 = struct {
     }
 
     /// Returns a corrected static eval.
-    pub fn apply(self: *const CorrHist1, comptime us: Color, pos: *const Position, static_eval: i32) i32 {
+    pub fn apply(self: *const CorrectionHistory, comptime us: Color, pos: *const Position, static_eval: i32) i32 {
         const p: i32 = self.pawn_table[us.u][pos.pawnkey % table_size];
         const w: i32 = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
         const b: i32 = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
@@ -283,7 +283,7 @@ pub const CorrHist1 = struct {
         return clamp(static_eval + correction, -scoring.mate_threshold + 1, scoring.mate_threshold - 1);
     }
 
-    pub fn is_complex(self: *const CorrHist1, comptime us: Color, pos: *const Position) bool {
+    pub fn is_complex(self: *const CorrectionHistory, comptime us: Color, pos: *const Position) bool {
         const entries: [5]i16 = .{
 
             self.pawn_table[us.u][pos.pawnkey % table_size],
@@ -310,82 +310,5 @@ pub const CorrHist1 = struct {
         //score = clamp(score, old - 256 * 8, old + 256 * 8);
         score = clamp(score, -max, max);
         entry.* = @intCast(score);
-    }
-};
-
-
-pub const CorrectionHistory = struct {
-    const MAX_ENTRY_VALUE = 16384; // max entry value
-    const GRAIN = 256; // ( == scale)
-    const WEIGHT_SCALE = 1024; // 2^10
-
-    const table_size: usize = 16384;
-
-    /// Entries for pawns
-    pawn_table: [2][table_size]i32,
-    /// Entries for white pieces
-    white_table: [2][table_size]i32,
-    /// Entries for black pieces.
-    black_table: [2][table_size]i32,
-    /// Entries for minors.
-    minor_table: [2][table_size]i32,
-    /// Entries for majors.
-    major_table: [2][table_size]i32,
-
-    /// Updates the error values: the difference between the search score and the raw static eval.
-    pub fn update(self: *CorrectionHistory, comptime us: Color, pos: *const Position, depth: i32, search_score: i32, static_eval: i32) void {
-        const err: i32 = (search_score - static_eval) * GRAIN;
-        const weight: i32 = @min((depth * depth) + (2 * depth) + 1, 128);
-
-        const pawn_entry: *i32 = &self.pawn_table[us.u][pos.pawnkey % table_size];
-        const white_entry: *i32 = &self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
-        const black_entry: *i32 = &self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
-        const minor_entry: *i32 = &self.minor_table[us.u][pos.minorkey % table_size];
-        const major_entry: *i32 = &self.major_table[us.u][pos.majorkey % table_size];
-
-        update_entry(pawn_entry,  err, weight);
-        update_entry(white_entry, err, weight);
-        update_entry(black_entry, err, weight);
-        update_entry(minor_entry, err, weight);
-        update_entry(major_entry, err, weight);
-    }
-
-    /// Returns a corrected raw static eval.
-    pub fn apply(self: *const CorrectionHistory, comptime us: Color, pos: *const Position, raw_static_eval: i32) i32 {
-        const p: i32 = self.pawn_table[us.u][pos.pawnkey % table_size];
-        const w: i32 = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
-        const b: i32 = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
-        const m1: i32 = self.minor_table[us.u][pos.minorkey % table_size];
-        const m2: i32 = self.major_table[us.u][pos.majorkey % table_size];
-
-        var correction: i32 = (p + w + b + m1 + m2) >> 9;
-        correction = clamp(correction, -160, 160); // #testing disasters
-        const result: i32 = clamp(raw_static_eval + correction, -types.mate_threshold + 1, types.mate_threshold - 1);
-        return result;
-    }
-
-    pub fn is_complex(self: *const CorrectionHistory, comptime us: Color, pos: *const Position) bool {
-        const entries: [5]i32 = .{
-
-            self.pawn_table[us.u][pos.pawnkey % table_size],
-            self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size],
-            self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size],
-            self.minor_table[us.u][pos.minorkey % table_size],
-            self.major_table[us.u][pos.majorkey % table_size],
-        };
-
-        var hi: i32 = 0;
-        var lo: i32 = 0;
-        inline for (entries) |e| {
-            if (e >= 128) hi += 1 else if (e <= -128) lo += 1;
-            //if (e >= 64) hi += 1 else if (e <= -64) lo += 1;
-        }
-        return (hi == 3 and lo == 2) or (hi == 2 and lo == 3);
-    }
-
-    fn update_entry(entry: *i32, err: i32, weight: i32) void {
-        const interp: i32 = (entry.* * (WEIGHT_SCALE - weight) + err * weight) >> 10;
-        const clamped: i32 = std.math.clamp(interp, -MAX_ENTRY_VALUE, MAX_ENTRY_VALUE);
-        entry.* = @as(i32, @intCast(clamped));
     }
 };
