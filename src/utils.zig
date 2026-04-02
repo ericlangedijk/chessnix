@@ -178,14 +178,15 @@ pub const TextFileWriter = struct {
     }
 };
 
-/// Because BoundedArray is gone from the std 0.15.
+/// BoundedArray left the Zig std at 0.15.
 pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
     return struct {
-        pub const empty: Self = .{};
-
         const Self = @This();
+
         buffer: [buffer_capacity]T = undefined,
         len: usize = 0,
+
+        pub const empty: Self = .{};
 
         pub fn init(len: usize) error{Overflow}!Self {
             if (len > buffer_capacity) return error.Overflow;
