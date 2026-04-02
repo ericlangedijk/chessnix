@@ -138,8 +138,7 @@ pub const default_terms: Terms = .{
     },
 
     .bishop_pawns_same_color_penalty = .{
-        //pair(4, 20), pair(5, 19), pair(4, 11), pair(1, 4), pair(-2, -5), pair(-2, -18), pair(-5, -30),
-        pair(3, 15), pair(3, 12), pair(3, 8), pair(1, 3), pair(-1, -4), pair(-1, -7), pair(-3, -24), // #testing: this more cautious values seem a bit better in autoplay
+        pair(3, 15), pair(3, 14), pair(3, 8), pair(1, 3), pair(-1, -4), pair(-1, 13), pair(-3, -22),
     },
 
     .bishop_long_diagonal = pair(8, 4),

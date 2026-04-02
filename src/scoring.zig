@@ -11,8 +11,9 @@ const assert = std.debug.assert;
 
 const max_search_depth = types.max_search_depth;
 
-// A score which means 'nothing' and should be treated as such.
+/// A score which means 'nothing' and should be treated as such.
 pub const null_score: i32 = -32002;
+/// Used for alpha beta.
 pub const infinity: i32 = 32000;
 /// Mate in 0.
 pub const mate: i32 = 30000;
@@ -73,20 +74,22 @@ pub fn score_from_tt(tt_score: i32, ply: u16) i32 {
 // TODO: contemplate outputting 0 for 'random' drawscores (-1, 0, 1).
 /// Outputs  "cp n" for a normal score and "mate n" or "-mate n" for matescores.
 pub fn format_score(score: i32) utils.BoundedArray(u8, 16) {
-    var print_buf: [16]u8 = undefined;
-    var result: utils.BoundedArray(u8, 16) = .{};
+    var result: utils.BoundedArray(u8, 16) = .empty;
+
     if (is_matescore(score)) {
         const plies_to_mate = if (score > 0) mate - score else mate + score;
         const whole_moves_to_mate = @divTrunc(plies_to_mate + 1, 2);
-        result.append_slice_assume_capacity("mate ");
-        if (score < 0)
-            result.append_assume_capacity('-');
-        result.append_slice_assume_capacity(std.fmt.bufPrint(&print_buf, "{}", .{ whole_moves_to_mate }) catch lib.wtf("print", .{}));
+        result.print_assume_capacity("mate ", .{});
+        if (score < 0) {
+            result.print_assume_capacity("-", .{});
+        }
+        result.print_assume_capacity("{}", .{ whole_moves_to_mate });
     }
     else {
-        result.append_slice_assume_capacity("cp ");
-        result.append_slice_assume_capacity(std.fmt.bufPrint(&print_buf, "{}", .{ score }) catch lib.wtf("print", .{}));
+        result.print_assume_capacity("cp ", .{});
+        result.print_assume_capacity("{}", .{ score });
     }
+
     return result;
 }
 

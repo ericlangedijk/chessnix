@@ -15,7 +15,7 @@ const Color = types.Color;
 const Move = types.Move;
 const Position = position.Position;
 
-const float = funcs.float;
+const float32 = funcs.float32;
 const float64 = funcs.float64;
 
 const max_search_depth = types.max_search_depth;
@@ -48,9 +48,10 @@ pub const TimeManager = struct {
     max_nodes: u64,
     max_depth: u8,
 
+    // TODO: ditch empty. make an init() function.
     pub const empty: TimeManager = .{
         .termination = .infinite,
-        .timer = .empty,
+        .timer = .empty, // TODO: use start (once)?
         .started = 0,
         .max_endtime = 0,
         .opt_endtime = 0,
@@ -62,7 +63,7 @@ pub const TimeManager = struct {
     /// Assumes the go argument is sanitized (no negative numbers), so we can safely cast ints.
     pub fn set(self: *TimeManager, go: *const uci.Go, us: Color) void {
         self.* = .empty;
-        self.timer = .start();
+        self.timer = .start(); // TODO: use timer reset.
         self.started = self.timer.read();
 
         if (go.infinite != null) {
@@ -109,6 +110,9 @@ pub const TimeManager = struct {
         const increment_per_move: u64 = inc;
         // Add 3/4 of total increment to the time.
         const partial_inc: u64 = (increment_per_move * 750) / 1000;
+        //const partial_inc: u64 = increment_per_move; // #testing
+        //const partial_inc: u64 =  (increment_per_move * 900) / 1000;
+
         const move_overhead: u64 = 20; // 10; #testing
 
         var timeleft = @max(1, time + partial_inc * (movestogo - 1));
@@ -133,7 +137,7 @@ pub const TimeManager = struct {
 
         const optime: f64 = optscale * f_timeleft;
         self.opt_movetime_base = @intFromFloat(optime);
-        const max_factor: f64 = 0.75;
+        const max_factor: f64 = 0.75; // #testing
         const maxtime: f64 = max_factor * f_time - f_move_overhead;
         const max_movetime: u64 = @intFromFloat(maxtime);
         self.max_endtime = self.started + max_movetime * 1_000_000;

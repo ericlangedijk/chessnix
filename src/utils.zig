@@ -1,11 +1,6 @@
 // zig fmt: off
 
-//! Generic non-chess utility structs.
-//! Timer
-//! Random
-//! TextFileReader
-//! TextFileWriter
-//! BoundedArray
+//! Non-chess utility structs.
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -15,44 +10,59 @@ const io = lib.io;
 const assert = std.debug.assert;
 const wtf = lib.wtf;
 
-// TODO: Write my own timer. It will be removed from Zig 0.16
-/// A little wrapper around the std timer.
 pub const Timer = struct {
+    const Instant = std.time.Instant;
+
+    started: Instant,
+    previous: Instant,
+
     pub const empty: Timer = std.mem.zeroes(Timer);
 
-    std_timer: std.time.Timer,
-
     pub fn start() Timer {
-        return .{
-            .std_timer = std.time.Timer.start() catch wtf("no timer", .{})
-        };
+        const current = Instant.now() catch wtf("no timer", .{});
+        return Timer{ .started = current, .previous = current };
+    }
+
+    pub fn reset(self: *Timer) void {
+        const current = self.sample();
+        self.started = current;
     }
 
     /// Elapsed nanoseconds.
     pub fn read(self: *Timer) u64 {
-        return self.std_timer.read();
+        const current: Instant = self.sample();
+        return current.since(self.started);
     }
 
-    /// Elapsed nanoseconds.
+    /// Returns elapsed nanoseconds and resets.
     pub fn lap(self: *Timer) u64 {
-        return self.std_timer.lap();
-    }
-
-    pub fn reset(self: *Timer) void {
-        self.std_timer.reset();
+        const current: Instant = self.sample();
+        defer self.started = current;
+        return current.since(self.started);
     }
 
     pub fn elapsed_ms(self: *Timer) u64 {
-        return self.std_timer.read() / std.time.ns_per_ms;
+        return self.read() / std.time.ns_per_ms;
     }
 
     /// Handy routine for doing something after an interval.
     pub fn ticked(self: *Timer, milliseconds: u64) bool {
-        if (self.elapsed_ms() < milliseconds) return false;
+        if (self.elapsed_ms() < milliseconds) {
+            return false;
+        }
         self.reset();
         return true;
     }
+
+    fn sample(self: *Timer) Instant {
+        const current: Instant = Instant.now() catch unreachable;
+        if (current.order(self.previous) == .gt) {
+            self.previous = current;
+        }
+        return self.previous;
+    }
 };
+
 
 /// My predictable random.
 pub const Random = struct {
@@ -228,7 +238,6 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
             return &self.slice()[self.len - 1];
         }
 
-
         pub fn unused_capacity_slice(self: *Self) []T {
             return self.buffer[self.len..];
         }
@@ -237,7 +246,7 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
             comptime assert(T == u8);
             assert(self.len < buffer_capacity);
             var w: std.io.Writer = .fixed(self.unused_capacity_slice());
-            w.print(fmt, args) catch unreachable;
+            w.print(fmt, args) catch lib.wtf("print", .{});
             self.len += w.end;
         }
     };

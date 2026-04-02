@@ -419,7 +419,7 @@ pub const Searcher = struct {
 
             // And print the info and pv.
             if (!self.engine.mute) {
-                const formatted_score: []const u8 = scoring.format_score(rootnode.score).slice();
+                const formatted_score: utils.BoundedArray(u8, 16) = scoring.format_score(rootnode.score);
                 const non_terminal_used: u64 = self.stats.non_terminal_nodes - start_non_terminal;
                 const beta_cutoffs_used: u64 = self.stats.beta_cutoffs - start_beta_cutoffs;
                 const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
@@ -432,8 +432,8 @@ pub const Searcher = struct {
                 io.print_buffered(
                     // "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
                     // .{ self.stats.rootdepth, self.stats.seldepth, rootnode.score, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
-                    "info depth {} seldepth {} {s} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
-                    .{ self.stats.rootdepth, self.stats.seldepth, formatted_score, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
+                    "info depth {} seldepth {} score {s} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
+                    .{ self.stats.rootdepth, self.stats.seldepth, formatted_score.slice(), self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
                 );
 
                 for (rootnode.pv.slice()) |move| {
@@ -454,10 +454,6 @@ pub const Searcher = struct {
                 }
             }
         } // (iterationloop)
-
-        // if (lib.search_log) {
-        //     self.search_record.done(gms, gscore);
-        // }
 
         // Finally print the best move.
         if (!self.engine.mute) {
@@ -510,7 +506,7 @@ pub const Searcher = struct {
             else {
                 break;
             }
-            delta = @divTrunc(delta * 155, 100);
+            delta = @divTrunc(delta * 155, 100); // TODO: maybe 1.55 float mul
         }
         return score;
     }
@@ -646,9 +642,8 @@ pub const Searcher = struct {
                 else if (ply >= 4 and self.nodes[ply - 4].static_eval != null_score) &self.nodes[ply - 4]
                 else null;
 
-            // is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= 144 or self.hist.correction.is_complex(us, pos);
-            // is_complex = self.hist.correction.is_complex(us, pos);
-            is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_complex_margin; // #testing
+            is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_complex_margin;
+            // is_complex |= self.hist.correction.is_complex(us, pos);  // #testing
 
             if (prevnode != null) {
                 is_improving = node.static_eval > prevnode.?.static_eval;
@@ -657,16 +652,13 @@ pub const Searcher = struct {
         }
 
         // Pruning before processing any moves (the whole node is pruned).
-        if (!is_pvs and !is_check and !is_singular_extension and !is_matescore(alpha) and !is_matescore(beta)) { // #testing the mating score bug.
-        //if (!is_pvs and !is_check and !is_singular_extension) {
+        if (!is_pvs and !is_check and !is_singular_extension and !is_matescore(alpha) and !is_matescore(beta)) {
 
-            // #testing the mating score bug by ignoring rfp.
             // Reversed Futility Pruning (rfp): beta pruning.
-            //if (depth <= tuned.rfp_max_depth and !is_matescore(node.eval) and node.eval - tuned.rfp_min_margin >= beta) { // #testing is_matescore
             if (depth <= tuned.rfp_max_depth and node.eval < mate_threshold and node.eval - tuned.rfp_min_margin >= beta) {
-                // If we are improving the margin to beat beta can be smaller.
+                // If we are improving, the margin to beat beta can be smaller.
                 var mult: i32 = if (is_improving) tuned.rfp_improving_margin else tuned.rfp_not_improving_margin;
-                if (is_opponent_worsening) mult -= 8; // #testing
+                if (is_opponent_worsening) mult -= 8;
                 const rfp_margin: i32 = (depth * mult);
                 if (node.eval - rfp_margin >= beta) {
                     return node.eval;
@@ -674,9 +666,7 @@ pub const Searcher = struct {
             }
 
             // Razoring: alpha pruning.
-            // #testing BUGHUNT by skip
             const depth_3 = @max(0, depth - 3);
-            // TODO: test use node.eval (sirius)
             if (node.static_eval + tuned.razor_base + depth * tuned.razor_mult + depth_3 * depth_3 * tuned.razor_quad <= alpha) {
                 // TODO: shortcut is fake now.
                 const r_score = if (is_tt_eval) node.eval else self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
