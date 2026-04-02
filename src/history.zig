@@ -229,7 +229,7 @@ pub const ContinuationHistory = struct {
 };
 
 
-/// Small entitities
+/// Small entitities.
 pub const CorrectionHistory = struct {
     const table_size: usize = 16384;
 
@@ -283,6 +283,7 @@ pub const CorrectionHistory = struct {
         return clamp(static_eval + correction, -scoring.mate_threshold + 1, scoring.mate_threshold - 1);
     }
 
+    /// TODO: can probably be removed. This does not work.
     pub fn is_complex(self: *const CorrectionHistory, comptime us: Color, pos: *const Position) bool {
         const entries: [5]i16 = .{
 
@@ -297,7 +298,6 @@ pub const CorrectionHistory = struct {
         var lo: i32 = 0;
         inline for (entries) |e| {
             if (e >= 128) hi += 1 else if (e <= -128) lo += 1;
-            //if (e >= 64) hi += 1 else if (e <= -64) lo += 1;
         }
         return (hi == 3 and lo == 2) or (hi == 2 and lo == 3);
     }

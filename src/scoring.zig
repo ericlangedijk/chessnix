@@ -70,13 +70,6 @@ pub fn score_from_tt(tt_score: i32, ply: u16) i32 {
     return tt_score;
 }
 
-/// Debug only
-pub fn is_validscore(score: i32) bool {
-    const abs: u32 = @abs(score);
-    return
-        score != null_score and ((abs >= mate_threshold and abs <= mate) or (abs < win));
-}
-
 // TODO: contemplate outputting 0 for 'random' drawscores (-1, 0, 1).
 /// Outputs  "cp n" for a normal score and "mate n" or "-mate n" for matescores.
 pub fn format_score(score: i32) utils.BoundedArray(u8, 16) {
