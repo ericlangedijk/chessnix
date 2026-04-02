@@ -8,7 +8,6 @@
 
 Chessnix is a UCI chess engine.<br>
 It uses 'HCE' (hand crafted evaluation) to guide the search.
-I decided I don't understand anything of chess programming.
 
 - Needs Zig to compile.
 - chessnix is a windows 64 bits exe for modern computers.
@@ -128,3 +127,4 @@ Later I found out a nix is a kind of water spirit. So then I added the queen wat
 ## Noob
 I am a github noob and only use a main branch as a backup of the current state on my PC.
 With every release an extra zip of the source code at that moment is provided.
+I decided I don't understand much of chess programming.
