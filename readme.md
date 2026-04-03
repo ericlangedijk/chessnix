@@ -32,7 +32,7 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - Changed: Mate scores (in whole moves) in uci output.
 - Removed: Reward or punish captures in quiescence search.
 - Removed: Code that we do not need (yet).
-- Bug solved: Ridiculous mate scores. The source of the problem is using tt score as node evaluation.
+- Bug solved: Ridiculous mate scores. The source of the problem was using any tt score as node evaluation.
 - Bug solved: Another terrible one: qsearch comparing a zero score with TT score instead of the eval.
 - Bug solved: Parsing negative time.
 - Refactor: Attempt to centralize all scoring logic in scoring.zig, hce terms in 1 struct, most search vars in 1 struct.
