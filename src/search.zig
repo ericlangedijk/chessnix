@@ -1163,53 +1163,6 @@ pub const Searcher = struct {
         return false;
     }
 
-    // fn is_draw_by_repetition_or_rule50_new(self: *Searcher, pos: *const Position, ply: u16) bool {
-
-    //     // ply_from_root = 14
-    //     // ply = 4
-    //     // ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
-    //     // │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │ 8 │ 9 │ 10│ 11│ 12│ 13│ 14│
-    //     // ├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
-    //     // │ M │ M │ M │ M │ M │ M │ M │ M │ M │ M │ S │ S │ S │ S │ S │
-    //     // ├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
-    //     // │   │   │   │   │   │   │   │   │   │   │   │   │   │   │   │
-    //     // ├───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┼───┤
-    //     // │   │   │   │   │   │   │   │   │   │   │   │   │   │   │   │
-    //     // └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
-
-    //     if (pos.ply_from_root < 3 or pos.rule50 < 4) {
-    //         return false;
-    //     }
-    //     if (pos.rule50 >= 100) {
-    //         return true;
-    //     }
-    //     const end: u16 = @min(pos.rule50, pos.ply_from_root);
-    //     if (end < 3) {
-    //         return false;
-    //     }
-
-    //     const current_key: u64 = pos.key;
-
-    //     var runply: i32 = ply;
-    //     var margin: u8 = 1;
-    //     var count: u8 = 0;
-    //     var i: u16 = 4;
-    //     var run: [*]u64 = &self.repetition_table;
-    //     run += pos.ply_from_root;
-    //     while (i <= end) : (i += 2) {
-    //         run -= 2;
-    //         runply -= 2;
-    //         if (runply < 0) margin = 2;
-    //         if (run[0] == current_key) {
-    //             count += 1;
-    //             if (count >= margin) {
-    //                 return true;
-    //             }
-    //         }
-    //     }
-    //     return false;
-    // }
-
     /// Check for a hard time out or must stop.
     fn must_stop(self: *Searcher) bool {
         // We already stopped.
