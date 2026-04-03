@@ -1212,7 +1212,7 @@ pub const Node = struct {
         clear_pv,
         /// Only clear the fields.
         clear_fields,
-        /// Undo move
+        /// Undo move.
         undo,
     };
 
@@ -1235,7 +1235,7 @@ pub const Node = struct {
     /// Static or TT
     eval: i32 = null_score,
     /// Pointer to continuation history for - hopefully - faster access.
-    continuation_entry: ?history.ContinuationEntry = null, //  *[12][64]i16 = null,
+    continuation_entry: ?history.ContinuationEntry = null,
 
     const empty: Node = .{};
 
