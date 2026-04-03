@@ -93,17 +93,19 @@ pub const Entry = struct {
         };
     }
 
-    /// TODO: Disabled for now in search because of the mate in X bug.
-    pub fn is_score_usable_as_eval(self: *const Entry, static_eval: i32) bool {
-        if (self.score == scoring.null_score) {
-            return false;
-        }
-        return switch (self.flags.bound) {
-            .none  => false,
-            .alpha => self.score <= static_eval,
-            .beta  => self.score >= static_eval,
-            .exact => true,
-        };
+    /// For now only use normal exact scores.
+    pub fn is_score_usable_as_eval(self: *const Entry) bool {
+        return self.flags.bound == .exact and scoring.is_normalscore(self.score);
+        // _ = static_eval;
+        // if (self.score == scoring.null_score or @abs(self.score) >= 20000) {
+        //     return false;
+        // }
+        // return switch (self.flags.bound) {
+        //     .none  => false,
+        //     .alpha => false, //self.score <= static_eval,
+        //     .beta  => false, //self.score >= static_eval,
+        //     .exact => true,
+        // };
     }
 
     pub fn is_raw_static_eval_usable(self: *const Entry) bool {

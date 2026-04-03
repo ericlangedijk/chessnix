@@ -283,7 +283,7 @@ pub const Searcher = struct {
     evaluator: hce.Evaluator,
     /// For now this is a blunt copy from the Engine.
     repetition_table: [max_game_length]u64,
-    /// Our node stack. Index #0 is our main pv.
+    /// Our node stack. Index 0 is our main pv.
     nodes: Nodes,
     /// Nodes spent on move for time heuristics.
     nodes_spent: [64 * 64]u64,
@@ -506,7 +506,7 @@ pub const Searcher = struct {
             else {
                 break;
             }
-            delta = @divTrunc(delta * 155, 100); // TODO: maybe 1.55 float mul
+            delta = @divTrunc(delta * 155, 100);
         }
         return score;
     }
@@ -529,6 +529,7 @@ pub const Searcher = struct {
 
         self.stats.search_calls += 1;
 
+        const parentnode: ?*const Node = if (!is_root) &self.nodes[ply - 1] else null;
         const childnode: *Node = &self.nodes[ply + 1];
         node.clear(.clear_pv);
         childnode.clear(.clear_fields);
@@ -610,9 +611,8 @@ pub const Searcher = struct {
             corrected_raw_static_eval = self.correct_raw_static_eval(us, pos, raw_static_eval);
             node.static_eval = apply_drawcounter(pos, corrected_raw_static_eval);
 
-            // TODO: This is the source of the wrong mate in X scores. Hence the 'false' for now. It also decreases playing strength.
-            // Get the score from the TT if it is there, otherwise use the static eval.
-            if (false and tt_hit and tt_entry.is_score_usable_as_eval(node.static_eval)) {
+            // Use TT score as a better eval.
+            if (tt_hit and tt_entry.is_score_usable_as_eval()) {
                 is_tt_eval = true;
                 node.eval = tt_entry.score;
             }
@@ -643,11 +643,10 @@ pub const Searcher = struct {
                 else null;
 
             is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_complex_margin;
-            // is_complex |= self.hist.correction.is_complex(us, pos);  // #testing
 
             if (prevnode != null) {
                 is_improving = node.static_eval > prevnode.?.static_eval;
-                is_opponent_worsening = self.nodes[ply - 1].static_eval != null_score and node.static_eval + self.nodes[ply - 1].static_eval > 1;
+                is_opponent_worsening = parentnode.?.static_eval != null_score and node.static_eval + parentnode.?.static_eval > 1;
             }
         }
 
@@ -668,7 +667,6 @@ pub const Searcher = struct {
             // Razoring: alpha pruning.
             const depth_3 = @max(0, depth - 3);
             if (node.static_eval + tuned.razor_base + depth * tuned.razor_mult + depth_3 * depth_3 * tuned.razor_quad <= alpha) {
-                // TODO: shortcut is fake now.
                 const r_score = if (is_tt_eval) node.eval else self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
                 if (self.stopped) {
                     return 0;
@@ -678,16 +676,13 @@ pub const Searcher = struct {
                 }
             }
 
-            // TODO: use a min-depth?
             // TODO: use verification.
-            // TODO: finetune.
             // Null Move Pruning (nmp). Are we still good if we let the opponent play another move?
             if (!pos.nullmove_state and node.eval >= beta and node.static_eval >= beta + 170 - depth * 24 and pos.phase > 0 and pos.pieces_except_pawns_and_kings(us) != 0) {
                 const eval_reduction: i32 = @min(2, @divTrunc(node.eval - beta, 202));
                 const r: i32 = clamp(@divTrunc(depth, 4) + 3 + eval_reduction, 0, depth);
                 const next_pos: Position = self.do_nullmove(pos, us);
-                node.current_move = .empty;
-                node.continuation_entry = null;
+                node.clear(.undo);
                 const nmp_score: i32 = -self.search(them, .not_pv, .not_root, !cutnode, &next_pos, childnode, depth - r, -beta, -beta + 1);
                 if (self.stopped) {
                     return 0;
@@ -706,7 +701,7 @@ pub const Searcher = struct {
 
         // Move ordering statistics.
         self.stats.non_terminal_nodes += 1;
-        node.double_extensions = if (!is_root) self.nodes[ply - 1].double_extensions else 0;
+        node.double_extensions = if (!is_root) parentnode.?.double_extensions else 0;
 
         // Some locals for our move loop.
         var quiet_list: ExtMoveList(tuned.search_quiet_list_size) = .init();
@@ -719,7 +714,7 @@ pub const Searcher = struct {
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
-            self.prefetch(us, pos, ex); // TODO: also test speed prefetch after makemove.
+            self.prefetch(us, pos, ex);
 
             // Skip this move if we are inside singular extensions.
             if (ex.move == node.excluded_tt_move) {
@@ -810,6 +805,7 @@ pub const Searcher = struct {
 
             // Do move
             const next_pos: Position = self.do_move(pos, us, ex);
+            defer node.clear(.undo);
             const gives_check: bool = next_pos.checkmask != 0;
             node.current_move = ex;
             node.continuation_entry = self.hist.continuation.get_continuation_entry_for_node(ex);
@@ -1030,9 +1026,8 @@ pub const Searcher = struct {
             const corrected_raw_static_eval: i32 = self.correct_raw_static_eval(us, pos, raw_static_eval);
             best_score = apply_drawcounter(pos, corrected_raw_static_eval);
 
-            // TODO: This is the source of the wrong mate in X scores. Hence the 'false' for now. It also decreases playing strength.
             // Use TT score as a better eval.
-            if (false and tt_hit and tt_entry.is_score_usable_as_eval(best_score)) {
+            if (tt_hit and tt_entry.is_score_usable_as_eval()) {
                 best_score = tt_entry.score;
             }
 
@@ -1065,6 +1060,7 @@ pub const Searcher = struct {
 
             // Do move.
             const next_pos: Position = self.do_move(pos, us, ex);
+            defer node.clear(.undo);
             self.stats.nodes += 1;
             self.stats.qnodes += 1;
 
@@ -1102,7 +1098,8 @@ pub const Searcher = struct {
     /// For prefetching the TT entry of the position to come. Memory access speedup.
     /// Assumes the move is not yet done on the board.
     /// For a null move pass an empty move.
-    /// Apparently the prefetch is best done early in the move-loop. TODO: find out if prefetching after actually doing a move is better / faster.
+    /// Apparently the prefetch is best done early in the move-loop.
+    /// TODO: find out if prefetching after actually doing a move is better / faster.
     fn prefetch(self: *const Searcher, comptime us: Color, pos: *const Position, ex: ExtMove) void {
         const k: u64 = pos.predict_key(us, ex);
         @prefetch(self.transpositiontable.hash.get(k), .{});
@@ -1136,11 +1133,6 @@ pub const Searcher = struct {
         next_pos.do_nullmove(us);
         self.repetition_table[next_pos.ply_from_root] = next_pos.key;
         return next_pos;
-    }
-
-    fn undo_move(node: *Node) Position {
-        node.current_move = .empty;
-        node.continuation_entry = null;
     }
 
     fn is_draw_by_repetition_or_rule50(self: *Searcher, pos: *const Position) bool {
@@ -1266,7 +1258,9 @@ pub const Node = struct {
         /// Only reset pv. The rest of the fields have to be assigned inside search.
         clear_pv,
         /// Only clear the fields.
-        clear_fields
+        clear_fields,
+        /// Undo move
+        undo,
     };
 
     /// Local PV during search.
@@ -1307,6 +1301,10 @@ pub const Node = struct {
                 self.eval = null_score;
                 self.continuation_entry = null;
             },
+            .undo => {
+                self.current_move = .empty;
+                self.continuation_entry = null;
+            }
         }
     }
 

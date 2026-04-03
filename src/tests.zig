@@ -73,7 +73,7 @@ fn run_perfts(max_depth: usize) !usize {
             if (!ok) {
                 return catch_error(
                     Error.PerftError,
-                    \\testposition #{}
+                    \\testposition {}
                     \\fen: {s}
                     \\Error at depth {}, expected {}, found {}
                     \\
@@ -109,7 +109,7 @@ fn run_perfts_960(max_depth: usize) !usize {
             if (!ok) {
                 return catch_error(
                     Error.Perft960Erroc,
-                    \\testposition 960 #{}
+                    \\testposition 960 {}
                     \\fen: {s}
                     \\Error at depth {}, expected {}, found {}
                     \\
@@ -141,7 +141,7 @@ fn test_flip() !usize {
         if (!mirrored.equals(&pos)) {
             return catch_error (
                 Error.FlipError,
-                \\testposition #{}
+                \\testposition {}
                 \\fen: {s}"
                 \\
                 , .{ index, str }
@@ -186,8 +186,9 @@ pub fn test_see() !usize {
         const m: types.Move = try pos.parse_move(std.mem.trimEnd(u8, move, &.{' '}));
         const s1 = hce.see_score(&pos, m);
         const s2 = hce.see(&pos, m, -55);
-        //if ((s1 >= 0 and !s2) or (s1 < 0 and s2))
-            io.debugprint("#{} {s} {s} s1 = {} s2 = {}\n", .{ index + 1, str, move, s1, s2 });
+        if ((s1 >= 0 and !s2) or (s1 < 0 and s2)) {
+            io.debugprint("{} {s} {s} s1 = {} s2 = {}\n", .{ index + 1, str, move, s1, s2 });
+        }
         done += 1;
         //break;
     }

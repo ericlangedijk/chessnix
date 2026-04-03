@@ -213,8 +213,7 @@ pub const default_terms: Terms = .{
     },
 
     .safe_check_bonus = .{
-        pair(0, 0), pair(48, 8), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0), // used
-        //pair(0, 0), pair(52, 12), pair(26, 28), pair(66, 15), pair(35, 20), pair(0, 0), // #testing
+        pair(0, 0), pair(48, 8), pair(26, 28), pair(66, 5), pair(35, 20), pair(0, 0),
     },
 
     .piece_square_table = .{

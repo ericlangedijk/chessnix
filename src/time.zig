@@ -48,10 +48,9 @@ pub const TimeManager = struct {
     max_nodes: u64,
     max_depth: u8,
 
-    // TODO: ditch empty. make an init() function.
     pub const empty: TimeManager = .{
         .termination = .infinite,
-        .timer = .empty, // TODO: use start (once)?
+        .timer = .empty,
         .started = 0,
         .max_endtime = 0,
         .opt_endtime = 0,
@@ -63,7 +62,7 @@ pub const TimeManager = struct {
     /// Assumes the go argument is sanitized (no negative numbers), so we can safely cast ints.
     pub fn set(self: *TimeManager, go: *const uci.Go, us: Color) void {
         self.* = .empty;
-        self.timer = .start(); // TODO: use timer reset.
+        self.timer = .start();
         self.started = self.timer.read();
 
         if (go.infinite != null) {
@@ -107,15 +106,15 @@ pub const TimeManager = struct {
         const cyclic_timecontrol: bool = movestogo > 0;
         movestogo = if (cyclic_timecontrol) @min(movestogo, 50) else 50;
 
+        // Just to be sure.
+        if (movestogo == 0) {
+            movestogo = 1;
+        }
+
         const increment_per_move: u64 = inc;
-        // Add 3/4 of total increment to the time.
-        const partial_inc: u64 = (increment_per_move * 750) / 1000;
-        //const partial_inc: u64 = increment_per_move; // #testing
-        //const partial_inc: u64 =  (increment_per_move * 900) / 1000;
+        const move_overhead: u64 = 20;
 
-        const move_overhead: u64 = 20; // 10; #testing
-
-        var timeleft = @max(1, time + partial_inc * (movestogo - 1));
+        var timeleft = @max(1, time + increment_per_move * (movestogo - 1));
         const total_move_overhead: u64 = move_overhead * (movestogo + 1);
 
         if (total_move_overhead < timeleft) {
@@ -137,7 +136,7 @@ pub const TimeManager = struct {
 
         const optime: f64 = optscale * f_timeleft;
         self.opt_movetime_base = @intFromFloat(optime);
-        const max_factor: f64 = 0.75; // #testing
+        const max_factor: f64 = 0.60;
         const maxtime: f64 = max_factor * f_time - f_move_overhead;
         const max_movetime: u64 = @intFromFloat(maxtime);
         self.max_endtime = self.started + max_movetime * 1_000_000;

@@ -19,8 +19,10 @@ pub const infinity: i32 = 32000;
 pub const mate: i32 = 30000;
 /// Mate in 128.
 pub const mate_threshold = mate - max_search_depth;
-/// Absolute win. Normal eval should never exceed this.
+/// Absolute win.
 pub const win = 27000;
+/// Static eval should never exceed this.
+pub const static_eval_threshold = 20000;
 pub const draw: i32 = 0;
 pub const stalemate: i32 = 0;
 
@@ -47,6 +49,10 @@ pub fn is_matescore(score: i32) bool {
     return @abs(score) >= mate_threshold;
 }
 
+pub fn is_normalscore(score: i32) bool {
+    return @abs(score) <= static_eval_threshold;
+}
+
 /// Adjust score of transposition table when storing. Mate in X scores are adjusted using ply.
 pub fn score_to_tt(score: i32, ply: u16) i32 {
     // assert valid
@@ -71,8 +77,7 @@ pub fn score_from_tt(tt_score: i32, ply: u16) i32 {
     return tt_score;
 }
 
-// TODO: contemplate outputting 0 for 'random' drawscores (-1, 0, 1).
-/// Outputs  "cp n" for a normal score and "mate n" or "-mate n" for matescores.
+/// Outputs  "cp n" for a normal score and "mate n" or "-mate n" for matescores. Random drawscores become 0.
 pub fn format_score(score: i32) utils.BoundedArray(u8, 16) {
     var result: utils.BoundedArray(u8, 16) = .empty;
 
@@ -87,7 +92,7 @@ pub fn format_score(score: i32) utils.BoundedArray(u8, 16) {
     }
     else {
         result.print_assume_capacity("cp ", .{});
-        result.print_assume_capacity("{}", .{ score });
+        result.print_assume_capacity("{}", .{ if (!is_drawscore(score)) score else 0 });
     }
 
     return result;

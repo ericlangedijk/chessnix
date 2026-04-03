@@ -99,7 +99,6 @@ pub const QuietHistory = struct {
 
     fn update(self: *QuietHistory, depth: i32, ex: ExtMove, quiets: []const ExtMove) void {
         const bonus: i16 = HistCalc.get_bonus(depth);
-        //const malus: i16 = hist_calc.get_malus(depth);
 
         // Increase score for this move.
         const v: *i16 = self.get_score_ptr(ex);
@@ -137,7 +136,7 @@ pub const CaptureHistory = struct {
 
     pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
         const bonus: i16 = HistCalc.get_bonus(depth);
-        //const malus: i16 = hist_calc.get_malus(depth);
+
         // Decrease score of capture moves (that did not raise alpha).
         for (captures) |prev| {
             const p: *i16 = self.get_score_ptr(prev);
@@ -172,7 +171,6 @@ pub const ContinuationHistory = struct {
         }
 
         const bonus: i16 = HistCalc.get_bonus(depth);
-        //const malus: i16 = hist_calc.get_malus(depth);
 
         // Increase score for this move.
         inline for (depths_delta) |d| {
@@ -283,33 +281,10 @@ pub const CorrectionHistory = struct {
         return clamp(static_eval + correction, -scoring.mate_threshold + 1, scoring.mate_threshold - 1);
     }
 
-    /// TODO: needs more testing. Big differences being 'complex' seem kinda promising in selfplay.
-    /// If we implement it merge this function with apply, for speed.
-    pub fn is_complex(self: *const CorrectionHistory, comptime us: Color, pos: *const Position) bool {
-        const entries: [5]i16 = .{
-            self.pawn_table[us.u][pos.pawnkey % table_size],
-            self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size],
-            self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size],
-            self.minor_table[us.u][pos.minorkey % table_size],
-            self.major_table[us.u][pos.majorkey % table_size],
-        };
-
-        var hi: i32 = 0;
-        var lo: i32 = 0;
-        inline for (entries) |e| {
-            //if (e >= 128) hi += 1 else if (e <= -128) lo += 1; BAD
-            if (e >= 4096) hi += 1 else if (e <= -4096) lo += 1; //REASONABLE
-            //if (e >= 6144) hi += 1 else if (e <= -6144) lo += 1; //#testing
-        }
-        return (hi == 3 and lo == 2) or (hi == 2 and lo == 3);
-    }
-
     fn update_entry(entry: *i16, scaled_err: i32, weight: i32) void {
         const max: i32 = tuned.corr_hist_scale * tuned.corr_hist_max_entry_bonus;
-        //const old: i32 = entry.*;
         var score: i32 = entry.*;
         score = @divFloor(score * (tuned.corr_hist_scale - weight) + (scaled_err * weight), tuned.corr_hist_scale);
-        //score = clamp(score, old - 256 * 8, old + 256 * 8);
         score = clamp(score, -max, max);
         entry.* = @intCast(score);
     }

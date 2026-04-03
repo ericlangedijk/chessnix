@@ -377,11 +377,11 @@ fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, o
     return result;
 }
 
-fn get_rank_attacks(sq: Square, occ: u64) u64 {
+pub fn get_rank_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.horizontal, sq, occ);
 }
 
-fn get_file_attacks(sq: Square, occ: u64) u64 {
+pub fn get_file_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.vertical, sq, occ);
 }
 

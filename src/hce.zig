@@ -32,8 +32,6 @@ const Position = position.Position;
 
 const terms = hceterms.terms;
 
-// TODO: test if a comptime `has_pawns` results in faster evaluation.
-// TODO: test if we can incrementally update some aspects of evaluation passing an extra argument to do_move.
 pub const Evaluator = struct {
     const Self = @This();
 
@@ -143,7 +141,6 @@ pub const Evaluator = struct {
             score.mg = -score.mg;
             score.eg = -score.eg;
         }
-
         score.inc(terms.tempo_bonus);
         return types.phased_score(pos.phase, score);
     }
@@ -158,8 +155,8 @@ pub const Evaluator = struct {
         var passed_pawns: u64 = 0;
 
         // Pawn phalanx (horizontally next to eachother).
-        var connected_pawns: u64 = (funcs.shift_bitboard(our_pawns, .east)) & our_pawns;
-        while (bitloop(&connected_pawns)) |sq| {
+        var phalanx_pawns: u64 = (funcs.shift_bitboard(our_pawns, .east)) & our_pawns;
+        while (bitloop(&phalanx_pawns)) |sq| {
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
             score.inc(terms.pawn_phalanx_bonus[relative_rank]);
         }
@@ -431,8 +428,8 @@ pub const Evaluator = struct {
 
 
         // Pawn protection
-        var pawn_protectors: u64 = our_pawns & self.king_areas[us.u];
-        while (bitloop(&pawn_protectors)) |sq| {
+        var protecting_pawns: u64 = our_pawns & self.king_areas[us.u];
+        while (bitloop(&protecting_pawns)) |sq| {
             const sp: *const ScorePair = get_pawn_protection_scorepair(us, our_king_sq, sq);
             score.inc(sp.*);
         }
@@ -451,20 +448,6 @@ pub const Evaluator = struct {
             const half_open: u1 = if (their_pawns_on_file != 0) 1 else 0;
             score.inc(terms.king_on_file_penalty[half_open][our_king_sq.coord.file]);
         }
-
-        // #testing
-        // if (pos.pawns(us) != 0 and our_king_sq.relative(us).coord.rank <= bitboards.rank_2) {
-        //     const diagmain_attacks: u64 = attacks.get_diagmain_attacks(our_king_sq, pos.all());
-        //     if (popcnt(diagmain_attacks) > 3 and diagmain_attacks & our_pawns == 0) {
-        //         const sp: ScorePair = comptime types.pair(-7, 0);
-        //         score.inc(sp);
-        //     }
-        //     const diaganti_attacks: u64 = attacks.get_diaganti_attacks(our_king_sq, pos.all());
-        //     if (popcnt(diaganti_attacks) > 3 and diaganti_attacks & our_pawns == 0) {
-        //         const sp: ScorePair = comptime types.pair(-7, 0);
-        //         score.inc(sp);
-        //     }
-        // }
 
         // King danger.
         score.dec(self.attack_power[them.u]);
@@ -526,9 +509,8 @@ pub const Evaluator = struct {
             score.inc(terms.pawn_push_threat_table[threatened.u]);
         }
 
-        // Get the squares that our pieces can reach to place the enemy king in check
+        // Get the squares that our pieces can reach to place the enemy king in check.
         const occupied: u64 = pos.all();
-        // const not_us: u64 = ~pos.by_color(us);
         const their_king_sq: Square = self.king_squares[them.u];
         const rook_checks: u64 = attacks.get_rook_attacks(their_king_sq, occupied);
         const bishop_checks: u64 = attacks.get_bishop_attacks(their_king_sq, occupied);

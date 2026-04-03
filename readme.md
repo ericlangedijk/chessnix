@@ -13,13 +13,14 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
-## Version 1.5 Future todo's
-- Endgame scaling. The engine can hugely overestimate obvious drawing positions.
+## Version 1.5 Future...
+- Endgame scaling. The engine can hugely overestimate obvious drawing positions and/or trade too much material.
+- Absolute endgame evaluation (without egtb) indicating wins (KBBK, KBNK for example).
 - Detect useless shuffling around without any progress.
 
 ## Version 1.4 Work in Progress...
 - Compiler: Zig 0.15.2.
-- Stronger: Optimistic estimation is ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
+- Stronger: A very optimistic estimation is ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
 - Added: Evaluation: Knight outpost refinement, bad bishop, bishop on long diagonal.
 - Changed: Correction History (better math, 5 tables for 5 position hashkeys).
 - Changed: Alpha Raises Reduction LMR (instead of depth reduction).

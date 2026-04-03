@@ -165,7 +165,7 @@ pub const king_areas: [64]u64 = compute_king_areas();
 pub const king_areas_white: [64]u64 = compute_king_areas_white();
 /// (hce) By [square]
 pub const king_areas_black: [64]u64 = compute_king_areas_black();
-/// (hce) Pawnstorm areas from the perspective of the white king. By [white-king-square]
+/// (hce) Pawnstorm areas from the perspective of the white king. Indexing by [white-king-square]
 pub const king_pawnstorm_areas_white: [64]u64 = compute_king_pawnstorm_areas_white();
 /// (hce) Pawnstorm areas from the perspective of the black king. Indexing by [black-king-square]
 pub const king_pawnstorm_areas_black: [64]u64 = compute_king_pawnstorm_areas_black();

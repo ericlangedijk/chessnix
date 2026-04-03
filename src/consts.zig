@@ -13,10 +13,13 @@ pub const default_tuned: Tuned = .{};
 
 pub const Tuned = struct {
 
-    // CorrHist1
+    /// Correction History:
     corr_hist_scale: i32 = 256,
+    /// Correction History:
     corr_hist_max_entry_bonus: i32 = 32,
+    /// Correction History:
     corr_hist_max_applied_correction: i32 = 160,
+    /// Correction History:
     corr_hist_is_complex_margin: i32 = 120,
 
     /// Iterative Deepening: The margin used to establish the average stability of a search score.
@@ -35,8 +38,6 @@ pub const Tuned = struct {
     history_scale: i16 = 146,
     /// History calculation: maximum of 1 bonus.
     history_max_bonus: i16 = 1282,
-    /// History calculation: maximum of 1 malus. Not used.
-    history_max_malus: i16 = 1282,
     /// History calculation: maximum history score.
     history_max_score: i16 = 16384,
 
