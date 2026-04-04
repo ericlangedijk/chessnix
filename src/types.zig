@@ -825,12 +825,12 @@ const piece_values: [13]i32 = .{
     0,
 };
 
-/// Game phase table. Indexing by [piece]
 pub const phase_table: [13]u8 = .{
     0, 1, 1, 2, 4, 0,
     0, 1, 1, 2, 4, 0,
     0
 };
+
 pub const max_phase: u8 = 24;
 
 pub fn phased_score(phase: u8, score: ScorePair) i32 {
