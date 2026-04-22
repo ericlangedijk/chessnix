@@ -8,7 +8,7 @@ const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
-const consts = @import("consts.zig");
+const searchterms = @import("searchterms.zig");
 const scoring = @import("scoring.zig");
 
 const assert = std.debug.assert;
@@ -19,15 +19,16 @@ const Color = types.Color;
 const Move = types.Move;
 const ScorePair = types.ScorePair;
 
-const tuned = consts.tuned;
+const tuned = searchterms.tuned;
 
 /// Entries per bucket (2 or 3).
 pub const EPB: usize = 2;
 
 // Using 2 or 3 entries per bucket we assert the sizes.
 comptime {
+    assert(EPB == 2 or EPB == 3);
     assert(Entry.STRUCTSIZE == 10);
-    assert(Bucket.STRUCTSIZE == if (EPB == 2) 20 else if (EPB == 3) 32 else @compileError("invalid bucket definition"));
+    assert(Bucket.STRUCTSIZE == if (EPB == 2) 20 else 32);
 }
 
 /// Returns number of bytes. Minimum is 16 MB.
@@ -45,6 +46,13 @@ pub const Bound = enum(u2) {
     beta,
     /// Exact bound.
     exact,
+};
+
+/// TODO: Temporary enum for bug hunting.
+pub const ScoreUsableSafety = enum {
+    safe,
+    medium,
+    unsafe,
 };
 
 pub const Entry = struct {
@@ -93,19 +101,21 @@ pub const Entry = struct {
         };
     }
 
-    /// For now only use normal exact scores.
-    pub fn is_score_usable_as_eval(self: *const Entry) bool {
+    pub fn is_score_usable_as_eval_exact(self: *const Entry) bool {
         return self.flags.bound == .exact and scoring.is_normalscore(self.score);
-        // _ = static_eval;
-        // if (self.score == scoring.null_score or @abs(self.score) >= 20000) {
-        //     return false;
-        // }
-        // return switch (self.flags.bound) {
-        //     .none  => false,
-        //     .alpha => false, //self.score <= static_eval,
-        //     .beta  => false, //self.score >= static_eval,
-        //     .exact => true,
-        // };
+    }
+
+    // #CrazyMateScores
+    pub fn is_score_usable_as_eval(self: *const Entry, static_eval: i32) bool {
+        if (scoring.is_nullscore(self.score)) {
+            return false;
+        }
+        return switch (self.flags.bound) {
+            .none  => false,
+            .alpha => self.score <= static_eval,
+            .beta  => self.score >= static_eval,
+            .exact => true,
+        };
     }
 
     pub fn is_raw_static_eval_usable(self: *const Entry) bool {
@@ -125,19 +135,18 @@ pub const Entry = struct {
         return score;
     }
 
-    inline fn compress_key(key: u64) u16 {
-        return @intCast(key >> 48);
-    }
 };
 
+inline fn compress_key(key: u64) u16 {
+    return @intCast(key >> 48);
+}
+
 pub const Bucket = struct {
-    /// Must be 20 or 32 bytes, depending on EPB.
+    /// 20 or 32 bytes, depending on EPB.
     pub const STRUCTSIZE: usize = @sizeOf(Bucket);
 
-    const Padding: type = if (EPB == 3) u16 else void;
-
     entries: [EPB]Entry,
-    _padding: Padding,
+    _padding: if (EPB == 3) u16 else void,
 
     pub const empty: Bucket = if (EPB == 2) .{ .entries = @splat(.empty), ._padding = {} } else .{ .entries = @splat(.empty), ._padding = 0 };
 };
@@ -186,10 +195,12 @@ pub const TranspositionTable = struct {
 
         // Debug nonsense score.
         if (comptime lib.verifications) {
-            if (score != scoring.null_score and @abs(score) > scoring.mate) lib.wtf("invalid tt score stored {}", .{ score });
+            if (score != scoring.null_score and @abs(score) > scoring.mate) {
+                lib.wtf("invalid tt score stored {}", .{ score });
+            }
         }
 
-        const ck: u16 = Entry.compress_key(key);
+        const ck: u16 = compress_key(key);
 
         // First we select a fitting or least valuable entry to overwrite.
         const entry: *Entry = blk: {
@@ -235,7 +246,7 @@ pub const TranspositionTable = struct {
 
     pub fn probe(self: *TranspositionTable, key: u64, ply: u16) Entry {
         const bucket: *const Bucket = self.hash.get(key);
-        const ck: u16 = Entry.compress_key(key);
+        const ck: u16 = compress_key(key);
         inline for (bucket.entries) |e| {
             if (e.key == ck) {
                 var result: Entry = e;
@@ -248,9 +259,15 @@ pub const TranspositionTable = struct {
 
     fn verify_args(depth: i32, score: i32, raw_static_eval: i32) void {
         lib.not_in_release();
-        if (depth < 0 or depth > types.max_search_depth) lib.wtf("tt invalid depth {}", .{ depth });
-        if (score > std.math.maxInt(i16) or score < std.math.minInt(i16)) lib.wtf("tt invalid score", .{});
-        if (raw_static_eval > std.math.maxInt(i16) or raw_static_eval < std.math.minInt(i16)) lib.wtf("tt invalid raw static eval", .{});
+        if (depth < 0 or depth > types.max_search_depth) {
+            lib.wtf("tt invalid depth {}", .{ depth });
+        }
+        if (score > std.math.maxInt(i16) or score < std.math.minInt(i16)) {
+            lib.wtf("tt invalid score", .{});
+        }
+        if (raw_static_eval > std.math.maxInt(i16) or raw_static_eval < std.math.minInt(i16)) {
+            lib.wtf("tt invalid raw static eval", .{});
+        }
     }
 };
 

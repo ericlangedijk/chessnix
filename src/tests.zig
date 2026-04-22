@@ -1,6 +1,7 @@
 // zig fmt: off
 
-//! Collection of debug tests. Never used in release mode.
+//! Don't look here.
+//! Collection of debug tests.
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -13,6 +14,7 @@ const hce = @import("hce.zig");
 const perft = @import("perft.zig");
 const tt = @import("tt.zig");
 
+const Square = types.Square;
 const Position = position.Position;
 const Storage = position.MoveStorage;
 
@@ -29,6 +31,7 @@ pub fn run_silent_debugmode_tests() !void {
     const flips: usize = try test_flip();
     const time = timer.read();
     lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, (time {D})\n", .{ perfts, perfts_960, flips, time });
+    //_ = try test_flipped_eval();
     // _ = try test_flipped_eval();
 }
 
@@ -154,7 +157,7 @@ fn test_flip() !usize {
     return done;
 }
 
-pub fn test_flipped_eval() !usize {
+fn test_flipped_eval() !usize {
     lib.not_in_release();
 
     var pos: Position = .empty;
@@ -173,7 +176,7 @@ pub fn test_flipped_eval() !usize {
     return done;
 }
 
-pub fn test_see() !usize {
+fn test_see() !usize {
     lib.not_in_release();
     var pos: Position = .empty;
     var done: usize = 0;
@@ -252,7 +255,7 @@ fn index_of(slice: []const u8, value:u8) ?usize {
     return std.mem.indexOfScalar(u8, slice, value);
 }
 
-pub const testpositions: [134][]const u8 = .{
+const testpositions: [134][]const u8 = .{
 
     "8/1PP5/2k5/8/8/8/4Kpp1/7Q b - - 0 1 ;D1 16", // pinned promotion pawn
     "3b4/2R5/1KQ4r/1RB5/8/8/8/1r2k1q1 w - - 0 1 ;D1 17", // general piece pin check
@@ -393,7 +396,7 @@ pub const testpositions: [134][]const u8 = .{
     "R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1 ;D1 218" // Extra: Theoretical maximum number of moves
 };
 
-pub const testpositions_960: [960][]const u8 = .{
+const testpositions_960: [960][]const u8 = .{
     "bqnb1rkr/pp3ppp/3ppn2/2p5/5P2/P2P4/NPP1P1PP/BQ1BNRKR w HFhf - 2 9 ;21 ;528 ;12189 ;326672 ;8146062 ;227689589",
     "2nnrbkr/p1qppppp/8/1ppb4/6PP/3PP3/PPP2P2/BQNNRBKR w HEhe - 1 9 ;21 ;807 ;18002 ;667366 ;16253601 ;590751109",
     "b1q1rrkb/pppppppp/3nn3/8/P7/1PPP4/4PPPP/BQNNRKRB w GE - 1 9 ;20 ;479 ;10471 ;273318 ;6417013 ;177654692",
@@ -1355,8 +1358,6 @@ pub const testpositions_960: [960][]const u8 = .{
     "rkrnnqbb/p1ppp2p/Qp6/4Pp2/5p2/8/PPPP2PP/RKRNN1BB w CAca - 0 9 ;35 ;929 ;32020 ;896130 ;31272517 ;915268405",
     "bbq1nr1r/pppppk1p/2n2p2/6p1/P4P2/4P1P1/1PPP3P/BBQNNRKR w HF - 1 9 ;23 ;589 ;14744 ;387556 ;10316716 ;280056112",
 };
-
-// SEE tests.
 
 const see_positions: [71][]const u8 = .{
     "6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - - ;f1f4 ;-100 ;P - R + B",

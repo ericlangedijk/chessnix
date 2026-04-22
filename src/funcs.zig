@@ -28,15 +28,27 @@ pub const PawnShift = enum(u2) { up, northwest, northeast };
 //     return @max(a, b) - @min(a, b);
 // }
 
-pub fn square_distance(a: Square, b: Square) u3 {
-    const ar: i32 = a.rank();
-    const br: i32 = b.rank();
-
-    const af: i32 = a.file();
-    const bf: i32 = b.file();
-
+/// Note that these are stored in SquarePair
+pub inline fn square_distance(a: Square, b: Square) u3 {
+    //lib.comptime_only();
+    const ar: i32 = a.coord.rank;
+    const br: i32 = b.coord.rank;
+    const af: i32 = a.coord.file;
+    const bf: i32 = b.coord.file;
     const d: u32 = @max(@abs(ar - br), @abs(af - bf));
     return @truncate(@abs(d));
+}
+
+/// Note that these are stored in SquarePair
+pub inline fn manhattan_distance(a: Square, b: Square) u8 {
+    //lib.comptime_only();
+    const rank1: i32 = a.coord.rank;
+    const rank2: i32 = b.coord.rank;
+    const file1: i32 = a.coord.file;
+    const file2: i32 = b.coord.file;
+    const rank_distance = @abs (rank2 - rank1);
+    const file_distance = @abs (file2 - file1);
+    return @intCast(rank_distance + file_distance);
 }
 
 pub fn relative_rank_7_bitboard(us: Color) u64 {
@@ -151,7 +163,7 @@ pub fn contains_square(bitboard: u64, sq: Square) bool {
     return test_bit_64(bitboard, sq.u);
 }
 
-/// Unsafe lsb
+/// Unsafe lsb. Assumes bitboard != 0.
 pub fn first_square(bitboard: u64) Square {
     if (comptime lib.is_paranoid) {
         assert(bitboard != 0);
@@ -286,20 +298,10 @@ pub fn permille(max: usize, count: usize) usize {
     return @intFromFloat((c * 1000) / m);
 }
 
-
-/// WIP experimental stuff to ease some Zig math Pain.
-pub const IntMath = struct {
-
-    /// multiply any int with float.
-    pub fn fmul(i: anytype, f: f32) @TypeOf(i) {
-        return @intFromFloat(float32(i) * f);
-    }
-
-    pub fn muldiv(i: i32, m: i32, d: i32) i32 {
-        return @divFloor(i * m, d);
-    }
-
-};
+/// multiply any int with float.
+pub fn fmul(i: anytype, f: f32) @TypeOf(i) {
+    return @intFromFloat(float32(i) * f);
+}
 
 /// Debug only
 pub fn print_bitboard(bb: u64) void {

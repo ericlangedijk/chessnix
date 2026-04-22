@@ -63,7 +63,6 @@ pub const Timer = struct {
     }
 };
 
-
 /// My predictable random.
 pub const Random = struct {
     pub const empty: Random = .{};
@@ -89,13 +88,18 @@ pub const Random = struct {
         self.seed = OFFSET *% seed;
     }
 
-    pub fn next_u64(self: *Random) u64 {
+    pub fn next(self: *Random) u64 {
         self.seed = self.seed +% 0x9e3779b97f4a7c15;
         var z: u64 = self.seed;
         z = (z ^ (z >> 30)) *% 0xbf58476d1ce4e5b9;
         z = (z ^ (z >> 27)) *% 0x94d049bb133111eb;
         z = (z ^ (z >> 31));
         return z;
+    }
+
+    pub fn next_max(self: *Random, max: u64) u64 {
+        const n = self.next() % max;
+        return n;
     }
 };
 

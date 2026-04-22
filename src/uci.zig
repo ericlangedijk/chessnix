@@ -27,7 +27,6 @@ var engine: *Engine = undefined;
 pub fn run() void {
     const is_tty: bool = lib.is_tty();
     uci_loop(is_tty) catch |err| {
-        //io.print("info error: {s}", .{ @errorName(err) });
         lib.wtf("fatal error in uci loop: {s}" , .{ @errorName(err) });
     };
 }
@@ -80,9 +79,6 @@ fn uci_loop(is_tty: bool) !void {
             if (eql(cmd, "d")) {
                 TTY.draw_position();
             }
-            // if (eql(cmd, "help")) {
-            //     TTY.show_help();
-            // }
             if (eql(cmd, "cls")) {
                 TTY.cls();
             }
@@ -160,7 +156,6 @@ const UCI = struct {
         // The tokens are setoption [name] [value] [requested-value]
         // name Hash value 32
         // name UCI_Chess960 value true
-
         const name_token: []const u8 = tokenizer.next() orelse return;
         if (!eql(name_token, "name")) return;
 
@@ -177,7 +172,7 @@ const UCI = struct {
             try engine.apply_hash_size();
         }
         else if (eql(name, "UCI_Chess960")) {
-            const v: bool = std.mem.eql(u8, value, "true");
+            const v: bool = std.mem.eql(u8, value, "true"); // TODO: use local eql
             engine.options.set_chess_960(v);
         }
     }
@@ -252,7 +247,6 @@ const UCI = struct {
 
 /// Just a simple wrapper.
 const TTY = struct {
-
     fn print_hello() void {
         io.print("chessnix {s} by eric langedijk\n", .{ lib.version });
     }
@@ -299,22 +293,15 @@ const TTY = struct {
     }
 
     fn print_state() void {
+        io.print("chessnix {s} builddate: {s}\n", .{ lib.version, lib.builddate });
         io.print("builtmode: {t}\n", .{ builtin.mode });
         io.print("cpu: {t}\n", .{ builtin.cpu.arch });
         io.print("engine busy: {}\n", .{ engine.is_busy()});
-        io.print("tt size: {}, buckets: {}, entries per bucket: {} bucketsize: {}, entry size: {} \n", .{ engine.options.hash_size, engine.transpositiontable.hash.data.len, tt.EPB, tt.Bucket.STRUCTSIZE, tt.Entry.STRUCTSIZE });
-
-        // for (@import("history.zig").corr_stats, 0..) |c, i| {
-        //     var ii: i32 = @intCast(i);
-        //     ii -= 160;
-        //     io.print("{} {}\n", .{ ii, c } );
-        // }
-
+        io.print("tt: {} MB, buckets: {}, entries per bucket: {} bucketsize: {}, entry size: {}\n", .{ engine.options.hash_size, engine.transpositiontable.hash.data.len, tt.EPB, tt.Bucket.STRUCTSIZE, tt.Entry.STRUCTSIZE });
     }
 };
 
 /// The possible parameters for the go command.
-/// All fields to be treated as null are zero / false.
 pub const Go = struct {
     /// The white and black time left.
     time: [2]?i64,
@@ -334,8 +321,8 @@ pub const Go = struct {
     ponder: ?bool,
 
     pub const empty: Go = .{
-        .time = .{ null, null, },
-        .increment = .{ null, null, },
+        .time = .{ null, null },
+        .increment = .{ null, null },
         .movestogo = null,
         .depth = null,
         .nodes = null,

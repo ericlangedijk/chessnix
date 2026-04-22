@@ -25,7 +25,7 @@ fn compute_all_randoms() [rnd_count]u64 {
     var table: [rnd_count] u64 = undefined;
     var randoms: utils.Random = .init(1);
     for (0..rnd_count) |i| {
-        table[i] = randoms.next_u64();
+        table[i] = randoms.next();
     }
     // For safe xor of an invalid ep square (a1).
     table[offset_ep] = 0;

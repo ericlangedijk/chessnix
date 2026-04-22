@@ -27,7 +27,7 @@ pub const Terms = struct {
     knight_outpost_table: [64]ScorePair,
     knight_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_outpost_table: [64]ScorePair,
-    bishop_pawns_same_color_penalty: [7]ScorePair,
+    bishop_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_long_diagonal: ScorePair,
     rook_on_file_bonus: [2][8]ScorePair,
     pawn_protection_table: [12]ScorePair,
@@ -42,7 +42,7 @@ pub const Terms = struct {
     piece_square_table: [6][64]ScorePair,
 };
 
-pub const terms = &default_terms;
+pub const terms: *const Terms = &default_terms;
 
 pub const default_terms: Terms = .{
     .piece_value_table = .{
@@ -137,9 +137,7 @@ pub const default_terms: Terms = .{
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 8
     },
 
-    .bishop_pawns_same_color_penalty = .{
-        pair(3, 15), pair(3, 14), pair(3, 8), pair(1, 3), pair(-1, -4), pair(-1, 13), pair(-3, -22),
-    },
+    .bishop_outpost_is_blocking_enemy_pawn = pair(-1, 4),
 
     .bishop_long_diagonal = pair(8, 4),
 

@@ -9,21 +9,33 @@ const utils = @import("utils.zig");
 
 const assert = std.debug.assert;
 
+// -32002: null
+// -32000: infinity, alpha limit
+// -30000: mate
+// -29872: mate in 128
+// ______: gray area
+// -24000: limit eval after scaling
+// -12000: limit eval before scaling
+//     -1: draw
+//      0: draw
+//      1: draw
+// +12000: limit eval before scaling
+// +24000: limit eval after scaling
+// ______: gray area
+// +29872: mate in 128
+// +30000: mate
+// +32000: infinity, beta limit
+
 const max_search_depth = types.max_search_depth;
 
-/// A score which means 'nothing' and should be treated as such.
 pub const null_score: i32 = -32002;
-/// Used for alpha beta.
 pub const infinity: i32 = 32000;
-/// Mate in 0.
 pub const mate: i32 = 30000;
-/// Mate in 128.
 pub const mate_threshold = mate - max_search_depth;
-/// Absolute win.
-pub const win = 27000;
-/// Static eval should never exceed this.
-pub const static_eval_threshold = 20000;
-pub const draw: i32 = 0;
+pub const win = 24001; //25000;
+pub const static_eval_before_scaling_threshold = 12000;
+pub const static_eval_threshold = 24000;
+//pub const draw: i32 = 0;
 pub const stalemate: i32 = 0;
 
 /// Generates a 'random' draw score between -1 and 1.
@@ -37,16 +49,16 @@ pub fn is_drawscore(score: i32) bool {
     return score >= -1 and score <= 1;
 }
 
-pub fn is_nullscore(score: i32) bool {
-    return score == null_score;
-}
-
-/// TODO: maybe use 27000 (win) as threshold.
+/// Valid mate score within the maximum searchdepth.
 pub fn is_matescore(score: i32) bool {
     if (lib.is_paranoid) {
         assert(score > -infinity and score < infinity);
     }
     return @abs(score) >= mate_threshold;
+}
+
+pub fn is_nullscore(score: i32) bool {
+    return score == null_score;
 }
 
 pub fn is_normalscore(score: i32) bool {
@@ -77,7 +89,8 @@ pub fn score_from_tt(tt_score: i32, ply: u16) i32 {
     return tt_score;
 }
 
-/// Outputs  "cp n" for a normal score and "mate n" or "-mate n" for matescores. Random drawscores become 0.
+/// Returns "cp n" for a normal score.
+/// Returns "mate n" or "-mate n" in whole moves for (normal) matescores. Random drawscores become 0.
 pub fn format_score(score: i32) utils.BoundedArray(u8, 16) {
     var result: utils.BoundedArray(u8, 16) = .empty;
 
@@ -96,11 +109,4 @@ pub fn format_score(score: i32) utils.BoundedArray(u8, 16) {
     }
 
     return result;
-}
-
-/// Debug only.
-pub fn verifyscore(score: i32, depth: i32, ply: i32, info: []const u8) void {
-    lib.not_in_release();
-    if (score > -mate_threshold and score < -20000) lib.wtf("{s} invalid score {} at depth {} ply {}", .{ info, score, depth, ply });
-    if (score <  mate_threshold and score >  20000) lib.wtf("{s} invalid score {} at depth {} ply {}", .{ info, score, depth, ply });
 }

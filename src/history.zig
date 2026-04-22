@@ -8,8 +8,8 @@ const types = @import("types.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
+const searchterms = @import("searchterms.zig");
 const tt = @import("tt.zig");
-const consts = @import("consts.zig");
 const scoring = @import("scoring.zig");
 
 const assert = std.debug.assert;
@@ -26,7 +26,7 @@ const Nodes = search.Nodes;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
-const tuned = consts.tuned;
+const tuned = searchterms.tuned;
 
 const HistCalc = struct {
     /// depth & scale

@@ -18,7 +18,7 @@ const position = @import("position.zig");
 const uci = @import("uci.zig");
 const hce = @import("hce.zig");
 const tt = @import("tt.zig");
-const consts = @import("consts.zig");
+const searchterms = @import("searchterms.zig");
 const history = @import("history.zig");
 const movepick = @import("movepick.zig");
 const time = @import("time.zig");
@@ -47,7 +47,7 @@ const History = history.History;
 const MovePicker = movepick.MovePicker;
 const TimeManager = time.TimeManager;
 
-const tuned = consts.tuned;
+const tuned = searchterms.tuned;
 const max_game_length: u16 = types.max_game_length;
 const max_move_count: u8 = types.max_move_count;
 const max_search_depth: u8 = types.max_search_depth;
@@ -67,6 +67,9 @@ const PV = utils.BoundedArray(Move, max_search_depth + 2);
 pub const Engine = struct {
     /// Shared tt for all threads.
     transpositiontable: tt.TranspositionTable,
+
+    //pawntable: tt.PawnTable,
+
     /// Threading.
     busy: std.atomic.Value(bool),
     /// The number of threads we use. Currently single threaded only.
@@ -96,6 +99,7 @@ pub const Engine = struct {
         const tt_size: usize = tt.compute_tt_size_in_bytes(Options.default_hash_size);
         var engine: *Engine = try ctx.galloc.create(Engine);
         engine.transpositiontable = try .init(tt_size);
+        //engine.pawntable = try .init();
         engine.busy = std.atomic.Value(bool).init(false);
         engine.num_threads = 1;
         engine.controller_thread = null;
@@ -114,6 +118,7 @@ pub const Engine = struct {
 
     pub fn destroy(self: *Engine) void {
         self.transpositiontable.deinit();
+        //self.pawntable.deinit();
         ctx.galloc.destroy(self);
     }
 
@@ -133,6 +138,7 @@ pub const Engine = struct {
         self.pos.set_startpos();
         self.repetition_table[0] = self.pos.key;
         self.transpositiontable.clear();
+        //self.pawntable.clear();
         self.pos.lazy_generate_all_moves(&self.rootmoves);
         self.searcher.new_game();
     }
@@ -177,7 +183,7 @@ pub const Engine = struct {
         self.transpositiontable.decay();
 
         // Set and start time manager.
-        self.tm.set(go_params, self.pos.stm);
+        self.tm.set(go_params, &self.pos, self.rootmoves.count == 1);
 
         // Spawn thread.
         self.controller_thread = try std.Thread.spawn(.{}, run_controller_thread, .{ self });
@@ -285,12 +291,18 @@ pub const Searcher = struct {
     repetition_table: [max_game_length]u64,
     /// Our node stack. Index 0 is our main pv.
     nodes: Nodes,
+
     /// Nodes spent on move for time heuristics.
     nodes_spent: [64 * 64]u64,
+
+    //nodes_spent: [max_move_count]u64,
+
+
     /// History heuristics for beta cutoffs.
     hist: History,
     /// Timeout. Any search value (0) returned - when stopped - should be discarded directly.
     stopped: bool,
+
     /// Statistics.
     stats: Stats,
 
@@ -348,9 +360,14 @@ pub const Searcher = struct {
     }
 
     fn iterate(self: *Searcher, comptime us: Color, pos: *const Position) void {
-        const only_one_move: bool = self.engine.rootmoves.count == 1;
+        // Print some time info once (#experimental)
+        // TODO: print some more info (non-debug just standard).
+        // self.tm.print_info(pos.stm);
+
+        // const only_one_move: bool = self.engine.rootmoves.count == 1;
         const rootnode: *Node = &self.nodes[0];
         const max_depth: u8 = if (self.tm.termination == .depth) self.tm.max_depth else max_search_depth;
+        const min_clock_depth: u8 = if (self.tm.termination == .clock) 7 else 255;
 
         var best_move: Move = .empty;
         var previous_best_move: Move = .empty;
@@ -358,6 +375,10 @@ pub const Searcher = struct {
         var average_score: i32 = null_score;
         var best_move_stability: u3 = 0;
         var eval_stability: u3 = 0;
+        var iteration_timer: utils.Timer = .start();
+        //var last_iteration_times: [4]u64 = @splat(0);
+        //var last_prediction: u64 = 0;
+        //var prediction_correction: f64 = 1.0;
 
         // Statistics stuff.
         self.stats.non_terminal_nodes = 0;
@@ -370,10 +391,11 @@ pub const Searcher = struct {
             const depth: u8 = @intCast(d);
             self.stats.rootdepth = depth;
             self.stats.seldepth = 0;
+            iteration_timer.reset();
 
             // Give the eval stability some slack at greater depths. This influences time management.
             // The idea is that at a greater depth we care more about move stability than eval stability.
-            const slack: u8 = depth / tuned.eval_stability_slack_depth_divider;
+            const slack: i32 = depth / tuned.eval_stability_slack_depth_divider;
 
             const start_non_terminal: u64 = self.stats.non_terminal_nodes;
             const start_beta_cutoffs: u64 = self.stats.beta_cutoffs;
@@ -388,10 +410,6 @@ pub const Searcher = struct {
             // Discard if timeout.
             if (self.stopped) {
                 break :iterationloop;
-            }
-
-            if (comptime lib.verifications) {
-                scoring.verifyscore(score, depth, 0, "iterate");
             }
 
             // Time management: Keep track of the average score.
@@ -418,40 +436,92 @@ pub const Searcher = struct {
             previous_score = score;
 
             // And print the info and pv.
-            if (!self.engine.mute) {
-                const formatted_score: utils.BoundedArray(u8, 16) = scoring.format_score(rootnode.score);
-                const non_terminal_used: u64 = self.stats.non_terminal_nodes - start_non_terminal;
-                const beta_cutoffs_used: u64 = self.stats.beta_cutoffs - start_beta_cutoffs;
-                const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
-                const search_efficiency = funcs.percent(non_terminal_used, beta_cutoffs_used);
-                const elapsed_nanos = self.tm.timer.read();
-                const ms: u64 = elapsed_nanos / 1_000_000;
-                const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
-                const cps: u64 = funcs.nps(self.stats.search_calls, elapsed_nanos);
+            const formatted_score: []const u8 = scoring.format_score(rootnode.score).slice();
+            //const cp: i32 = if (!scoring.is_drawscore(rootnode.score)) rootnode.score else 0;
+            const non_terminal_used: u64 = self.stats.non_terminal_nodes - start_non_terminal;
+            const beta_cutoffs_used: u64 = self.stats.beta_cutoffs - start_beta_cutoffs;
+            const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
+            const search_efficiency = funcs.percent(non_terminal_used, beta_cutoffs_used);
+            const elapsed_nanos = self.tm.timer.read();
+            const ms: u64 = elapsed_nanos / 1_000_000;
+            const nps: u64 = funcs.nps(self.stats.nodes, elapsed_nanos);
+            const cps: u64 = funcs.nps(self.stats.search_calls, elapsed_nanos);
 
+            if (!self.engine.mute) {
+                // TODO: because of the "Crazy Mate Scores Bug or Feature" we display no mate in X (yet).
                 io.print_buffered(
                     // "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
-                    // .{ self.stats.rootdepth, self.stats.seldepth, rootnode.score, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
+                    // .{ self.stats.rootdepth, self.stats.seldepth, cp, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
+
                     "info depth {} seldepth {} score {s} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
-                    .{ self.stats.rootdepth, self.stats.seldepth, formatted_score.slice(), self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
+                    .{ self.stats.rootdepth, self.stats.seldepth, formatted_score, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
                 );
 
                 for (rootnode.pv.slice()) |move| {
                     io.print_buffered(" ", .{});
                     move.print_buffered(pos.is_960);
                 }
-                io.print_buffered("\n", .{});
-                io.flush();
+                io.print("\n", .{}); // also flushes.
+                //io.print_buffered("\n", .{});
+                //io.flush();
             }
 
-            // Now update the optimal time to spend and check if we can stop.
-            if (depth >= 7 and self.tm.termination == .clock) {
+            // Keep track of iteration times.
+            const iter_time: u64 = iteration_timer.read();
+            // inline for (1..4) |i| {
+            //     last_iteration_times[i - 1] = last_iteration_times[i];
+            // }
+            // last_iteration_times[3] = iter_time;
+
+            // When clockmode update the optimal time to spend and check if we can stop.
+            // Addionally check if there is time for a next iteration.
+            if (depth >= min_clock_depth) {
+
                 const nodes_spent_on_move: u64 = self.nodes_spent[best_move.from_to()];
                 self.tm.update_optimal_stoptime(nodes_spent_on_move, self.stats.nodes, best_move_stability, eval_stability);
-                if (only_one_move or self.tm.optimal_time_reached()) {
+                if (self.tm.optimal_time_reached(elapsed_nanos)) {
                     self.stopped = true;
                     break :iterationloop;
                 }
+
+                // Try to estimate if we have time left for another iteration.
+                // This is very unpredictable (the times are very spiky) but at least it does something.
+                const next_cost: u64 = funcs.fmul(iter_time, 1.20);
+                if (elapsed_nanos + next_cost >= self.tm.max_endtime) {
+                    self.stopped = true;
+                    break :iterationloop;
+                }
+
+                // inline for (0..4) |i| {
+                //     io.print_buffered("[{}] ", .{ last_iteration_times[i] / 1_000_000});
+                // }
+                // io.print("\n", .{});
+                // const ema: u64 =
+                //     last_iteration_times[0] * 1 / 10 +
+                //     last_iteration_times[1] * 2 / 10 +
+                //     last_iteration_times[2] * 3 / 10 +
+                //     last_iteration_times[3] * 4 / 10;
+                // const remaining: u64 = self.tm.max_endtime - elapsed_nanos;
+                // //const predicted = @max(ema * 2, iter_time * 2);
+                // //const next_cost: u64 = @min(predicted, remaining / 2);
+                // const next_cost: u64 = @min(ema * 2, remaining / 2);
+                // //prediction_correction = funcs.float64(iter_time) / funcs.float64(last_prediction);
+                // if (last_prediction >= iter_time) {
+                //     io.print("err +{}\n", .{ (last_prediction - iter_time) / 1_000_000 });
+                // }
+                // else {
+                //     io.print("err -{}\n", .{ (iter_time - last_prediction) / 1_000_000 });
+                // }
+
+                // last_prediction = next_cost;
+
+                // io.print("max {} opt {} rem {} nextcost {}\n", .{ self.tm.max_ms, (self.tm.opt_endtime - self.tm.started) / 1_000_000,  remaining / 1_000_000, next_cost / 1_000_000 });
+
+                // if (elapsed_nanos + next_cost >= self.tm.max_endtime) {
+                //     io.print("no time for next it", .{});
+                //     self.stopped = true;
+                //     break :iterationloop;
+                // }
             }
         } // (iterationloop)
 
@@ -612,7 +682,8 @@ pub const Searcher = struct {
             node.static_eval = apply_drawcounter(pos, corrected_raw_static_eval);
 
             // Use TT score as a better eval.
-            if (tt_hit and tt_entry.is_score_usable_as_eval()) {
+            // #CrazyMateScores
+            if (tt_hit and tt_entry.is_score_usable_as_eval(node.static_eval)) {
                 is_tt_eval = true;
                 node.eval = tt_entry.score;
             }
@@ -678,7 +749,14 @@ pub const Searcher = struct {
 
             // TODO: use verification.
             // Null Move Pruning (nmp). Are we still good if we let the opponent play another move?
-            if (!pos.nullmove_state and node.eval >= beta and node.static_eval >= beta + 170 - depth * 24 and pos.phase > 0 and pos.pieces_except_pawns_and_kings(us) != 0) {
+            //if (!pos.nullmove_state and node.eval >= beta and node.static_eval >= beta + 170 - depth * 24 and pos.phase() > 0 and pos.pieces_except_pawns_and_kings(us) != 0) { // TODO: use count from material?
+            if (
+                // depth >= 2 and // #testing
+                !pos.nullmove_state and
+                node.eval >= beta and
+                node.static_eval >= beta + 170 - depth * 24 and
+                pos.minor_major_count(us) != 0
+            ) {
                 const eval_reduction: i32 = @min(2, @divTrunc(node.eval - beta, 202));
                 const r: i32 = clamp(@divTrunc(depth, 4) + 3 + eval_reduction, 0, depth);
                 const next_pos: Position = self.do_nullmove(pos, us);
@@ -860,6 +938,16 @@ pub const Searcher = struct {
                 }
 
                 need_full_search = score > alpha and reduction != 0;
+
+                // // #testing
+                // if (need_full_search) {
+                //     const go_deeper: bool = new_depth < max_search_depth and score > (best_score + 35 + 2 * new_depth);
+                //     const go_shallower = new_depth > 0 and score < best_score + 8;
+                //     new_depth += @intFromBool(go_deeper);
+                //     new_depth -= @intFromBool(go_shallower);
+                // }
+
+
             }
             else {
                 // No lmr done.
@@ -889,6 +977,7 @@ pub const Searcher = struct {
             // Keep track of how many nodes we spent on this root move. Only in tournament situation.
             if (is_root) {
                 self.nodes_spent[ex.move.from_to()] += self.stats.nodes - nodes_before_search;
+                //self.update_nodes_spent(ex.move, self.stats.nodes - nodes_before_search);
             }
 
             // Better move found.
@@ -903,6 +992,7 @@ pub const Searcher = struct {
                     if (is_pvs) {
                         node.update_pv(best_move, best_score, childnode);
                     }
+
                     // Beta.
                     if (score >= beta) {
                         self.stats.beta_cutoffs += 1;
@@ -1027,7 +1117,8 @@ pub const Searcher = struct {
             best_score = apply_drawcounter(pos, corrected_raw_static_eval);
 
             // Use TT score as a better eval.
-            if (tt_hit and tt_entry.is_score_usable_as_eval()) {
+            // #CrazyMateScores
+            if (tt_hit and tt_entry.is_score_usable_as_eval(best_score)) {
                 best_score = tt_entry.score;
             }
 
@@ -1061,6 +1152,7 @@ pub const Searcher = struct {
             // Do move.
             const next_pos: Position = self.do_move(pos, us, ex);
             defer node.clear(.undo);
+            //self.prefetch2(pos.key);
             self.stats.nodes += 1;
             self.stats.qnodes += 1;
 
@@ -1095,6 +1187,25 @@ pub const Searcher = struct {
         return best_score;
     }
 
+    // fn index_of_rootmove(self: *const Searcher, move: Move) usize {
+    //     for (self.engine.rootmoves.slice(), 0..) |ex, idx| {
+    //         if (ex.move == move) {
+    //             return idx;
+    //         }
+    //     }
+    //     unreachable;
+    // }
+
+    // fn update_nodes_spent(self: *Searcher, move: Move, spent: u64) void {
+    //     const idx: usize = self.index_of_rootmove(move);
+    //     self.nodes_spent[idx] += spent;
+    // }
+
+    // fn get_nodes_spent(self: *Searcher, move: Move) u64 {
+    //     const idx: usize = self.index_of_rootmove(move);
+    //     return self.nodes_spent[idx];
+    // }
+
     /// For prefetching the TT entry of the position to come. Memory access speedup.
     /// Assumes the move is not yet done on the board.
     /// For a null move pass an empty move.
@@ -1105,8 +1216,13 @@ pub const Searcher = struct {
         @prefetch(self.transpositiontable.hash.get(k), .{});
     }
 
+    // fn prefetch2(self: *const Searcher, key: u64) void {
+    //     @prefetch(self.transpositiontable.hash.get(key), .{});
+    // }
+
     /// Only call evaluate when not in check (or the max search depth has been reached).
     fn evaluate(self: *Searcher, pos: *const Position) i32 {
+        //return self.evaluator.evaluate(pos, &self.engine.pawntable);
         return self.evaluator.evaluate(pos);
     }
 
@@ -1117,8 +1233,11 @@ pub const Searcher = struct {
 
     /// Slide the evaluation slightly towards draw.
     fn apply_drawcounter(pos: *const Position, eval: i32) i32 {
+        // if (true) return eval;
         const r: u16 = @min(100, pos.rule50);
         return @divFloor(eval * (220 - r), 220);
+        // const r: u16 = @min(100, pos.rule50);
+        // return @divFloor(eval * (400 - r), 400);
     }
 
     fn do_move(self: *Searcher, pos: *const Position, comptime us: Color, ex: ExtMove) Position {
@@ -1192,7 +1311,9 @@ pub const Searcher = struct {
                 }
             },
             .movetime, .clock => {
-                if (self.tm.max_time_reached()) {
+                const t: u64 = self.tm.read();
+                //if (self.tm.max_time_reached()) {
+                if (self.tm.max_time_reached(t)) {
                     self.stopped = true;
                 }
             },

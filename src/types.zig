@@ -129,6 +129,39 @@ pub const Square = packed union {
         A1, B1, C1, D1, E1, F1, G1, H1,
     };
 
+    const colors: [64]Color = .{
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, // rank 1
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE,
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE,
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE,
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+    };
+
+    const manhattan_distances_to_center: [64]u8 = .{
+        6, 5, 4, 3, 3, 4, 5, 6,
+        5, 4, 3, 2, 2, 3, 4, 5,
+        4, 3, 2, 1, 1, 2, 3, 4,
+        3, 2, 1, 0, 0, 1, 2, 3,
+        3, 2, 1, 0, 0, 1, 2, 3,
+        4, 3, 2, 1, 1, 2, 3, 4,
+        5, 4, 3, 2, 2, 3, 4, 5,
+        6, 5, 4, 3, 3, 4, 5, 6
+    };
+
+    const manhattan_distances_to_corner: [64]u8 = .{
+        0, 1, 2, 3, 3, 2, 1, 0,
+        1, 2, 3, 4, 4, 3, 2, 1,
+        2, 3, 4, 5, 5, 4, 3, 2,
+        3, 4, 5, 6, 6, 5, 4, 3,
+        3, 4, 5, 6, 6, 5, 4, 3,
+        2, 3, 4, 5, 5, 4, 3, 2,
+        1, 2, 3, 4, 4, 3, 2, 1,
+        0, 1, 2, 3, 3, 2, 1, 0
+    };
+
     pub const zero: Square = A1;
 
     pub const A1: Square = .{ .u = 0 };
@@ -224,7 +257,18 @@ pub const Square = packed union {
     }
 
     pub fn color(self: Square) Color {
-        return if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
+        return colors[self.u];
+        //const result = if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
+        // //return result;
+        // return if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
+    }
+
+    pub fn manhattan_distance_to_center(self: Square) u8 {
+        return manhattan_distances_to_center[self.u];
+    }
+
+    pub fn manhattan_distance_to_corner(self: Square) u8 {
+        return manhattan_distances_to_corner[self.u];
     }
 
     pub fn to_bitboard(self: Square) u64 {
@@ -370,6 +414,10 @@ pub const PieceType = packed union {
         return piece_values[self.u];
     }
 
+    pub fn simple_value(self: PieceType) i32 {
+        return simple_piece_values[self.u];
+    }
+
     pub fn to_char(self: PieceType) u8 {
         return switch(self.e) {
             .pawn => 0,
@@ -504,6 +552,10 @@ pub const Piece = packed union {
     /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
     pub fn value(self: Piece) i32 {
         return piece_values[self.u];
+    }
+
+    pub fn simple_value(self: Piece) i32 {
+        return simple_piece_values[self.u];
     }
 
     pub fn to_print_char(self: Piece) u8 {
@@ -777,16 +829,28 @@ pub const ScorePair = struct {
     pub fn mul(self: ScorePair, m: u8) ScorePair {
         return .{ .mg = self.mg * m, .eg = self.eg * m };
     }
+
+    pub fn div(self: ScorePair, d: u8) ScorePair {
+        return .{ .mg = @divFloor(self.mg, d), .eg = @divFloor(self.eg, d) };
+    }
+
+    pub fn muldiv(self: ScorePair, m: u8, d: u8) ScorePair {
+        return .{ .mg = @divFloor(self.mg * m, d), .eg = @divFloor(self.eg * m, d) };
+    }
+
+    pub fn fmul(self: ScorePair, factor: f32) ScorePair {
+        return .{ .mg = funcs.fmul(self.mg, factor), .eg = funcs.fmul(self.eg, factor)};
+    }
+
+    pub fn fmul2(self: ScorePair, mg_factor: f32, eg_factor: f32) ScorePair {
+        return .{ .mg = funcs.fmul(self.mg, mg_factor), .eg = funcs.fmul(self.eg, eg_factor)};
+    }
 };
 
 /// Easy initialization function for eval tables.
 pub fn pair(mg: i16, eg: i16) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
-
-pub const GamePhase = enum(u2) {
-    opening, midgame, endgame
-};
 
 pub const ParsingError = error {
     /// Garbage piece inside fen string.
@@ -825,12 +889,29 @@ const piece_values: [13]i32 = .{
     0,
 };
 
+pub const simple_value_pawn: i32 = 100;
+pub const simple_value_knight: i32 = 300;
+pub const simple_value_bishop: i32 = 300;
+pub const simple_value_rook: i32 = 500;
+pub const simple_value_queen: i32 = 900;
+pub const simple_value_king: i32 = 0;
+
+const simple_piece_values: [13]i32 = .{
+    simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
+    simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
+    0,
+};
+
+pub const ph_minor: u8 = 1;
+pub const ph_rook: u8 = 2;
+pub const ph_queen: u8 = 4;
+
+/// Game phase table. Indexing by [piece]
 pub const phase_table: [13]u8 = .{
     0, 1, 1, 2, 4, 0,
     0, 1, 1, 2, 4, 0,
     0
 };
-
 pub const max_phase: u8 = 24;
 
 pub fn phased_score(phase: u8, score: ScorePair) i32 {
@@ -840,7 +921,21 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
 
-/// Not used.
-pub fn phase_of(phase: u8) GamePhase {
-    return if (phase > 16) .opening else if (phase > 8) .midgame else .endgame;
-}
+// pub fn phase_factor(phase: u8) f32 {
+//     const ph: f32 = @floatFromInt(@min(max_phase, phase));
+//     const max: f32 = @floatFromInt(max_phase);
+//     return ph / max;
+// }
+
+
+// const kbn_white_distances: [64]u8 = .{
+//     0, 1, 2, 3, 3, 2, 1, 0, // rank 1
+//     1, 2, 3, 4, 4, 3, 2, 1,
+//     2, 3, 4, 5, 5, 4, 3, 2,
+//     3, 4, 5, 6, 6, 5, 4, 3,
+//     3, 4, 5, 6, 6, 5, 4, 3,
+//     2, 3, 4, 5, 5, 4, 3, 2,
+//     1, 2, 3, 4, 4, 3, 2, 1,
+//     0, 1, 2, 3, 3, 2, 1, 0
+// };
+

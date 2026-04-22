@@ -41,13 +41,14 @@ pub const Tuned = struct {
     /// History calculation: maximum history score.
     history_max_score: i16 = 16384,
 
+    /// History Pruning: the maximum depth for applying.
     hp_max_depth: i32 = 5,
     /// History Pruning: offset for quiet move.
     hp_quiet_offset: i32 = -518,
     /// History Pruning: depth multiplier for quiet move.
     hp_quiet_mult: i32 = 1830,
 
-    /// Internal Iterative Deepening: minimum depth for applying iir.
+    /// Internal Iterative Deepening: minimum depth for applying.
     iir_min_depth: i32 = 8,
 
     /// Late Move Reduction Table: value used for building the table.

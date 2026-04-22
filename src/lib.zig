@@ -1,39 +1,38 @@
 // zig fmt: off
 
+//! Base unit: memory, io, comptime config, error handling.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const utils = @import("utils.zig");
 
 pub fn initialize() !void {
-    if (lib_is_initialized) {
-        return;
-    }
+    comptime compilation_check();
     memory_context = .init();
     io_context = .init();
-    lib_is_initialized = true;
 }
 
 pub fn finalize() void {
-    lib_is_initialized = false;
     @import("position.zig").finalize();
     memory_context.deinit();
+}
+
+fn compilation_check() void {
+    if (is_release) {
+        if (is_paranoid) @compileError("release is_paranoid");
+        if (verifications) @compileError("release verifications");
+    }
 }
 
 ////////////////////////////////////////////////////////////////
 // Globals.
 ////////////////////////////////////////////////////////////////
-
-// pub const search_log: bool = true; //false;
-
 pub const version = "1.4";
-pub const is_debug: bool = builtin.mode == .Debug;
+pub const builddate = "2026-04-21";
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
-
-/// Only when debugging we use time consumming checks.
+pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_paranoid: bool = is_debug;
-
-/// Using this for tricky bug hunting. Never in releasemode. Only in ReleaseSafe mode we also create a logfile when we crash.
 pub const verifications: bool = is_debug or is_release_safe;
 
 // Input output
@@ -41,9 +40,8 @@ pub const ctx: *const MemoryContext = &memory_context;
 pub const io: *IoContext = &io_context;
 var memory_context: MemoryContext = undefined;
 var io_context: IoContext = undefined;
-var lib_is_initialized: bool = false;
 
-/// The global memory context of our exe
+/// The global memory context of our exe.
 pub const MemoryContext = struct {
     gpa: if (is_debug) std.heap.DebugAllocator(.{}) else void,
     galloc: std.mem.Allocator,
@@ -117,7 +115,7 @@ pub fn is_tty() bool {
 }
 
 /// Call this anywhere where we do not want this in a release version.
-pub fn not_in_release() void {
+pub inline fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }
 
@@ -142,4 +140,10 @@ fn log_wtf(comptime str: []const u8, args: anytype) void {
     var writer = utils.TextFileWriter.init_cwd("chessnix.log", ctx.galloc, 256) catch return;
     defer writer.deinit();
     writer.writeline(str, args) catch return;
+}
+
+pub inline fn comptime_only() void {
+    if (!@inComptime()) {
+        @compileError("comptime only");
+    }
 }

@@ -14,9 +14,25 @@ const Color = types.Color;
 const Piece = types.Piece;
 const Square = types.Square;
 
-////////////////////////////////////////////////////////////////
-// Const stuff
-////////////////////////////////////////////////////////////////
+/// Information about a pair of squares.
+pub const SquarePair = struct {
+    /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
+    ray: u64 = 0,
+    /// The from-to direction.
+    direction: ?Direction = null,
+    /// The from-to or to-from orientation.
+    orientation: ?Orientation = null,
+    /// Diagonal or orthogonal.
+    axis: Axis = .none,
+    /// Distance.
+    dist: u3 = 0,
+    // Manhattan distance.
+    manh: u4 = 0,
+
+    const empty: SquarePair = .{};
+};
+
+// --- Const stuff ---
 pub const bb_rank_1: u64 = 0x00000000000000ff;
 pub const bb_rank_2: u64 = 0x000000000000ff00;
 pub const bb_rank_3: u64 = 0x0000000000ff0000;
@@ -43,8 +59,10 @@ pub const bb_white_side: u64 = bb_rank_1 | bb_rank_2 | bb_rank_3 | bb_rank_4;
 pub const bb_black_side: u64 = bb_rank_5 | bb_rank_6 | bb_rank_7 | bb_rank_8;
 pub const bb_queenside: u64 = bb_file_a | bb_file_b | bb_file_d | bb_file_d;
 pub const bb_kingside: u64 = bb_file_e | bb_file_f | bb_file_g | bb_file_h;
-pub const bb_center: u64 = (bb_file_c | bb_file_d | bb_file_e | bb_file_f) & (bb_rank_3 | bb_rank_4 | bb_rank_5 | bb_rank_6);
-pub const bb_mini_center: u64 = (bb_file_d | bb_file_e) & (bb_rank_4 | bb_rank_5);
+pub const bb_center_16: u64 = (bb_file_c | bb_file_d | bb_file_e | bb_file_f) & (bb_rank_3 | bb_rank_4 | bb_rank_5 | bb_rank_6);
+pub const bb_center_4: u64 = (bb_file_d | bb_file_e) & (bb_rank_4 | bb_rank_5);
+pub const bb_corners: u64 = bb_a1 | bb_h1 | bb_a8 | bb_h8;
+
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
 
@@ -67,8 +85,8 @@ pub const file_f : u3 = 5;
 pub const file_g : u3 = 6;
 pub const file_h : u3 = 7;
 
-pub const ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
-pub const files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
+pub const all_ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
+pub const all_files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
 
 // Bitboards of each square
 pub const bb_a1: u64 = 0x0000000000000001;
@@ -143,9 +161,7 @@ pub const bb_f8: u64 = 0x2000000000000000;
 pub const bb_g8: u64 = 0x4000000000000000;
 pub const bb_h8: u64 = 0x8000000000000000;
 
-////////////////////////////////////////////////////////////////
-// Computed stuff.
-////////////////////////////////////////////////////////////////
+// --- Computed stuff ---
 pub const bb_north: [64]u64 = compute_direction_bitboards(.north);
 pub const bb_south: [64]u64 = compute_direction_bitboards(.south);
 pub const bb_west: [64]u64 = compute_direction_bitboards(.west);
@@ -153,21 +169,25 @@ pub const bb_east: [64]u64 = compute_direction_bitboards(.east);
 pub const bb_northwest: [64]u64 = compute_direction_bitboards(.north_west);
 pub const bb_southeast: [64]u64 = compute_direction_bitboards(.south_east);
 pub const bb_northeast: [64]u64 = compute_direction_bitboards(.north_east);
-pub const bb_southwest: [64]u64 = compute_direction_bitboards(.north_west);
-pub const pairs: [64 * 64]SquarePair = compute_squarepairs();
+pub const bb_southwest: [64]u64 = compute_direction_bitboards(.south_west);
+pub const bb_bishop: [64]u64 = compute_bishop_bitboards();
+pub const bb_rook: [64]u64 = compute_rook_bitboards();
+pub const bb_queen: [64]u64 = compute_queen_bitboards();
+
+const pairs: [64 * 64]SquarePair = compute_squarepairs();
 pub const ep_masks: [64]u64 = compute_ep_masks(); // indexing on to-square (e2e4).
 pub const passed_pawn_masks_white: [64]u64 = compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [64]u64 = compute_passed_pawn_masks_black();
 pub const adjacent_file_masks: [64]u64 = compute_adjacent_file_masks();
 pub const king_areas: [64]u64 = compute_king_areas();
 
-/// (hce) By [square]
+/// Hce
 pub const king_areas_white: [64]u64 = compute_king_areas_white();
-/// (hce) By [square]
+/// Hce
 pub const king_areas_black: [64]u64 = compute_king_areas_black();
-/// (hce) Pawnstorm areas from the perspective of the white king. Indexing by [white-king-square]
+/// Hce. Pawnstorm areas from the perspective of the white king. Indexing by [white-king-square]
 pub const king_pawnstorm_areas_white: [64]u64 = compute_king_pawnstorm_areas_white();
-/// (hce) Pawnstorm areas from the perspective of the black king. Indexing by [black-king-square]
+/// Hce. Pawnstorm areas from the perspective of the black king. Indexing by [black-king-square]
 pub const king_pawnstorm_areas_black: [64]u64 = compute_king_pawnstorm_areas_black();
 
 /// Using the `Direction` enum order.
@@ -175,14 +195,38 @@ pub const direction_bitboards: [8][*]const u64 = .{
     &bb_north, &bb_east, &bb_south, &bb_west, &bb_northwest, &bb_northeast, &bb_southeast, &bb_southwest,
 };
 
-////////////////////////////////////////////////////////////////
-// Compute.
-////////////////////////////////////////////////////////////////
+// --- Computing ---
 fn compute_direction_bitboards(comptime dir: Direction) [64]u64 {
     @setEvalBranchQuota(8000);
     var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq|{
+    for (Square.all) |sq| {
         bb[sq.u] = sq.ray_bitboard(dir);
+    }
+    return bb;
+}
+
+fn compute_bishop_bitboards() [64]u64 {
+    var bb: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        bb[sq.u] = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
+    }
+    return bb;
+}
+
+fn compute_rook_bitboards() [64]u64 {
+    var bb: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        bb[sq.u] = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
+    }
+    return bb;
+}
+
+fn compute_queen_bitboards() [64]u64 {
+    var bb: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        bb[sq.u] =
+            bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] |
+            bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
     }
     return bb;
 }
@@ -212,6 +256,7 @@ fn compute_squarepairs() [64 * 64]SquarePair {
             const idx: usize = from.idx() * 64 + to.idx();
             // Distance
             sp[idx].dist = funcs.square_distance(from, to);
+            sp[idx].manh = funcs.manhattan_distance(from, to);
             // Ray.
             if (sp[idx].direction) |dir| {
                 const ray = from.ray(dir);
@@ -220,8 +265,9 @@ fn compute_squarepairs() [64 * 64]SquarePair {
                     if (sq.u == to.u) break;
                 }
             }
+            // #deprecated
             // In between.
-            sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
+            // sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
         }
     }
     return sp;
@@ -229,8 +275,8 @@ fn compute_squarepairs() [64 * 64]SquarePair {
 
 fn compute_passed_pawn_masks_white() [64]u64 {
     var pp: [64]u64 = @splat(0);
-    for (ranks) |rank| {
-        for (files) |file| {
+    for (all_ranks) |rank| {
+        for (all_files) |file| {
             var bb: u64 = 0;
             const sq: Square = .from_rank_file(rank, file);
             bb = bb_north[sq.u]; // square file
@@ -351,30 +397,19 @@ fn compute_king_pawnstorm_areas_black() [64]u64 {
     return ps;
 }
 
-
-/// Information about a pair of squares.
-/// * Mainly used for determining pinners and pinned pieces.
-pub const SquarePair = struct {
-    /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
-    ray: u64 = 0,
-    // The bitboard of the squares in between the 2 squares.
-    in_between: u64 = 0,
-    /// The from-to direction.
-    direction: ?Direction = null,
-    /// The from-to or to-from orientation.
-    orientation: ?Orientation = null,
-    /// Diagonal or orthogonal (or none).
-    axis: Axis = .none,
-    /// Distance
-    dist: u3 = 0,
-
-    const empty: SquarePair = .{};
-};
-
-pub fn get_squarepair(from: Square, to: Square) *const SquarePair
-{
+pub fn get_squarepair(from: Square, to: Square) *const SquarePair {
     const idx: usize = from.idx() * 64 + to.idx();
     return &pairs[idx];
+}
+
+/// Convenience function.
+pub fn dist(a: Square, b: Square) u3 {
+    return get_squarepair(a, b).dist;
+}
+
+/// Convenience function.
+pub fn manh(a: Square, b: Square) u4 {
+    return get_squarepair(a, b).manh;
 }
 
 pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {

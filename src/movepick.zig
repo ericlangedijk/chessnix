@@ -35,19 +35,27 @@ pub const GenType = enum {
 
 // The current stage of the movepicker.
 pub const Stage = enum {
-    /// Generate all moves, putting them in the correct list.
+    /// Generate all moves, putting them in the correct list. (fallthrough).
     generate,
     /// The first move to consider is a tt-move.
     tt,
-    /// Score the noisy moves. Also updata the bad noisy list.
+    /// Score the noisy moves. Also updata the bad noisy list. (fallthrough).
     score_noisy,
     /// Extract the noisy moves.
     noisy,
-    /// Score the quiet moves.
+    /// Score the quiet moves. (fallthrough).
     score_quiet,
     /// Extract the quiet moves.
     quiet,
     /// Extract the bad noisy moves.
+    bad_noisy,
+};
+
+/// Not used but maybe handy later on.
+pub const PubStage = enum {
+    tt,
+    noisy,
+    quiet,
     bad_noisy,
 };
 
@@ -264,7 +272,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                     },
                     Move.ep => {
-                        ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
+                        ex.score = Scores.capture + ex.captured.value() * 101 - ex.piece.value() >> 3;
                         ex.score += hist.get_capture_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
@@ -295,6 +303,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             else if (listmode == .quiets) {
                 ex.score = hist.get_quiet_score(ex.*, self.node.ply, &self.searcher.nodes);
                 ex.score += move_ordering_square_bias[ex.move.to.u];
+                if (ex.move.is_castle()) {
+                    ex.score += 1;
+                }
             }
             // Bad noisy moves are already handled.
             else {

@@ -13,29 +13,27 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
-## Version 1.5 Future...
-- Endgame scaling. The engine can hugely overestimate obvious drawing positions and/or trade too much material.
-- Absolute endgame evaluation (without egtb) indicating wins (KBBK, KBNK for example).
-- Detect useless shuffling around without any progress.
+## Version 1.5 Work In Progress...
+- Prepare for Zig 0.16.0.
 
-## Version 1.4 Work in Progress...
+## Version 1.4
 - Compiler: Zig 0.15.2.
-- Stronger: A very optimistic estimation is ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
-- Added: Evaluation: Knight outpost refinement, bad bishop, bishop on long diagonal.
-- Changed: Correction History (better math, 5 tables for 5 position hashkeys).
+- Stronger: Optimistic estimation: ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
+- Added: Evaluation: Knight + bishop outpost refinement, bishop on long diagonal.
+- Added: Endgame scaling to guide the search.
+- Changed: Correction History (better math, small individual signals, 5 tables for 5 position hashkeys).
 - Changed: Alpha Raises Reduction LMR (instead of depth reduction).
 - Changed: Only update pv when pv-node. Removed update pv in quiescence search.
 - Changed: Time management.
 - Changed: TT structure and entry replacement strategy.
 - Changed: Lots of minor search algorithm details.
 - Changed: Prefetch TT for a slight speed boost.
-- Changed: Mate scores (in whole moves) in uci output.
+- Changed: Mate scores (in whole moves) in uci output. Not sure yet if I like it.
 - Removed: Reward or punish captures in quiescence search.
-- Removed: Code that we do not need (yet).
-- Bug solved: Ridiculous mate scores. The source of the problem was using any tt score as node evaluation.
-- Bug solved: Another terrible one: qsearch comparing a zero score with TT score instead of the eval.
+- Removed: Code that we do not need (yagni).
+- Bug solved: Terrible one: qsearch comparing a zero score with TT score instead of the eval.
 - Bug solved: Parsing negative time.
-- Refactor: Attempt to centralize all scoring logic in scoring.zig, hce terms in 1 struct, most search vars in 1 struct.
+- Refactors: Attempt to centralize all scoring logic in scoring.zig, hce terms in 1 struct, most search vars in 1 struct.
 
 ## Version 1.3
 - Compiler: Zig 0.15.2.

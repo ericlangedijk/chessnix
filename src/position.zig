@@ -26,7 +26,9 @@ const Square = types.Square;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
 const CastleType = types.CastleType;
-const GamePhase = types.GamePhase;
+const ScorePair = types.ScorePair;
+
+const terms = @import("hceterms.zig").terms;
 
 /// Must be called when the program stops.
 pub fn finalize() void {
@@ -78,6 +80,54 @@ pub const Threats = struct {
     pub const empty: Threats = .{};
 };
 
+/// Piececounts. King is always 1.
+pub const Material = struct {
+    /// Indexing by [color][piecetype].
+    counts: [2][6]u8,
+
+    pub const empty: Material = .{
+        .counts = .{
+            .{ 0, 0, 0, 0, 0, 0 },
+            .{ 0, 0, 0, 0, 0, 0 },
+        },
+    };
+
+    pub const default: Material = .{
+        .counts = .{
+            .{ 8, 2, 2, 2, 1, 1 },
+            .{ 8, 2, 2, 2, 1, 1 },
+        },
+    };
+
+    /// Not used.
+    pub fn init(w: u48, b: u48) Material {
+        const m: u96 = encode_96(w, b);
+        return .{ .counts = @bitCast(m) };
+    }
+
+    /// Comptime only to construct endgame consts.
+    pub inline fn encode_48(p: u8, n: u8, b: u8, r: u8, q: u8) u48 {
+        return @as(u48, p) | @as(u48, n) << 8 | @as(u48, b) << 16 | @as(u48, r) << 24 | @as(u48, q) << 32 | @as(u48, 1) << 40;
+    }
+
+    /// Comptime only to construct endgame consts.
+    pub inline fn encode_96(w: u48, b: u48) u96 {
+        return @as(u96, w) | (@as(u96, b) << 48);
+    }
+
+    pub fn decode(self: Material) u96 {
+        return @bitCast(self.counts);
+    }
+
+    pub fn decode_side(self: Material, us: Color) u48 {
+        return @bitCast(self.counts[us.u]);
+    }
+
+    pub fn decode_both(self: Material, winner: Color, loser: Color) u96 {
+        return encode_96(self.decode_side(winner), self.decode_side(loser));
+    }
+};
+
 pub const Position = struct {
     /// The initial layout, supporting Chess960.
     layout: *const Layout,
@@ -87,8 +137,10 @@ pub const Position = struct {
     bitboards_by_type: [6]u64,
     /// Bitboards occupation. Indexing by [color].
     bitboards_by_color: [2]u64,
-    /// Piece phase. Used by eval.
-    phase: u8,
+    /// All piececounts.
+    material: Material,
+    /// Piece phase per color. Indexing by [color].
+    phase_by_color: [2]u8,
     /// Side to move.
     stm: Color,
     /// Used for repetition detection.
@@ -133,7 +185,8 @@ pub const Position = struct {
             .board = @splat(Piece.NO_PIECE),
             .bitboards_by_type = @splat(0),
             .bitboards_by_color = @splat(0),
-            .phase = 0,
+            .material = .empty,
+            .phase_by_color = @splat(0),
             .stm = Color.WHITE,
             .ply_from_root = 0,
             .game_ply = 0,
@@ -167,7 +220,8 @@ pub const Position = struct {
                 b.bb_e1 | b.bb_e8  // kings
             },
             .bitboards_by_color = .{ b.bb_rank_1 | b.bb_rank_2, b.bb_rank_7 | b.bb_rank_8 },
-            .phase = types.max_phase,
+            .material = .default,
+            .phase_by_color = .{ 12, 12 },
             .stm = Color.WHITE,
             .ply_from_root = 0,
             .game_ply = 0,
@@ -187,7 +241,7 @@ pub const Position = struct {
         };
     }
 
-    fn create_board_from_backrow(backrow: [8]PieceType) [64]Piece {
+    inline fn create_board_from_backrow(backrow: [8]PieceType) [64]Piece {
         var result: [64]Piece = @splat(Piece.NO_PIECE);
         for (backrow, 0..) |pt, i| {
             const sq: Square = Square.from_usize(i);
@@ -359,6 +413,10 @@ pub const Position = struct {
         self.layout = get_layout(w_left_rook, w_right_rook, w_king_sq, b_left_rook, b_right_rook, b_king_sq);
     }
 
+    pub fn phase(self: *const Position) u8 {
+        return self.phase_by_color[0] + self.phase_by_color[1];
+    }
+
     /// Parses a uci-move.
     /// - Used after a uci "position" command.
     /// - During a game the time needed for this is not included in the movetime. Timer is only active after the "go" command.
@@ -428,7 +486,6 @@ pub const Position = struct {
         var key: u64 = 0;
         var pawnkey: u64 = 0;
         var nonpawnkeys: [2]u64 = @splat(0);
-        //var black_nonpawnkey: u64 = 0;
         var minorkey: u64 = 0;
         var majorkey: u64 = 0;
 
@@ -460,7 +517,10 @@ pub const Position = struct {
             }
         }
 
-        // Update state just by mirroring the bitboards.
+        // Flip material.
+        std.mem.swap([6]u8, &self.material.counts[0], &self.material.counts[1]);
+
+        // Update state by mirroring the bitboards.
         self.checkmask = funcs.mirror_vertically(self.checkmask);
         self.pins_diagonal = funcs.mirror_vertically(self.pins_diagonal);
         self.pins_orthogonal = funcs.mirror_vertically(self.pins_orthogonal);
@@ -581,15 +641,19 @@ pub const Position = struct {
     }
 
     pub fn all_queens_bishops(self: *const Position) u64 {
-        return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.QUEEN));
+        return self.by_type(PieceType.BISHOP) | self.by_type(PieceType.QUEEN);
     }
 
     pub fn all_queens_rooks(self: *const Position) u64 {
-        return (self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN));
+        return self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN);
     }
 
-    pub fn pieces_except_pawns_and_kings(self: *const Position, us: Color) u64 {
-        return self.by_color(us) & ~self.by_type(PieceType.PAWN) & ~self.all_kings();
+    pub fn all_minors(self: *const Position) u64 {
+        return self.all_knights() | self.all_bishops();
+    }
+
+    pub fn all_majors(self: *const Position) u64 {
+        return self.all_rooks() | self.all_queens();
     }
 
     pub fn pawns(self: *const Position, us: Color) u64 {
@@ -624,6 +688,25 @@ pub const Position = struct {
         return (self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_color(us);
     }
 
+    pub fn minors(self: *const Position, us: Color) u64 {
+        return self.all_minors() & self.by_color(us);
+    }
+
+    pub fn majors(self: *const Position, us: Color) u64 {
+        return self.all_majors() & self.by_color(us);
+    }
+
+    /// Assumes there is a pawn. Returns lsb.
+    pub fn pawn_square(self: *const Position, us: Color) Square {
+        return funcs.first_square(self.pawns(us));
+    }
+
+    /// Assumes there is a bishop. Returns lsb.
+    pub fn bishop_square(self: *const Position, us: Color) Square {
+        return funcs.first_square(self.bishops(us));
+    }
+
+    /// Assumes there is a king. Returns lsb.
     pub fn king_square(self: *const Position, us: Color) Square {
         return funcs.first_square(self.kings(us));
     }
@@ -632,12 +715,55 @@ pub const Position = struct {
         return (self.by_type(PieceType.BISHOP) | self.by_type(PieceType.ROOK) | self.by_type(PieceType.QUEEN)) & self.by_color(us);
     }
 
+    pub fn pawn_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.PAWN.u];
+    }
+
+    pub fn knight_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.KNIGHT.u];
+    }
+
+    pub fn bishop_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.BISHOP.u];
+    }
+
+    pub fn rook_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.ROOK.u];
+    }
+
+    pub fn queen_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.QUEEN.u];
+    }
+
+    pub fn king_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.KING.u];
+    }
+
+    pub fn minor_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.KNIGHT.u] + self.material.counts[us.u][PieceType.BISHOP.u];
+    }
+
+    pub fn major_count(self: *const Position, us: Color) u8 {
+        return self.material.counts[us.u][PieceType.ROOK.u] + self.material.counts[us.u][PieceType.QUEEN.u];
+    }
+
+    pub fn minor_major_count(self: *const Position, us: Color) u8 {
+        return self.minor_count(us) + self.major_count(us);
+    }
+
+    pub fn count_of(self: *const Position, pt: PieceType, us: Color) u8 {
+        return self.material.counts[us.u][pt.u];
+    }
+
     /// Returns a bitboard of our pins. Remember these are rays.
     pub fn our_pins(self: *const Position) u64 {
         return self.pins_diagonal | self.pins_orthogonal;
     }
 
     pub fn is_draw_by_insufficient_material(self: *const Position) bool {
+
+        // TODO: rewrite using material. (should be faster)
+
         const us: Color = Color.WHITE;
         const them: Color = Color.BLACK;
 
@@ -726,7 +852,7 @@ pub const Position = struct {
         }
     }
 
-    /// Update board, bitboards, phase. Not keys.
+    /// Updates board, bitboards, material, phase. Not keys.
     fn add_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
         if (comptime lib.is_paranoid) {
             assert(self.get(sq).is_empty());
@@ -735,12 +861,14 @@ pub const Position = struct {
         }
         const mask: u64 = sq.to_bitboard();
         self.board[sq.u] = pc;
-        if (us.e == .white) self.bitboards_by_type[pc.u] |= mask else self.bitboards_by_type[pc.u - 6] |= mask;
+        const pt: u4 = if (us.e == .white) pc.u else pc.u - 6;
+        self.bitboards_by_type[pt] |= mask;
         self.bitboards_by_color[us.u] |= mask;
-        self.phase += types.phase_table[pc.u];
+        self.material.counts[us.u][pt] += 1;
+        self.phase_by_color[us.u] += types.phase_table[pt];
     }
 
-    /// Update board, bitboards, phase. Not keys.
+    /// Update sboard, bitboards, material, phase. Not keys.
     fn remove_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
         if (comptime lib.is_paranoid) {
             assert(self.get(sq).e == pc.e);
@@ -748,12 +876,14 @@ pub const Position = struct {
         }
         const not_mask: u64 = ~sq.to_bitboard();
         self.board[sq.u] = Piece.NO_PIECE;
-        if (us.e == .white) self.bitboards_by_type[pc.u] &= not_mask else self.bitboards_by_type[pc.u - 6] &= not_mask;
+        const pt: u4 = if (us.e == .white) pc.u else pc.u - 6;
+        self.bitboards_by_type[pt] &= not_mask;
         self.bitboards_by_color[us.u] &= not_mask;
-        self.phase -= types.phase_table[pc.u];
+        self.material.counts[us.u][pt] -= 1;
+        self.phase_by_color[us.u] -= types.phase_table[pt];
     }
 
-    /// Update board, bitboards, phase. Not keys.
+    /// Updates board, bitboards, material, phase. Not keys.
     fn move_piece(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void {
         if (comptime lib.is_paranoid) {
             assert(self.get(from).e == pc.e);
@@ -778,8 +908,6 @@ pub const Position = struct {
         const from: Square = ex.move.from;
         const to: Square = ex.move.to;
         const pc: Piece = ex.piece;
-
-        // const capt: Piece = ex.captured;
         const key_delta = zobrist.piece_square(pc, from) ^ zobrist.piece_square(pc, to);
 
         // Local keys for updating.
@@ -859,7 +987,6 @@ pub const Position = struct {
                 const king_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to);
                 const rook_delta: u64 = zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 const castle_delta: u64 = king_delta ^ rook_delta;
-//                const castle_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 key ^= castle_delta;
                 nonpawnkeys[us.u] ^= castle_delta;
                 majorkey ^= rook_delta;
@@ -884,7 +1011,6 @@ pub const Position = struct {
                 const king_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to);
                 const rook_delta: u64 = zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 const castle_delta: u64 = king_delta ^ rook_delta;
-                //const castle_delta: u64 = zobrist.piece_square(king, from) ^ zobrist.piece_square(king, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 key ^= castle_delta;
                 nonpawnkeys[us.u] ^= castle_delta;
                 majorkey ^= rook_delta;
@@ -1709,37 +1835,16 @@ pub const Position = struct {
         return true;
     }
 
-    /// Meant to be a validation after uci position command. Not used yet.
-    pub fn is_valid(self: *const Position) bool {
-        if (popcnt(self.all() > 32)) {
-            return false;
-        }
-
-        const wk: u8 = popcnt(self.kings(Color.WHITE));
-        const bk: u8 = popcnt(self.kings(Color.BLACK));
-
-        if (wk + bk != 2) {
-            return false;
-        }
-
-        const wk_sq: Square = self.king_square(Color.WHITE);
-        if (self.stm.e == .black and self.is_square_attacked_by(wk_sq, Color.BLACK)) {
-            return false;
-        }
-
-        const bk_sq: Square = self.king_square(Color.BLACK);
-        if (self.stm.e == .white and self.is_square_attacked_by(bk_sq, Color.WHITE)) {
-            return false;
-        }
-        return true;
-    }
-
-    /// Paranoid only.
+    /// Paranoid only. TODO: also make a validation for during UCI
     pub fn assert_pos_ok(self: *const Position, ex: ExtMove) void {
         lib.not_in_release();
 
-        if (self.phase == 0 and (self.pieces_except_pawns_and_kings(Color.WHITE) | self.pieces_except_pawns_and_kings(Color.BLACK)) != 0) {
-            lib.wtf("pos phase error", .{});
+        // Check counts.
+        for (Color.all) |color| {
+            for (PieceType.all) |piecetype| {
+                const cnt: u8 = popcnt(self.bitboards_by_color[color.u] & self.bitboards_by_type[piecetype.u]);
+                lib.verify(self.material.counts[color.u][piecetype.u] == cnt, "pos count mismatch", .{});
+            }
         }
 
         if (popcnt(self.kings(Color.WHITE)) != 1) {
@@ -1795,6 +1900,35 @@ pub const Position = struct {
         if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.stm.e != .black) {
             lib.wtf("pos black in check and not to move", .{});
         }
+    }
+
+    /// A little validation after uci set.
+    pub fn is_valid(self: *const Position) bool {
+        if (popcnt(self.by_color(Color.WHITE)) > 16) return false;
+        if (popcnt(self.by_color(Color.BLACK)) > 16) return false;
+
+        for (Color.all) |c| {
+            if (count_of(c, PieceType.PAWN) > 8) return false;
+            if (count_of(c, PieceType.KNIGHT) > 9) return false;
+            if (count_of(c, PieceType.BISHOP) > 9) return false;
+            if (count_of(c, PieceType.ROOK) > 9) return false;
+            if (count_of(c, PieceType.QUEEN) > 9) return false;
+            if (count_of(c, PieceType.KING) != 1) return false;
+        }
+
+        // In check and not to move.
+        const king_sq_white: Square = self.king_square(Color.WHITE);
+        const king_sq_black = self.king_square(Color.BLACK);
+
+        if (self.is_square_attacked_by(king_sq_white, Color.BLACK) and self.stm.e != .white) {
+            return false;
+        }
+
+        if (self.is_square_attacked_by(king_sq_black, Color.WHITE) and self.stm.e != .black) {
+            return false;
+        }
+
+        return true;
     }
 
     /// Zig-format. Writes the FEN string.
@@ -1894,7 +2028,7 @@ pub const Position = struct {
         io.print_buffered("fen: {f}\n", .{ self });
         io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16} minorkey: {x:0>16} majorkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1], self.minorkey, self.majorkey });
         io.print_buffered("rule50: {}\n", .{ self.rule50 });
-        io.print_buffered("phase: {}\n", .{ self.phase });
+        //io.print_buffered("phase: {}\n", .{ self.phase });
         io.print_buffered("checkers: ", .{});
         if (self.checkmask != 0) {
             var bb: u64 = self.checkmask & self.by_color(self.stm.opp());
@@ -1902,7 +2036,16 @@ pub const Position = struct {
                 io.print_buffered("{t} ", .{sq.e});
             }
         }
+        //io.print_buffered("hce balance: mg = {} eg = {}", .{ self.hce_balance.mg, self.hce_balance.eg });
         io.print_buffered("\n", .{});
+
+        if (comptime lib.is_debug) {
+            io.print_buffered("white material code: {x:0>12}\n", .{ self.material.decode_side(Color.WHITE) });
+            io.print_buffered("black material code: {x:0>12}\n", .{ self.material.decode_side(Color.BLACK) });
+            io.print_buffered("black material cast: {x:0>24}\n", .{ self.material.decode() });
+            //io.print_buffered("black material cast: {b:0>12}\n", .{ self.material.bits });
+        }
+
         io.flush();
     }
 
