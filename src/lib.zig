@@ -24,9 +24,7 @@ fn compilation_check() void {
     }
 }
 
-////////////////////////////////////////////////////////////////
-// Globals.
-////////////////////////////////////////////////////////////////
+// --- Globals ---
 pub const version = "1.4";
 pub const builddate = "2026-04-21";
 pub const is_release: bool = builtin.mode == .ReleaseFast;
@@ -35,7 +33,7 @@ pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_paranoid: bool = is_debug;
 pub const verifications: bool = is_debug or is_release_safe;
 
-// Input output
+// --- Io and memory ---
 pub const ctx: *const MemoryContext = &memory_context;
 pub const io: *IoContext = &io_context;
 var memory_context: MemoryContext = undefined;
@@ -140,10 +138,4 @@ fn log_wtf(comptime str: []const u8, args: anytype) void {
     var writer = utils.TextFileWriter.init_cwd("chessnix.log", ctx.galloc, 256) catch return;
     defer writer.deinit();
     writer.writeline(str, args) catch return;
-}
-
-pub inline fn comptime_only() void {
-    if (!@inComptime()) {
-        @compileError("comptime only");
-    }
 }

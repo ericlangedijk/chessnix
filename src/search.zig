@@ -749,9 +749,7 @@ pub const Searcher = struct {
 
             // TODO: use verification.
             // Null Move Pruning (nmp). Are we still good if we let the opponent play another move?
-            //if (!pos.nullmove_state and node.eval >= beta and node.static_eval >= beta + 170 - depth * 24 and pos.phase() > 0 and pos.pieces_except_pawns_and_kings(us) != 0) { // TODO: use count from material?
             if (
-                // depth >= 2 and // #testing
                 !pos.nullmove_state and
                 node.eval >= beta and
                 node.static_eval >= beta + 170 - depth * 24 and
@@ -938,16 +936,6 @@ pub const Searcher = struct {
                 }
 
                 need_full_search = score > alpha and reduction != 0;
-
-                // // #testing
-                // if (need_full_search) {
-                //     const go_deeper: bool = new_depth < max_search_depth and score > (best_score + 35 + 2 * new_depth);
-                //     const go_shallower = new_depth > 0 and score < best_score + 8;
-                //     new_depth += @intFromBool(go_deeper);
-                //     new_depth -= @intFromBool(go_shallower);
-                // }
-
-
             }
             else {
                 // No lmr done.

@@ -27,7 +27,6 @@ pub const Terms = struct {
     knight_outpost_table: [64]ScorePair,
     knight_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_outpost_table: [64]ScorePair,
-    bishop_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_long_diagonal: ScorePair,
     rook_on_file_bonus: [2][8]ScorePair,
     pawn_protection_table: [12]ScorePair,
@@ -136,8 +135,6 @@ pub const default_terms: Terms = .{
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 7
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 8
     },
-
-    .bishop_outpost_is_blocking_enemy_pawn = pair(-1, 4),
 
     .bishop_long_diagonal = pair(8, 4),
 

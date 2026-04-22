@@ -32,7 +32,6 @@ pub fn scale(pos: *const Position, eval: i32) f32 {
     const winner: Color = if (eval > 0) Color.WHITE else Color.BLACK;
     const loser: Color = winner.opp();
     const winner_pawn_count: i32 = pos.pawn_count(winner);
-    // const loser_pawn_count: i32 = pos.pawn_count(loser);
 
     // Avoid calculating material twice in certain situations below.
     var material_difference: ?i32 = null;

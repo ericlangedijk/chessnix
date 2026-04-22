@@ -48,13 +48,6 @@ pub const Bound = enum(u2) {
     exact,
 };
 
-/// TODO: Temporary enum for bug hunting.
-pub const ScoreUsableSafety = enum {
-    safe,
-    medium,
-    unsafe,
-};
-
 pub const Entry = struct {
     /// Must be 10 bytes
     pub const STRUCTSIZE: usize = @sizeOf(Entry);

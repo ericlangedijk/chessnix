@@ -19,7 +19,7 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 ## Version 1.4
 - Compiler: Zig 0.15.2.
 - Stronger: Optimistic estimation: ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
-- Added: Evaluation: Knight + bishop outpost refinement, bishop on long diagonal.
+- Added: Evaluation: knight outpost refinement, bishop on long diagonal.
 - Added: Endgame scaling to guide the search.
 - Changed: Correction History (better math, small individual signals, 5 tables for 5 position hashkeys).
 - Changed: Alpha Raises Reduction LMR (instead of depth reduction).

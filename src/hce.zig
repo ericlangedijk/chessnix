@@ -342,12 +342,6 @@ pub const Evaluator = struct {
             // Outpost.
             if (self.is_outpost(sq, us)) {
                 score.inc(terms.bishop_outpost_table[relative_sq.u]);
-                // bishop outpost is also blocking an enemy pawn.
-                const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
-                const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them);
-                if (is_blocking) {
-                    score.inc(terms.bishop_outpost_is_blocking_enemy_pawn);
-                }
             }
         }
         return score;
@@ -522,54 +516,31 @@ pub const Evaluator = struct {
         // Get the squares defended by the enemy, excluding squares that are defended by our pawns and not attacked by their pawns
         const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
         const their_protected_squares: u64 = self.pawn_attacks[them.u] | (their_piece_attacks & ~self.pawn_attacks[us.u]);
-        const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~their_protected_squares; // TODO: this is only singlepush.
-        // Which enemy piece would be attacked if we push our pawn.
+        // Get the single pawn pushes.
+        const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~their_protected_squares;
+        // Which enemy piece (no pawn) would be attacked if we push our pawn.
         var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
         while (bitloop(&pawn_push_threats)) |sq| {
             const threatened: Piece = pos.board[sq.u];
             score.inc(terms.pawn_push_threat_table[threatened.u]);
         }
 
-        // #testing pawnbreaks
-        // const rank_3: u64 = comptime funcs.relative_rank(us, bitboards.rank_3);
-        // var virtual_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all_pawns();
-        // virtual_pawn_pushes |= funcs.pawns_shift(virtual_pawn_pushes & bitboards.rank_bitboards[rank_3], us, .up) & ~pos.all_pawns();
-        // //funcs.print_bitboard(virtual_pawn_pushes);
-        // //var pawn_breaks: u64 = (funcs.pawns_shift(virtual_pawn_pushes, us, .northwest) | funcs.pawns_shift(virtual_pawn_pushes, us, .northeast)) & pos.pawns(them);
-        // var breaks: u8 = 0;
-        // while (bitloop(&virtual_pawn_pushes)) |sq| {
-        //     const target: u64 = attacks.get_pawn_attacks(sq, us) & pos.pawns(them);
-        //     if (popcnt(target) == 1) {
-        //         //lib.io.debugprint("{t} pawnbreak to {t}\n", .{ us.e, sq.e});
-        //         breaks += 1;
-        //     }
-        // }
-        // const sp: ScorePair = comptime types.pair(2, -4);
-        // score.inc(sp.mul(breaks));
-        // //lib.io.debugprint("{} pawnbreaks {}\n", .{ us.e, breaks });
-
-
         // Possible checks.
-        // Get the checking squares.
         const occ: u64 = pos.all();
         const their_king_sq: Square = self.king_squares[them.u];
-
+        // Get the checking squares.
         const checking_squares_knight: u64 = attacks.get_knight_attacks(their_king_sq);
         const checking_squares_bishop: u64 = attacks.get_bishop_attacks(their_king_sq, occ);
         const checking_squares_rook: u64 = attacks.get_rook_attacks(their_king_sq, occ);
         const checking_squares_queen: u64 = checking_squares_rook | checking_squares_bishop;
-
-        // Get the safe squares.
         const unsafe: u64 = (their_attacks | self.king_attacks[them.u]);
         const safe: u64 = ~unsafe;
         const not_pawns: u64 = ~pos.pawns(us);
-
         // Determine our checks.
         const knight_checks: u64 = not_pawns & checking_squares_knight & self.knight_attacks[us.u];
         const bishop_checks: u64 = not_pawns & checking_squares_bishop & self.bishop_attacks[us.u];
         const rook_checks  : u64 = not_pawns & checking_squares_rook & self.rook_attacks[us.u];
         const queen_checks : u64 = not_pawns & checking_squares_queen & self.queen_attacks[us.u];
-
         score.inc(terms.safe_check_bonus[PieceType.KNIGHT.u].mul(popcnt(knight_checks & safe)));
         score.inc(terms.safe_check_bonus[PieceType.BISHOP.u].mul(popcnt(bishop_checks & safe)));
         score.inc(terms.safe_check_bonus[PieceType.ROOK.u].mul(popcnt(rook_checks & safe)));
