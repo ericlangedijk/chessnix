@@ -170,9 +170,6 @@ pub const bb_northwest: [64]u64 = compute_direction_bitboards(.north_west);
 pub const bb_southeast: [64]u64 = compute_direction_bitboards(.south_east);
 pub const bb_northeast: [64]u64 = compute_direction_bitboards(.north_east);
 pub const bb_southwest: [64]u64 = compute_direction_bitboards(.south_west);
-pub const bb_bishop: [64]u64 = compute_bishop_bitboards();
-pub const bb_rook: [64]u64 = compute_rook_bitboards();
-pub const bb_queen: [64]u64 = compute_queen_bitboards();
 
 const pairs: [64 * 64]SquarePair = compute_squarepairs();
 pub const ep_masks: [64]u64 = compute_ep_masks(); // indexing on to-square (e2e4).
@@ -201,32 +198,6 @@ fn compute_direction_bitboards(comptime dir: Direction) [64]u64 {
     var bb: [64]u64 = @splat(0);
     for (Square.all) |sq| {
         bb[sq.u] = sq.ray_bitboard(dir);
-    }
-    return bb;
-}
-
-fn compute_bishop_bitboards() [64]u64 {
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
-    }
-    return bb;
-}
-
-fn compute_rook_bitboards() [64]u64 {
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
-    }
-    return bb;
-}
-
-fn compute_queen_bitboards() [64]u64 {
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] =
-            bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] |
-            bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
     }
     return bb;
 }

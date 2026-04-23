@@ -18,6 +18,10 @@ pub fn finalize() void {
 }
 
 fn compilation_check() void {
+    const v = "0.15.2";
+    if (!std.mem.eql(u8, builtin.zig_version_string, v)) {
+        @compileError("this chessnix version requires zig " ++ v);
+    }
     if (is_release) {
         if (is_paranoid) @compileError("release is_paranoid");
         if (verifications) @compileError("release verifications");

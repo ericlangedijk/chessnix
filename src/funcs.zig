@@ -24,13 +24,8 @@ const wtf = lib.wtf;
 /// Enum for shifting pawn moves.
 pub const PawnShift = enum(u2) { up, northwest, northeast };
 
-// fn abs_diff(a: usize, b: usize) usize {
-//     return @max(a, b) - @min(a, b);
-// }
-
-/// Note that these are stored in SquarePair
+/// Note that these are stored in SquarePair. Use bitboards.dist() @runtime.
 pub inline fn square_distance(a: Square, b: Square) u3 {
-    //lib.comptime_only();
     const ar: i32 = a.coord.rank;
     const br: i32 = b.coord.rank;
     const af: i32 = a.coord.file;
@@ -39,9 +34,8 @@ pub inline fn square_distance(a: Square, b: Square) u3 {
     return @truncate(@abs(d));
 }
 
-/// Note that these are stored in SquarePair
+/// Note that these are stored in SquarePair. Use bitboards.manh() @runtime.
 pub inline fn manhattan_distance(a: Square, b: Square) u8 {
-    //lib.comptime_only();
     const rank1: i32 = a.coord.rank;
     const rank2: i32 = b.coord.rank;
     const file1: i32 = a.coord.file;
@@ -168,7 +162,6 @@ pub fn first_square(bitboard: u64) Square {
     if (comptime lib.is_paranoid) {
         assert(bitboard != 0);
     }
-    //const lsb: u6 = @truncate(@ctz(bitboard));
     const lsb: u6 = @intCast(@ctz(bitboard));
     return .{ .u = lsb };
 }
@@ -180,13 +173,12 @@ pub inline fn bitloop(bitboard: *u64) ?Square {
     return .{ .u = @intCast(@ctz(bitboard.*)) };
 }
 
+/// Not used. But we are gonna need this one in the future.
 /// Note: This requires x86-64 and the BMI2 instruction set.
 pub fn get_nth_set_bit_or_null(bitboard: u64, n: u6) ?u6 {
     // Return null if we are asking for a bit that doesn't exist
     if (@popCount(bitboard) <= n) return null;
-
     const nth_bit = @as(u64, 1) << n;
-
     // PDEP (Parallel Bit Deposit) magic via inline assembly
     const isolated = asm (
         "pdep %[mask], %[val], %[out]"
@@ -194,10 +186,10 @@ pub fn get_nth_set_bit_or_null(bitboard: u64, n: u6) ?u6 {
         : [val] "r" (nth_bit),
           [mask] "r" (bitboard),
     );
-
     return @intCast(@ctz(isolated));
 }
 
+/// Not used. But we are gonna need this one in the future.
 /// Note: This requires x86-64 and the BMI2 instruction set.
 pub fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
     const nth_bit = @as(u64, 1) << n;
@@ -331,17 +323,7 @@ pub fn print_bits(u: u8) void {
     lib.io.debugprint("\n", .{});
 }
 
-
-
-
-// fn float(x: anytype) f64 {
-//     return switch (@typeInfo(@TypeOf(x))) {
-//         .int, .comptime_int => @floatFromInt(x),
-//         .float, .comptime_float => @floatCast(x),
-//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
-//     };
-// }
-
+// TODO: maybe we will use this one later on.
 // fn int(comptime T: type, x: anytype) T {
 //     return switch (@typeInfo(@TypeOf(x))) {
 //         .int, .comptime_int => @intCast(x),

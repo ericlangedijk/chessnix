@@ -49,10 +49,6 @@ pub const TimeManager = struct {
     max_nodes: u64,
     /// For the uci "go depth"
     max_depth: u8,
-    // For output only.
-    mtg: u64,
-    // For output only.
-    max_ms: u64,
 
     pub const empty: TimeManager = .{
         .termination = .infinite,
@@ -63,15 +59,10 @@ pub const TimeManager = struct {
         .opt_movetime_base = 0,
         .max_nodes = 0,
         .max_depth = 0,
-        .mtg = 0,
-        .max_ms = 0,
     };
 
     /// Assumes the go argument is sanitized after parsing (no negative numbers), so we can safely cast ints.
     pub fn set(self: *TimeManager, go: *const uci.Go, pos: *const Position, one_mover: bool) void {
-        // TODO: maybe make smarter. we are (like other engines often do as well) often living off the increment in a long game.
-        // can we 'gather' some time using the increment?
-
         self.* = .empty;
         self.timer = .start();
         self.started = self.timer.read();
@@ -85,7 +76,6 @@ pub const TimeManager = struct {
         if (go.movetime) |m| {
             self.termination = .movetime;
             const max: u64 = @intCast(m);
-            self.max_ms = max;
             self.max_endtime = self.started + max * 1_000_000;
             return;
         }
@@ -117,7 +107,6 @@ pub const TimeManager = struct {
         var movestogo: u64 = if (go.movestogo) |m| @intCast(m) else 0;
         const cyclic_timecontrol: bool = movestogo > 0;
         movestogo = if (cyclic_timecontrol) @min(movestogo, 50) else 50;
-        self.mtg = movestogo;
         const increment_per_move: u64 = inc;
         const move_overhead: u64 = 20;
         var timeleft = @max(1, time + increment_per_move * (movestogo - 1));
@@ -149,7 +138,6 @@ pub const TimeManager = struct {
             maxtime = @min(500, maxtime);
         }
         const max_movetime: u64 = @intFromFloat(maxtime);
-        self.max_ms = max_movetime;
         self.max_endtime = self.started + max_movetime * 1_000_000;
         self.opt_endtime = self.started + self.opt_movetime_base * 1_000_000;
     }
@@ -176,19 +164,6 @@ pub const TimeManager = struct {
 
     pub fn optimal_time_reached(self: *TimeManager, curr_time: u64) bool {
         return curr_time >= self.opt_endtime;
-    }
-
-    // Print some time info at the start of the search.
-    pub fn print_info(self: *const TimeManager, us: Color) void {
-        const def = comptime "info string";
-        const t: Termination = self.termination;
-        switch (t) {
-            .infinite  => lib.io.print("{s} us {t} termination {t}\n", .{ def, us.e, t }),
-            .depth     => lib.io.print("{s} us {t} termination {t} {}\n", .{ def, us.e, t, self.max_depth }),
-            .nodes     => lib.io.print("{s} us {t} termination {t} {}\n", .{ def, us.e, t, self.max_nodes }),
-            .movetime  => lib.io.print("{s} us {t} termination {t} {}\n", .{ def, us.e, t, self.max_ms }),
-            .clock     => lib.io.print("{s} us {t} termination {t} mtg {} max {} opt {}\n", .{ def, us.e, t, self.mtg, self.max_ms, self.opt_movetime_base }),
-        }
     }
 };
 

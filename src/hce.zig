@@ -40,6 +40,8 @@ pub const Evaluator = struct {
     pos: *const Position,
     /// Cached pins.
     pins: u64,
+    /// A little speedup by caching pawn-availability.
+    has_pawns: [2]bool,
     /// The squares of the kings.
     king_squares: [2]Square,
     /// The 3x4 squares area around and in front of our king.
@@ -69,6 +71,7 @@ pub const Evaluator = struct {
         return .{
             .pos = undefined,
             .pins = 0,
+            .has_pawns = .{ false, false },
             .king_squares = .{ .A1, .A1 },
             .king_areas = .{ 0, 0 },
             .pawn_storm_areas = .{ 0, 0 },
@@ -91,8 +94,9 @@ pub const Evaluator = struct {
 
         // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner.
         self.pins = pos.our_pins() & pos.by_color(pos.stm);
+        self.has_pawns = .{ pos.pawns(Color.WHITE) != 0, pos.pawns(Color.BLACK) != 0};
 
-        // Init fields.
+        // Init stuff.
         self.king_squares = .{ pos.king_square(Color.WHITE), pos.king_square(Color.BLACK) };
 
         self.king_areas[0] = bitboards.king_areas_white[self.king_squares[0].u];
@@ -123,6 +127,7 @@ pub const Evaluator = struct {
         };
         self.attack_power = @splat(ScorePair.empty);
 
+        // And perform eval.
         score.inc(self.eval_pawns(Color.WHITE));
         score.dec(self.eval_pawns(Color.BLACK));
 
@@ -181,6 +186,11 @@ pub const Evaluator = struct {
 
     fn eval_pawns(self: *Self, comptime us: Color) ScorePair {
         const pos: *const Position = self.pos;
+
+        if (!self.has_pawns[us.u]) {
+            return .empty;
+        }
+
         const them: Color = comptime us.opp();
         const our_pawns: u64 = pos.pawns(us);
         const their_pawns: u64 = pos.pawns(them);
@@ -302,8 +312,10 @@ pub const Evaluator = struct {
         const them: Color = comptime us.opp();
         const pos: *const Position = self.pos;
         const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
+
         var score: ScorePair = .empty;
         var our_bishops: u64 = pos.bishops(us);
+        var bishop_nr: u8 = 0;
 
         // Bishop pair.
         if ((our_bishops & bitboards.bb_black_squares != 0) and (our_bishops & bitboards.bb_white_squares != 0)) {
@@ -311,6 +323,7 @@ pub const Evaluator = struct {
         }
 
         while (bitloop(&our_bishops)) |sq| {
+            bishop_nr += 1;
             const relative_sq: Square = sq.relative(us);
 
             // Psqt.
@@ -401,9 +414,6 @@ pub const Evaluator = struct {
         var our_queens: u64 = pos.queens(us);
         while (bitloop(&our_queens)) |sq| {
             const relative_sq: Square = sq.relative(us);
-
-            // Material
-            //score.inc(terms.piece_value_table[PieceType.QUEEN.u]);
 
             // Psqt
             score.inc(terms.piece_square_table[PieceType.QUEEN.u][relative_sq.u]);
@@ -558,7 +568,6 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_protection_scorepair(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) *const ScorePair {
-        // TODO: make symmetrical.
         if (comptime lib.verifications) {
             verify_king_pawn_protection_area(us, our_king_sq, our_pawn_sq);
         }
@@ -577,8 +586,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_storm_scorepair(comptime us: Color, their_king_sq: Square, our_pawn_sq: Square) *const ScorePair {
-        // TODO: make symmetrical.
-        if (lib.verifications) {
+        if (comptime lib.verifications) {
             verify_king_pawn_storm_area(us, their_king_sq, our_pawn_sq);
         }
 
@@ -737,9 +745,3 @@ pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
     }
     return pos.stm.u == winner.u;
 }
-
-
-/// Indexing [relative rank][controlled]
-const space_table: [8][8]ScorePair = {
-
-};

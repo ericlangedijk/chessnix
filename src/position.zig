@@ -1241,7 +1241,7 @@ pub const Position = struct {
         const to: Square = ex.move.to;
         const pc: Piece = ex.piece;
 
-        if (lib.verifications) {
+        if (comptime lib.verifications) {
             const ok = ex.move.is_empty() or self.get(from).e == ex.piece.e;
             lib.verify(ok, "predict_key() invalid move", .{});
         }
@@ -2065,7 +2065,6 @@ pub const Position = struct {
         io.print_buffered("fen: {f}\n", .{ self });
         io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16} minorkey: {x:0>16} majorkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1], self.minorkey, self.majorkey });
         io.print_buffered("rule50: {}\n", .{ self.rule50 });
-        //io.print_buffered("phase: {}\n", .{ self.phase });
         io.print_buffered("checkers: ", .{});
         if (self.checkmask != 0) {
             var bb: u64 = self.checkmask & self.by_color(self.stm.opp());
@@ -2073,14 +2072,13 @@ pub const Position = struct {
                 io.print_buffered("{t} ", .{sq.e});
             }
         }
-        //io.print_buffered("hce balance: mg = {} eg = {}", .{ self.hce_balance.mg, self.hce_balance.eg });
         io.print_buffered("\n", .{});
 
         if (comptime lib.is_debug) {
+            io.print_buffered("phases: {} {}\n", .{ self.phase_by_color[0], self.phase_by_color[1] });
             io.print_buffered("white material code: {x:0>12}\n", .{ self.material.decode_side(Color.WHITE) });
             io.print_buffered("black material code: {x:0>12}\n", .{ self.material.decode_side(Color.BLACK) });
             io.print_buffered("black material cast: {x:0>24}\n", .{ self.material.decode() });
-            //io.print_buffered("black material cast: {b:0>12}\n", .{ self.material.bits });
         }
 
         io.flush();

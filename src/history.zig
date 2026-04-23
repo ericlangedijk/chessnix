@@ -210,7 +210,7 @@ pub const ContinuationHistory = struct {
         return &self.table[ex.piece.u][ex.move.to.u];
     }
 
-    /// verifications function.
+    /// verification function.
     fn verify_node(self: *const ContinuationHistory, node: *const Node) void {
         lib.not_in_release();
         if (node.current_move.move.is_empty()) {

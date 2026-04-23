@@ -9,22 +9,24 @@ const utils = @import("utils.zig");
 
 const assert = std.debug.assert;
 
-// -32002: null
-// -32000: infinity, alpha limit
-// -30000: mate
-// -29872: mate in 128
-// ______: gray area
-// -24000: limit eval after scaling
-// -12000: limit eval before scaling
-//     -1: draw
-//      0: draw
-//      1: draw
-// +12000: limit eval before scaling
-// +24000: limit eval after scaling
-// ______: gray area
-// +29872: mate in 128
-// +30000: mate
-// +32000: infinity, beta limit
+// -32002 : null
+// -32000 : infinity, alpha limit
+// -30000 : mate
+// -29872 : mate in 128
+// ______ : gray area
+// -21001 : absolute lost
+// -24000 : limit eval after scaling
+// -12000 : limit eval before scaling
+//     -1 : draw
+//      0 : draw
+//      1 : draw
+// +12000 : limit eval before scaling
+// +24000 : limit eval after scaling
+// ______ : gray area
+// 240001 : absolute win
+// +29872 : mate in 128
+// +30000 : mate
+// +32000 : infinity, beta limit
 
 const max_search_depth = types.max_search_depth;
 
@@ -32,10 +34,9 @@ pub const null_score: i32 = -32002;
 pub const infinity: i32 = 32000;
 pub const mate: i32 = 30000;
 pub const mate_threshold = mate - max_search_depth;
-pub const win = 24001; //25000;
+pub const win = 24001;
 pub const static_eval_before_scaling_threshold = 12000;
 pub const static_eval_threshold = 24000;
-//pub const draw: i32 = 0;
 pub const stalemate: i32 = 0;
 
 /// Generates a 'random' draw score between -1 and 1.

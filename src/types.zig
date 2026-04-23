@@ -258,9 +258,6 @@ pub const Square = packed union {
 
     pub fn color(self: Square) Color {
         return colors[self.u];
-        //const result = if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
-        // //return result;
-        // return if (funcs.contains_square(bitboards.bb_white_squares, self)) Color.WHITE else Color.BLACK;
     }
 
     pub fn manhattan_distance_to_center(self: Square) u8 {
@@ -834,16 +831,8 @@ pub const ScorePair = struct {
         return .{ .mg = @divFloor(self.mg, d), .eg = @divFloor(self.eg, d) };
     }
 
-    pub fn muldiv(self: ScorePair, m: u8, d: u8) ScorePair {
-        return .{ .mg = @divFloor(self.mg * m, d), .eg = @divFloor(self.eg * m, d) };
-    }
-
     pub fn fmul(self: ScorePair, factor: f32) ScorePair {
         return .{ .mg = funcs.fmul(self.mg, factor), .eg = funcs.fmul(self.eg, factor)};
-    }
-
-    pub fn fmul2(self: ScorePair, mg_factor: f32, eg_factor: f32) ScorePair {
-        return .{ .mg = funcs.fmul(self.mg, mg_factor), .eg = funcs.fmul(self.eg, eg_factor)};
     }
 };
 
@@ -861,11 +850,8 @@ pub const ParsingError = error {
     InvalidPromotionChar,
 };
 
-////////////////////////////////////////////////////////////////
-/// Constants
-////////////////////////////////////////////////////////////////
+// --- Constants ---
 pub const megabyte: usize = 1024 * 1024;
-
 /// This is how far we go.
 pub const max_game_length: usize = 1024;
 /// The absoluta maximum number of moves in a position.
@@ -920,22 +906,3 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const eg: i32 = score.eg;
     return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
-
-// pub fn phase_factor(phase: u8) f32 {
-//     const ph: f32 = @floatFromInt(@min(max_phase, phase));
-//     const max: f32 = @floatFromInt(max_phase);
-//     return ph / max;
-// }
-
-
-// const kbn_white_distances: [64]u8 = .{
-//     0, 1, 2, 3, 3, 2, 1, 0, // rank 1
-//     1, 2, 3, 4, 4, 3, 2, 1,
-//     2, 3, 4, 5, 5, 4, 3, 2,
-//     3, 4, 5, 6, 6, 5, 4, 3,
-//     3, 4, 5, 6, 6, 5, 4, 3,
-//     2, 3, 4, 5, 5, 4, 3, 2,
-//     1, 2, 3, 4, 4, 3, 2, 1,
-//     0, 1, 2, 3, 3, 2, 1, 0
-// };
-

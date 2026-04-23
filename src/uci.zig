@@ -79,7 +79,11 @@ fn uci_loop(is_tty: bool) !void {
             if (eql(cmd, "d")) {
                 TTY.draw_position();
             }
-            if (eql(cmd, "cls")) {
+            else if (eql(cmd, "q")) {
+                try UCI.quit();
+                return; // stop the program.
+            }
+            else if (eql(cmd, "cls")) {
                 TTY.cls();
             }
             else if (eql(cmd, "bench")) {
