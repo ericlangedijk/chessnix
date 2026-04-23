@@ -199,7 +199,8 @@ pub const Engine = struct {
         self.busy.store(false, .release);
     }
 
-    /// Stop the program. TODO: searcher still outputs bestmove.
+    /// Stop the program.
+    /// TODO: searcher still outputs bestmove.
     pub fn quit(self: *Engine) !void {
         if (!self.is_busy()) {
             return;
@@ -229,7 +230,8 @@ pub const Engine = struct {
         return hce.see(&self.pos, ex.move, threshold);
     }
 
-    // /// For position testing without output. TODO: rewrite this.
+    // /// For position testing without output.
+    // TODO: rewrite this.
     // pub fn give_best_move(self: *Engine, fen: []const u8, moves: []const u8, movetime: u32) !Move {
     //     if (self.is_busy()) return .empty;
     //     try self.ucinewgame();
@@ -360,7 +362,6 @@ pub const Searcher = struct {
     }
 
     fn iterate(self: *Searcher, comptime us: Color, pos: *const Position) void {
-        // Print some time info once (#experimental)
         // TODO: print some more info (non-debug just standard).
         // self.tm.print_info(pos.stm);
 
@@ -376,9 +377,6 @@ pub const Searcher = struct {
         var best_move_stability: u3 = 0;
         var eval_stability: u3 = 0;
         var iteration_timer: utils.Timer = .start();
-        //var last_iteration_times: [4]u64 = @splat(0);
-        //var last_prediction: u64 = 0;
-        //var prediction_correction: f64 = 1.0;
 
         // Statistics stuff.
         self.stats.non_terminal_nodes = 0;
@@ -435,9 +433,8 @@ pub const Searcher = struct {
             previous_best_move = best_move;
             previous_score = score;
 
-            // And print the info and pv.
+            // Gather and print the info and pv.
             const formatted_score: []const u8 = scoring.format_score(rootnode.score).slice();
-            //const cp: i32 = if (!scoring.is_drawscore(rootnode.score)) rootnode.score else 0;
             const non_terminal_used: u64 = self.stats.non_terminal_nodes - start_non_terminal;
             const beta_cutoffs_used: u64 = self.stats.beta_cutoffs - start_beta_cutoffs;
             const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
@@ -448,11 +445,7 @@ pub const Searcher = struct {
             const cps: u64 = funcs.nps(self.stats.search_calls, elapsed_nanos);
 
             if (!self.engine.mute) {
-                // TODO: because of the "Crazy Mate Scores Bug or Feature" we display no mate in X (yet).
                 io.print_buffered(
-                    // "info depth {} seldepth {} score cp {} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
-                    // .{ self.stats.rootdepth, self.stats.seldepth, cp, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
-
                     "info depth {} seldepth {} score {s} nodes {} qnodes {}% time {} nps {} cps {} eff {}% pv",
                     .{ self.stats.rootdepth, self.stats.seldepth, formatted_score, self.stats.nodes, qnodes, ms, nps, cps, search_efficiency }
                 );
@@ -461,17 +454,11 @@ pub const Searcher = struct {
                     io.print_buffered(" ", .{});
                     move.print_buffered(pos.is_960);
                 }
-                io.print("\n", .{}); // also flushes.
-                //io.print_buffered("\n", .{});
-                //io.flush();
+                io.print("\n", .{}); // Also flushes.
             }
 
-            // Keep track of iteration times.
+            // Keep track of iteration time.
             const iter_time: u64 = iteration_timer.read();
-            // inline for (1..4) |i| {
-            //     last_iteration_times[i - 1] = last_iteration_times[i];
-            // }
-            // last_iteration_times[3] = iter_time;
 
             // When clockmode update the optimal time to spend and check if we can stop.
             // Addionally check if there is time for a next iteration.
@@ -485,43 +472,12 @@ pub const Searcher = struct {
                 }
 
                 // Try to estimate if we have time left for another iteration.
-                // This is very unpredictable (the times are very spiky) but at least it does something.
+                // This is very unpredictable (the times can be very spiky) but at least it does something.
                 const next_cost: u64 = funcs.fmul(iter_time, 1.20);
                 if (elapsed_nanos + next_cost >= self.tm.max_endtime) {
                     self.stopped = true;
                     break :iterationloop;
                 }
-
-                // inline for (0..4) |i| {
-                //     io.print_buffered("[{}] ", .{ last_iteration_times[i] / 1_000_000});
-                // }
-                // io.print("\n", .{});
-                // const ema: u64 =
-                //     last_iteration_times[0] * 1 / 10 +
-                //     last_iteration_times[1] * 2 / 10 +
-                //     last_iteration_times[2] * 3 / 10 +
-                //     last_iteration_times[3] * 4 / 10;
-                // const remaining: u64 = self.tm.max_endtime - elapsed_nanos;
-                // //const predicted = @max(ema * 2, iter_time * 2);
-                // //const next_cost: u64 = @min(predicted, remaining / 2);
-                // const next_cost: u64 = @min(ema * 2, remaining / 2);
-                // //prediction_correction = funcs.float64(iter_time) / funcs.float64(last_prediction);
-                // if (last_prediction >= iter_time) {
-                //     io.print("err +{}\n", .{ (last_prediction - iter_time) / 1_000_000 });
-                // }
-                // else {
-                //     io.print("err -{}\n", .{ (iter_time - last_prediction) / 1_000_000 });
-                // }
-
-                // last_prediction = next_cost;
-
-                // io.print("max {} opt {} rem {} nextcost {}\n", .{ self.tm.max_ms, (self.tm.opt_endtime - self.tm.started) / 1_000_000,  remaining / 1_000_000, next_cost / 1_000_000 });
-
-                // if (elapsed_nanos + next_cost >= self.tm.max_endtime) {
-                //     io.print("no time for next it", .{});
-                //     self.stopped = true;
-                //     break :iterationloop;
-                // }
             }
         } // (iterationloop)
 
@@ -1044,7 +1000,6 @@ pub const Searcher = struct {
         // Comptimes.
         const them = comptime us.opp();
         const is_pvs: bool = comptime mode == .pv;
-        // TODO: do we need to clamp alpha beta like in search?
 
         const ply: u16 = node.ply;
         self.stats.search_calls +%= 1;
@@ -1074,6 +1029,7 @@ pub const Searcher = struct {
         const is_check: bool = pos.checkmask > 0;
         const tt_depth: i32 = @intFromBool(is_check);
 
+        // TODO: should we dtm clamp here too?
         var alpha: i32 = input_alpha;
         const beta: i32 = input_beta;
 

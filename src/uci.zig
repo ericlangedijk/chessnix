@@ -19,7 +19,7 @@ const Tokenizer = std.mem.TokenIterator(u8, .scalar);
 
 const ctx = lib.ctx;
 const io = lib.io;
-const eql = funcs.eql;
+const eql = funcs.eql; // TODO: make ascii case-insensitive.
 const wtf = lib.wtf;
 
 var engine: *Engine = undefined;
@@ -172,7 +172,7 @@ const UCI = struct {
             try engine.apply_hash_size();
         }
         else if (eql(name, "UCI_Chess960")) {
-            const v: bool = std.mem.eql(u8, value, "true"); // TODO: use local eql
+            const v: bool = eql(value, "true");
             engine.options.set_chess_960(v);
         }
     }

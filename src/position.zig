@@ -123,8 +123,8 @@ pub const Material = struct {
         return @bitCast(self.counts[us.u]);
     }
 
-    pub fn decode_both(self: Material, winner: Color, loser: Color) u96 {
-        return encode_96(self.decode_side(winner), self.decode_side(loser));
+    pub fn decode_both(self: Material, first: Color, second: Color) u96 {
+        return encode_96(self.decode_side(first), self.decode_side(second));
     }
 };
 
@@ -760,10 +760,7 @@ pub const Position = struct {
         return self.pins_diagonal | self.pins_orthogonal;
     }
 
-    pub fn is_draw_by_insufficient_material(self: *const Position) bool {
-
-        // TODO: rewrite using material. (should be faster)
-
+    pub fn is_draw_by_insufficient_material_deprecated(self: *const Position) bool {
         const us: Color = Color.WHITE;
         const them: Color = Color.BLACK;
 
@@ -805,6 +802,46 @@ pub const Position = struct {
             if (same_color) return true;
         }
 
+        return false;
+    }
+
+    pub fn is_draw_by_insufficient_material(self: *const Position) bool {
+        const us: Color = Color.WHITE;
+        const them: Color = Color.BLACK;
+
+        // Queens rooks or pawns: no draw
+        if (self.all_queens_rooks() | self.all_pawns() != 0) {
+            return false;
+        }
+
+        // Only kings: draw
+        if (self.all_kings() == self.all()) {
+            return true;
+        }
+
+        const our_minor_count: u8 = self.minor_count(us);
+        const their_minor_count: u8 = self.minor_count(them);
+
+        if (our_minor_count > 1 or their_minor_count > 1) {
+            return false;
+        }
+
+        // Only king on one side and 1 minor piece on the other: draw
+        const K: u48 = comptime Material.encode_48(0, 0, 0, 0, 0);
+        if (
+            (their_minor_count == 1 and self.material.decode_side(us) == K) or
+            (our_minor_count == 1 and self.material.decode_side(them) == K)
+        ) {
+            return true;
+        }
+
+        // Kings with bishops on the same color: draw
+        if (self.all_knights() == 0) {
+            const same_color = ((self.bishops(us) & bitboards.bb_black_squares) == 0) == ((self.bishops(them) & bitboards.bb_black_squares) == 0);
+            if (same_color) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -1835,7 +1872,7 @@ pub const Position = struct {
         return true;
     }
 
-    /// Paranoid only. TODO: also make a validation for during UCI
+    /// Paranoid only.
     pub fn assert_pos_ok(self: *const Position, ex: ExtMove) void {
         lib.not_in_release();
 

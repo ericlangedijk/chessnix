@@ -12,6 +12,7 @@ const position = @import("position.zig");
 const popcnt = funcs.popcnt;
 const first_square = funcs.first_square;
 const fmul = funcs.fmul;
+const m48 = Material.encode_48;
 const m96 = Material.encode_96;
 
 const Color = types.Color;
@@ -226,22 +227,22 @@ const kbn_mating = struct {
     }
 };
 
-const K: u48 = Material.encode_48(0, 0, 0, 0, 0);
+const K: u48 = m48(0, 0, 0, 0, 0);
 
-const KP: u48 = Material.encode_48(1, 0, 0, 0, 0);
-const KN: u48 = Material.encode_48(0, 1, 0, 0, 0);
-const KB: u48 = Material.encode_48(0, 0, 1, 0, 0);
-const KR: u48 = Material.encode_48(0, 0, 0, 1, 0);
-const KQ: u48 = Material.encode_48(0, 0, 0, 0, 1);
+const KP: u48 = m48(1, 0, 0, 0, 0);
+const KN: u48 = m48(0, 1, 0, 0, 0);
+const KB: u48 = m48(0, 0, 1, 0, 0);
+const KR: u48 = m48(0, 0, 0, 1, 0);
+const KQ: u48 = m48(0, 0, 0, 0, 1);
 
-const KPP: u48 = Material.encode_48(2, 0, 0, 0, 0);
-const KNN: u48 = Material.encode_48(0, 2, 0, 0, 0);
-const KBN: u48 = Material.encode_48(0, 1, 1, 0, 0);
-const KBB: u48 = Material.encode_48(0, 0, 2, 0, 0);
-const KRR: u48 = Material.encode_48(0, 0, 0, 2, 0);
-const KRP: u48 = Material.encode_48(1, 0, 0, 1, 0);
-const KQP: u48 = Material.encode_48(1, 0, 0, 0, 1);
+const KPP: u48 = m48(2, 0, 0, 0, 0);
+const KNN: u48 = m48(0, 2, 0, 0, 0);
+const KBN: u48 = m48(0, 1, 1, 0, 0);
+const KBB: u48 = m48(0, 0, 2, 0, 0);
+const KRR: u48 = m48(0, 0, 0, 2, 0);
+const KRP: u48 = m48(1, 0, 0, 1, 0);
+const KQP: u48 = m48(1, 0, 0, 0, 1);
 
-const KRPP: u48 = Material.encode_48(2, 0, 0, 1, 0);
-const KRRP: u48 = Material.encode_48(1, 0, 0, 2, 0);
-const KQPP: u48 = Material.encode_48(2, 0, 0, 0, 1);
+const KRPP: u48 = m48(2, 0, 0, 1, 0);
+const KRRP: u48 = m48(1, 0, 0, 2, 0);
+const KQPP: u48 = m48(2, 0, 0, 0, 1);
