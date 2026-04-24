@@ -13,13 +13,13 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - chessnix is a windows 64 bits exe for modern computers.
 - chessnix_bot can be played against on lichess.org.
 
-## Version 1.5 Work In Progress...
+## Version 1.5 Future...
 - Prepare for Zig 0.16.0.
 
 ## Version 1.4
 - Compiler: Zig 0.15.2.
 - Stronger: Optimistic estimation: ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
-- Added: Evaluation: knight outpost refinement, bishop on long diagonal.
+- Added: Evaluation: knight outpost refinement, bishop on long diagonal, experimental bishop-pawn score.
 - Added: Endgame scaling to guide the search.
 - Added: KBN_K mating logic.
 - Added: Experimental draw avoiding behaviour.

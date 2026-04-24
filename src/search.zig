@@ -1134,7 +1134,8 @@ pub const Searcher = struct {
         // return @divFloor(eval * (400 - r), 400);
     }
 
-    /// Applies a little 'draw avoiding behaviour'.
+    /// Applies a little experimental 'avoid boring draw' behaviour. Note the -3 must logically 'match' the drawscore mathematically.
+    /// #ExperimentalContempt
     fn drawscore(self: *const Searcher, pos: *const Position) i32 {
         const contempt: i32 = if (pos.stm.e == self.chessnix.e) -3 else 0;
         return scoring.drawscore(self.stats.nodes) + contempt;

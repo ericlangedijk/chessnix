@@ -760,51 +760,6 @@ pub const Position = struct {
         return self.pins_diagonal | self.pins_orthogonal;
     }
 
-    pub fn is_draw_by_insufficient_material_deprecated(self: *const Position) bool {
-        const us: Color = Color.WHITE;
-        const them: Color = Color.BLACK;
-
-        // Queens rooks or pawns: no draw
-        if (self.all_queens_rooks() | self.all_pawns() != 0) {
-            return false;
-        }
-
-        // Only kings: draw
-        if (self.all_kings() == self.all()) {
-            return true;
-        }
-
-        const our_knights: u64 = self.knights(us);
-        const their_knights: u64 = self.knights(them);
-
-        const our_bishops: u64 = self.bishops(us);
-        const their_bishops: u64 = self.bishops(them);
-
-        const their_minors: u64 = their_knights | their_bishops;
-        const our_minors: u64 = our_knights | our_bishops;
-
-        // More than 1 minor piece on either side: no draw
-        if (popcnt(our_minors) > 1 or popcnt(their_minors) > 1) {
-            return false;
-        }
-
-        // Only king on one side and 1 minor piece on the other: draw
-        if (
-            (their_minors != 0 and self.by_color(us) & ~self.kings(us) == 0) or
-            (our_minors != 0 and self.by_color(them) & ~self.kings(them) == 0)
-        ) {
-            return true;
-        }
-
-        // King + bishop vs king + bishop on same color: draw
-        if (popcnt(our_bishops) == 1 and popcnt(their_bishops) == 1) {
-            const same_color = ((our_bishops & bitboards.bb_black_squares) == 0) == ((their_bishops & bitboards.bb_black_squares) == 0);
-            if (same_color) return true;
-        }
-
-        return false;
-    }
-
     pub fn is_draw_by_insufficient_material(self: *const Position) bool {
         const us: Color = Color.WHITE;
         const them: Color = Color.BLACK;

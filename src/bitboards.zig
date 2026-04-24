@@ -65,6 +65,7 @@ pub const bb_corners: u64 = bb_a1 | bb_h1 | bb_a8 | bb_h8;
 
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
+pub const colored_bitboards: [2]u64 = .{ bb_white_squares, bb_black_squares }; // #testing
 
 // rank and file indexes
 pub const rank_1 : u3 = 0;
