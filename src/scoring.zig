@@ -9,24 +9,22 @@ const utils = @import("utils.zig");
 
 const assert = std.debug.assert;
 
-// -32002 : null
-// -32000 : infinity, alpha limit
-// -30000 : mate
-// -29872 : mate in 128
-// ______ : gray area
-// -21001 : absolute lost
-// -24000 : limit eval after scaling
-// -12000 : limit eval before scaling
-//     -1 : draw
-//      0 : draw
-//      1 : draw
-// +12000 : limit eval before scaling
-// +24000 : limit eval after scaling
-// ______ : gray area
-// 240001 : absolute win
-// +29872 : mate in 128
-// +30000 : mate
-// +32000 : infinity, beta limit
+// -32002: null
+// -32000: infinity, alpha limit
+// -30000: mate
+// -29872: mate in 128
+// ______: gray area
+// -24000: limit eval after scaling
+// -12000: limit eval before scaling
+//     -1: draw
+//      0: draw
+//      1: draw
+// +12000: limit eval before scaling
+// +24000: limit eval after scaling
+// ______: gray area
+// +29872: mate in 128
+// +30000: mate
+// +32000: infinity, beta limit
 
 const max_search_depth = types.max_search_depth;
 

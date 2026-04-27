@@ -63,6 +63,7 @@ pub fn scale(pos: *const Position, eval: i32) f32 {
             }
         }
     }
+
     if (is_opposite_colored_bishops_only_endgame(pos)) {
         result *= base_scale.drawish;
     }
@@ -70,7 +71,7 @@ pub fn scale(pos: *const Position, eval: i32) f32 {
 }
 
 fn is_drawish(static_eval: i32) bool {
-    return @abs(static_eval) <= 8;
+    return @abs(static_eval) <= 7;
 }
 
 /// Sum piece values, not counting pawns.
@@ -104,7 +105,7 @@ fn scale_maybe_mate(pos: *const Position, winner: Color, loser: Color) f32 {
     return switch (m) {
         K, KN, KB => 0.00,
         KNN => 0.01,
-        KBN => kbn_mating.scale(pos, winner, loser), // scale_kbn_mate(pos, winner, loser),
+        KBN => kbn_mating.scale(pos, winner, loser),
         else => def_mating.scale(pos, winner, loser),
     };
 }
@@ -137,6 +138,8 @@ fn scale_pawnless(pos: *const Position, winner: Color, loser: Color, material_di
         m96(KBB, KN)  => base_scale.winning, // 300
         m96(KRR, KNN) => base_scale.winning, // 400
         m96(KRR, KBB) => base_scale.drawish, // 400
+        m96(KRB, KR)  => base_scale.drawish, // 300
+        m96(KRN, KR)  => base_scale.drawish, // 300
         else => null,
     };
 }
@@ -240,6 +243,8 @@ const KNN: u48 = m48(0, 2, 0, 0, 0);
 const KBN: u48 = m48(0, 1, 1, 0, 0);
 const KBB: u48 = m48(0, 0, 2, 0, 0);
 const KRR: u48 = m48(0, 0, 0, 2, 0);
+const KRB: u48 = m48(0, 0, 1, 1, 0);
+const KRN: u48 = m48(0, 1, 0, 1, 0);
 const KRP: u48 = m48(1, 0, 0, 1, 0);
 const KQP: u48 = m48(1, 0, 0, 0, 1);
 

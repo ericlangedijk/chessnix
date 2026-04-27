@@ -312,8 +312,11 @@ pub const Evaluator = struct {
         const them: Color = comptime us.opp();
         const pos: *const Position = self.pos;
         const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
-        var our_bishops: u64 = pos.bishops(us);
+        // const pawns_on_color_ratio: [2]f32 = self.get_pawns_on_color_ratio(us);
+
         var score: ScorePair = .empty;
+        var our_bishops: u64 = pos.bishops(us);
+        var bishop_nr: u8 = 0;
 
         // Bishop pair.
         if ((our_bishops & bitboards.bb_black_squares != 0) and (our_bishops & bitboards.bb_white_squares != 0)) {
@@ -321,6 +324,7 @@ pub const Evaluator = struct {
         }
 
         while (bitloop(&our_bishops)) |sq| {
+            bishop_nr += 1;
             const relative_sq: Square = sq.relative(us);
 
             // Psqt.
@@ -335,14 +339,6 @@ pub const Evaluator = struct {
             // Bishop on long diagonal.
             if (popcnt(moves & bitboards.bb_center_4) > 1) {
                 score.inc(terms.bishop_long_diagonal);
-            }
-
-            // Good or bad bishop. #ExperimentalBishopScore.
-            if (self.has_pawns[us.u]) {
-                const wp: i32 = popcnt(self.pos.pawns(us) & bitboards.colored_bitboards[Color.WHITE.u]);
-                const bp: i32 = popcnt(self.pos.pawns(us) & bitboards.colored_bitboards[Color.BLACK.u]);
-                const idx: usize = if (sq.color().e == .white) @intCast(bp - wp + 8) else @intCast(wp - bp + 8);
-                score.inc(terms.bishop_pawns[idx]);
             }
 
             // Update attacks.

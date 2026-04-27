@@ -827,10 +827,6 @@ pub const ScorePair = struct {
         return .{ .mg = self.mg * m, .eg = self.eg * m };
     }
 
-    pub fn div(self: ScorePair, d: u8) ScorePair {
-        return .{ .mg = @divFloor(self.mg, d), .eg = @divFloor(self.eg, d) };
-    }
-
     pub fn fmul(self: ScorePair, factor: f32) ScorePair {
         return .{ .mg = funcs.fmul(self.mg, factor), .eg = funcs.fmul(self.eg, factor)};
     }
@@ -852,6 +848,7 @@ pub const ParsingError = error {
 
 // --- Constants ---
 pub const megabyte: usize = 1024 * 1024;
+
 /// This is how far we go.
 pub const max_game_length: usize = 1024;
 /// The absoluta maximum number of moves in a position.
@@ -906,3 +903,22 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const eg: i32 = score.eg;
     return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
+
+// pub fn phase_factor(phase: u8) f32 {
+//     const ph: f32 = @floatFromInt(@min(max_phase, phase));
+//     const max: f32 = @floatFromInt(max_phase);
+//     return ph / max;
+// }
+
+
+// const kbn_white_distances: [64]u8 = .{
+//     0, 1, 2, 3, 3, 2, 1, 0, // rank 1
+//     1, 2, 3, 4, 4, 3, 2, 1,
+//     2, 3, 4, 5, 5, 4, 3, 2,
+//     3, 4, 5, 6, 6, 5, 4, 3,
+//     3, 4, 5, 6, 6, 5, 4, 3,
+//     2, 3, 4, 5, 5, 4, 3, 2,
+//     1, 2, 3, 4, 4, 3, 2, 1,
+//     0, 1, 2, 3, 3, 2, 1, 0
+// };
+

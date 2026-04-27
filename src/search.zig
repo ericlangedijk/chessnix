@@ -338,8 +338,7 @@ pub const Searcher = struct {
     }
 
     fn iterate(self: *Searcher, comptime us: Color, pos: *const Position) void {
-        // TODO: print some more info (non-debug just standard).
-        // self.tm.print_info(pos.stm);
+        // TODO: print some more info before we go.
 
         // const only_one_move: bool = self.engine.rootmoves.count == 1;
         const rootnode: *Node = &self.nodes[0];
@@ -556,7 +555,7 @@ pub const Searcher = struct {
         // Adjust window.
         if (!is_root) {
             if (pos.is_draw_by_insufficient_material() or self.is_draw_by_repetition_or_rule50(pos)) {
-                return self.drawscore(pos);
+                return self.drawscore();
             }
 
             const worst_possible: i32 = -mate + ply;
@@ -578,8 +577,8 @@ pub const Searcher = struct {
         const is_singular_extension: bool = !node.excluded_tt_move.is_empty();
 
         // TT Probe.
-        const tt_entry: tt.Entry = self.transpositiontable.probe(pos.key, ply);
-        // Remember that tt_hit can be true just hitting a raw static eval. Don't trust it blindly.
+        const tt_entry: tt.Entry = self.transpositiontable.probe(pos.key, ply); // TODO: use the if check and if !is_singular_extension smarter
+        // Remember that tt_hit can be true just hitting a raw static eval. Don't trust it.
         const tt_hit: bool = !is_singular_extension and !tt_entry.is_empty();
         const tt_move: Move = if (tt_hit) tt_entry.move else .empty;
 
@@ -593,7 +592,6 @@ pub const Searcher = struct {
         var reduction: i32 = 0;
         var raw_static_eval: i32 = null_score;
         var corrected_raw_static_eval: i32 = null_score;
-        var is_tt_eval: bool = false;
 
         node.static_eval = null_score;
         node.eval = null_score;
@@ -616,7 +614,6 @@ pub const Searcher = struct {
             // Use TT score as a better eval.
             // #CrazyMateScores
             if (tt_hit and tt_entry.is_score_usable_as_eval(node.static_eval)) {
-                is_tt_eval = true;
                 node.eval = tt_entry.score;
             }
             else {
@@ -670,7 +667,7 @@ pub const Searcher = struct {
             // Razoring: alpha pruning.
             const depth_3 = @max(0, depth - 3);
             if (node.static_eval + tuned.razor_base + depth * tuned.razor_mult + depth_3 * depth_3 * tuned.razor_quad <= alpha) {
-                const r_score = if (is_tt_eval) node.eval else self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
+                const r_score = self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
                 if (self.stopped) {
                     return 0;
                 }
@@ -994,7 +991,7 @@ pub const Searcher = struct {
 
         // Forced draw?
         if (pos.is_draw_by_insufficient_material() or self.is_draw_by_repetition_or_rule50(pos)) {
-            return self.drawscore(pos);
+            return self.drawscore();
         }
 
         // Check timeout at the start only. At the callsites just read the stopped value.
@@ -1107,9 +1104,9 @@ pub const Searcher = struct {
     }
 
     /// Pull the TT entry of the position into the cpu cache. Memory access speedup.
-    /// * Assumes the move is not yet done on the board.
-    /// * For a null move pass an empty move.
-    /// * Apparently - and amazingly - this is best done early in the move-loop.
+    /// Assumes the move is not yet done on the board.
+    /// For a null move pass an empty move.
+    /// Apparently - and amazingly - this is best done early in the move-loop.
     fn prefetch(self: *const Searcher, comptime us: Color, pos: *const Position, ex: ExtMove) void {
         const k: u64 = pos.predict_key(us, ex);
         @prefetch(self.transpositiontable.hash.get(k), .{});
@@ -1134,11 +1131,9 @@ pub const Searcher = struct {
         // return @divFloor(eval * (400 - r), 400);
     }
 
-    /// Applies a little experimental 'avoid boring draw' behaviour. Note the -3 must logically 'match' the drawscore mathematically.
-    /// #ExperimentalContempt
-    fn drawscore(self: *const Searcher, pos: *const Position) i32 {
-        const contempt: i32 = if (pos.stm.e == self.chessnix.e) -3 else 0;
-        return scoring.drawscore(self.stats.nodes) + contempt;
+    /// Applies a little 'draw avoiding behaviour'.
+    fn drawscore(self: *const Searcher) i32 {
+        return scoring.drawscore(self.stats.nodes);
     }
 
     fn do_move(self: *Searcher, pos: *const Position, comptime us: Color, ex: ExtMove) Position {
