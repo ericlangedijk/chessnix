@@ -59,8 +59,6 @@ pub const TimeManager = struct {
         .opt_movetime_base = 0,
         .max_nodes = 0,
         .max_depth = 0,
-        .mtg = 0,
-        .max_ms = 0,
     };
 
     /// Assumes the go argument is sanitized after parsing (no negative numbers), so we can safely cast ints.
