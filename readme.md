@@ -14,12 +14,12 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - chessnix_bot can be played against on lichess.org.
 
 ## Version 1.5 Future...
-- Prepare for Zig 0.16.0.
+- Prepare for next Zig version.
 
 ## Version 1.4
 - Compiler: Zig 0.15.2.
-- Stronger: Optimistic estimation: ~3300 ELO (blitz ~3350). ELO will be updated here after release and CCRL results.
-- Added: Evaluation: knight outpost refinement, bishop on long diagonal, experimental bishop-pawn score.
+- Stronger: Optimistic estimation: ~3300 ELO (blitz ~3350).
+- Added: Evaluation: knight outpost refinement, bishop on long diagonal.
 - Added: Endgame scaling to guide the search.
 - Added: KBN_K mating logic.
 - Added: Experimental draw avoiding behaviour.
@@ -33,6 +33,7 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - Changed: Mate scores (in whole moves) in uci output. Not sure yet if I like it.
 - Removed: Reward or punish captures in quiescence search.
 - Removed: Code that we do not need (yagni).
+- Failed experiments: Bad bishop eval, draw avoiding behaviour.
 - Bug solved: Terrible one: qsearch comparing a zero score with TT score instead of the eval.
 - Bug solved: Parsing negative time.
 - Refactors: Attempt to centralize all scoring logic in scoring.zig, hce terms in 1 struct, most search vars in 1 struct.
