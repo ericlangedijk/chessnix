@@ -71,7 +71,7 @@ pub fn scale(pos: *const Position, eval: i32) f32 {
 }
 
 fn is_drawish(static_eval: i32) bool {
-    return @abs(static_eval) <= 7;
+    return @abs(static_eval) <= 3;
 }
 
 /// Sum piece values, not counting pawns.
