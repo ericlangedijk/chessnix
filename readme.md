@@ -18,7 +18,7 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 
 ## Version 1.4
 - Compiler: Zig 0.15.2.
-- Stronger: ~3351 ELO on CCRL (blitz not yet known).
+- Stronger: ~3351 ELO on CCRL (blitz ~3382).
 - Added: Evaluation: knight outpost refinement, bishop on long diagonal.
 - Added: Endgame scaling to guide the search.
 - Added: KBN_K mating logic.
