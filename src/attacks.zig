@@ -349,35 +349,6 @@ fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     };
 }
 
-/// Not used anymore. TODO: remove
-/// A little speedup for combined attacks. We only need to calculate the offset once.
-fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, occ: u64) u64 {
-    const offset: u64 = sq.idx() * 64;
-    var result: u64 = 0;
-
-    inline for (orientations) |ori| {
-        switch (ori) {
-            .horizontal => {
-                const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= rank_attacks[offset + raw];
-            },
-            .vertical => {
-                const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= file_attacks[offset + raw];
-            },
-            .diagmain => {
-                const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= diag_main_attacks[offset + raw];
-            },
-            .diaganti => {
-                const raw: u64 = attack_index_of(ori, sq, occ);
-                result |= diag_anti_attacks[offset + raw];
-            },
-        }
-    }
-    return result;
-}
-
 fn slider_attacks_of(comptime piecetype: PieceType, sq: Square, occ: u64) u64 {
     // We only need to calculate this offset once.
     const offset: u64 = sq.idx() * 64;

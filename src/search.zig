@@ -325,7 +325,7 @@ pub const Searcher = struct {
 
     fn go(self: *Searcher) void {
         // Backlink stuff from engine.
-        self.engine = @alignCast(@fieldParentPtr("searcher", self)); // TODO: check this out
+        self.engine = @alignCast(@fieldParentPtr("searcher", self));
         self.transpositiontable = &self.engine.transpositiontable;
         self.tm = &self.engine.tm;
 

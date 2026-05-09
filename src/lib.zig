@@ -41,7 +41,7 @@ pub const program: Program =
     //.lichess_tool;
     //.tuner;
 pub const version = "2.0";
-pub const builddate = "2026-05-05";
+pub const builddate = "2026-05-09";
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 pub const is_debug: bool = builtin.mode == .Debug;

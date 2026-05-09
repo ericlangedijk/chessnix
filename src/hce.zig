@@ -326,7 +326,7 @@ pub const Evaluator = struct {
     fn eval_bishops(self: *Self, comptime us: Color) ScorePair {
         const them: Color = comptime us.opp();
         const pos: *const Position = self.pos;
-        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
+        const mobility_mask: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
 
         var score: ScorePair = .empty;
         var our_bishops: u64 = pos.bishops(us);
@@ -345,7 +345,7 @@ pub const Evaluator = struct {
             score.hce_inc(us, &terms.piece_square_table[PieceType.bishop.u][relative_sq.u]);
 
             // Mobility.
-            const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, occ));
+            const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, mobility_mask));
             const mobility: u64 = moves & self.mobility_areas[us.u];
             const mobility_cnt: u7 = popcnt(mobility);
             score.hce_inc(us, &terms.bishop_mobility_table[mobility_cnt]);
@@ -380,7 +380,7 @@ pub const Evaluator = struct {
         const pos: *const Position = self.pos;
         const our_pawns: u64 = pos.pawns(us);
         const their_pawns: u64 = pos.pawns(them);
-        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
+        const mobility_mask: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
 
         var score: ScorePair = .empty;
         var our_rooks: u64 = pos.rooks(us);
@@ -392,7 +392,7 @@ pub const Evaluator = struct {
             score.hce_inc(us, &terms.piece_square_table[PieceType.rook.u][relative_sq.u]);
 
             // Mobility.
-            const legal_moves: u64 = self.legalize_moves(PieceType.rook, us, sq, attacks.get_rook_attacks(sq, occ));
+            const legal_moves: u64 = self.legalize_moves(PieceType.rook, us, sq, attacks.get_rook_attacks(sq, mobility_mask));
             const mobility: u64 = legal_moves & self.mobility_areas[us.u];
             const cnt: u7 = popcnt(mobility);
             score.hce_inc(us, &terms.rook_mobility_table[cnt]);
@@ -424,7 +424,7 @@ pub const Evaluator = struct {
         var score: ScorePair = .empty;
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
-        const mobility_mask = pos.all() ^ pos.bishops(us) ^ pos.rooks(us); // TODO: rename in the other fuctions too
+        const mobility_mask = pos.all() ^ pos.bishops(us) ^ pos.rooks(us);
 
         var our_queens: u64 = pos.queens(us);
         while (bitloop(&our_queens)) |sq| {

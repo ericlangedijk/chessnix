@@ -15,9 +15,6 @@ pub fn main(init: std.process.Init) !void {
        try @import("tests.zig").run_silent_debugmode_tests();
     }
 
-    // const i = 42;
-    // const x = @intFromFloat(i);
-
     switch (lib.program) {
         .uci_engine => {
             uci.run();
