@@ -5,6 +5,7 @@
 /src/.zig-cache
 /src/tools
 /src/tests
+/src/tuner.zig
 testdata
 main.exe
 main.pdb

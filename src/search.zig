@@ -143,6 +143,10 @@ pub const Engine = struct {
             return;
         }
         try self.pos.set(fen, self.options.is_960);
+
+        // #testing 960 shit.
+        //self.options.is_960 = self.pos.is_960;
+
         self.repetition_table[0] = self.pos.key;
         if (moves) |m| {
             self.parse_moves(m);
@@ -155,7 +159,14 @@ pub const Engine = struct {
         var tokenizer = std.mem.tokenizeScalar(u8, moves, ' ');
         var idx: usize = 1;
         while (tokenizer.next()) |m| {
-            const ex: ExtMove = self.pos.parse_move(m) catch break;
+            //const ex: ExtMove = self.pos.parse_move(m) catch break;
+
+            // #testing 960 shit
+            const ex: ExtMove = self.pos.parse_move(m) catch {
+                // lib.io.print("info string illegal move {s}\n", .{ m });
+                break;
+            };
+
             self.pos.lazy_do_move(ex);
             self.repetition_table[idx] = self.pos.key;
             idx += 1;
@@ -292,7 +303,7 @@ pub const Searcher = struct {
             .nodes = create_nodes(),
             .nodes_spent = @splat(0),
             .hist = .init(),
-            .chessnix = Color.WHITE,
+            .chessnix = Color.white,
             .stopped = false,
             .stats = .empty,
         };
@@ -314,7 +325,7 @@ pub const Searcher = struct {
 
     fn go(self: *Searcher) void {
         // Backlink stuff from engine.
-        self.engine = @fieldParentPtr("searcher", self);
+        self.engine = @alignCast(@fieldParentPtr("searcher", self)); // TODO: check this out
         self.transpositiontable = &self.engine.transpositiontable;
         self.tm = &self.engine.tm;
 
@@ -331,9 +342,8 @@ pub const Searcher = struct {
         self.stats = .empty;
         self.nodes_spent = @splat(0);
 
-        switch (pos.stm.e) {
-            .white => self.iterate(Color.WHITE, &pos),
-            .black => self.iterate(Color.BLACK, &pos),
+        switch (pos.stm) {
+            inline else => |us| self.iterate(us, &pos)
         }
     }
 
@@ -644,7 +654,7 @@ pub const Searcher = struct {
 
             is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_complex_margin;
 
-            if (prevnode != null) {
+            if (!is_root and prevnode != null) { // TODO: checkout is_root icw nullable unwrap.
                 is_improving = node.static_eval > prevnode.?.static_eval;
                 is_opponent_worsening = parentnode.?.static_eval != null_score and node.static_eval + parentnode.?.static_eval > 1;
             }

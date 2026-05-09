@@ -30,7 +30,7 @@ pub fn scale(pos: *const Position, eval: i32) f32 {
         return 1.0;
     }
 
-    const winner: Color = if (eval > 0) Color.WHITE else Color.BLACK;
+    const winner: Color = if (eval > 0) Color.white else Color.black;
     const loser: Color = winner.opp();
     const winner_pawn_count: i32 = pos.pawn_count(winner);
 
@@ -89,9 +89,9 @@ fn is_opposite_colored_bishops_only_endgame(pos: *const Position) bool {
     const ocb: bool =
         pos.phase_by_color[0] == types.ph_minor and
         pos.phase_by_color[1] == types.ph_minor and
-        pos.bishop_count(Color.WHITE) == 1 and
-        pos.bishop_count(Color.BLACK) == 1 and
-        pos.bishop_square(Color.WHITE).color().e != pos.bishop_square(Color.BLACK).color().e;
+        pos.bishop_count(Color.white) == 1 and
+        pos.bishop_count(Color.black) == 1 and
+        pos.bishop_square(Color.white).color() != pos.bishop_square(Color.black).color();
     return ocb;
 }
 
@@ -223,9 +223,9 @@ const kbn_mating = struct {
     }
 
     fn cornering_idx(sq: Square, corner_color: Color) u8 {
-        return switch (corner_color.e) {
-            .white => white_squares[sq.u],
-            .black => black_squares[sq.u],
+        return switch (corner_color) {
+            Color.white => white_squares[sq.u],
+            Color.black => black_squares[sq.u],
         };
     }
 };

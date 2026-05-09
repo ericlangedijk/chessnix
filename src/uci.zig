@@ -34,7 +34,7 @@ pub fn run() void {
 fn uci_loop(is_tty: bool) !void {
     if (is_tty) {
         // Enable cls (clear screen) and maybe later some fancy coloring.
-        _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
+        //_ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
         TTY.print_hello();
     }
 

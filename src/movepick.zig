@@ -277,19 +277,19 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
                         const prom: PieceType = ex.move.promoted_to();
-                        switch (prom.e) {
-                            .queen => ex.score = Scores.promotion + 2000,
-                            .knight => ex.score = Scores.promotion + 1000,
-                            .bishop, .rook => ex.score = Scores.promotion,
+                        switch (prom) {
+                            PieceType.queen => ex.score = Scores.promotion + 2000,
+                            PieceType.knight => ex.score = Scores.promotion + 1000,
+                            PieceType.bishop, PieceType.rook => ex.score = Scores.promotion,
                             else => unreachable,
                         }
                     },
                     Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
                         const prom: PieceType = ex.move.promoted_to();
-                        switch (prom.e) {
-                            .queen => ex.score = Scores.promotion + 2000,
-                            .knight => ex.score = Scores.promotion + 1000,
-                            .bishop, .rook => ex.score = Scores.promotion,
+                        switch (prom) {
+                            PieceType.queen => ex.score = Scores.promotion + 2000,
+                            PieceType.knight => ex.score = Scores.promotion + 1000,
+                            PieceType.bishop, PieceType.rook => ex.score = Scores.promotion,
                             else => unreachable,
                         }
                         ex.score += hist.get_capture_score(ex.*);

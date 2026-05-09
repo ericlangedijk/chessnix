@@ -229,7 +229,7 @@ pub const ContinuationHistory = struct {
 
 /// Small entitities.
 pub const CorrectionHistory = struct {
-    const table_size: usize = 16384;
+    const table_size: usize = 16384; // #testing * 2
 
     /// Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
     pawn_table: [2][table_size]i16,
@@ -255,8 +255,8 @@ pub const CorrectionHistory = struct {
         const weight: i32 = @min(1 + depth, 16) * 2;
 
         const pawn_entry: *i16 = &self.pawn_table[us.u][pos.pawnkey % table_size];
-        const white_entry: *i16 = &self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
-        const black_entry: *i16 = &self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
+        const white_entry: *i16 = &self.white_table[us.u][pos.nonpawnkeys[Color.white.u] % table_size];
+        const black_entry: *i16 = &self.black_table[us.u][pos.nonpawnkeys[Color.black.u] % table_size];
         const minor_entry: *i16 = &self.minor_table[us.u][pos.minorkey % table_size];
         const major_entry: *i16 = &self.major_table[us.u][pos.majorkey % table_size];
 
@@ -270,8 +270,8 @@ pub const CorrectionHistory = struct {
     /// Returns a corrected static eval.
     pub fn apply(self: *const CorrectionHistory, comptime us: Color, pos: *const Position, static_eval: i32) i32 {
         const p: i32 = self.pawn_table[us.u][pos.pawnkey % table_size];
-        const w: i32 = self.white_table[us.u][pos.nonpawnkeys[Color.WHITE.u] % table_size];
-        const b: i32 = self.black_table[us.u][pos.nonpawnkeys[Color.BLACK.u] % table_size];
+        const w: i32 = self.white_table[us.u][pos.nonpawnkeys[Color.white.u] % table_size];
+        const b: i32 = self.black_table[us.u][pos.nonpawnkeys[Color.black.u] % table_size];
         const m1: i32 = self.minor_table[us.u][pos.minorkey % table_size];
         const m2: i32 = self.major_table[us.u][pos.majorkey % table_size];
 

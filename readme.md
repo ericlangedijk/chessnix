@@ -14,7 +14,12 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - chessnix_bot can be played against on lichess.org.
 
 ## Version 2.0 Work In Progress...
-- Re-tuning.
+- Compiler: Zig 0.16.0.
+- Changed: Ported to Zig 0.16.0. Pprobably we have to wait with a chessnix release for Zig 0.18.0 because of disabled loop vectorization.
+- Refactor: SCREAMING UPPERCASE const names
+- Refactor: Use of 'inline else' where possible.
+- TODO: Movegenerator is slower (loop vectorization gone).
+- TODO: Re-tuning and extending of hce terms.
 
 ## Version 1.4
 - Compiler: Zig 0.15.2.

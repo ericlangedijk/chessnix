@@ -18,16 +18,16 @@ const assert = std.debug.assert;
 
 const sliding_attacks: [8][64]u8 = compute_sliding_attackmasks();
 const file_magics: [64]MagicEntry = compute_file_magics();
-const main_magics: [64]MagicEntry = compute_diagmain_magics();
-const anti_magics: [64]MagicEntry = compute_diaganti_magics();
+const diag_main_magics: [64]MagicEntry = compute_diag_main_magics();
+const diag_anti_magics: [64]MagicEntry = compute_diag_anti_magics();
 const pawn_attacks_white: [64]u64 = compute_pawn_hits_white();
 const pawn_attacks_black: [64]u64 = compute_pawn_hits_black();
 const knight_attacks: [64]u64 = compute_knight_attacks();
 const king_attacks: [64]u64 = compute_king_attacks();
 const rank_attacks: [64 * 64]u64 = compute_rank_attacks();
 const file_attacks: [64 * 64]u64 = compute_file_attacks();
-const diag_main_attacks: [64 * 64]u64 = compute_diagmain_attacks();
-const diag_anti_attacks: [64 * 64]u64 = compute_diaganti_attacks();
+const diag_main_attacks: [64 * 64]u64 = compute_diag_main_attacks();
+const diag_anti_attacks: [64 * 64]u64 = compute_diag_anti_attacks();
 
 /// This mask is used internally for compressed index. The borders are not needed in the story.
 const occ_index_mask: u8 = 0b01111110;
@@ -85,7 +85,7 @@ fn compute_file_magics() [64]MagicEntry {
     return fm;
 }
 
-fn compute_diagmain_magics() [64]MagicEntry {
+fn compute_diag_main_magics() [64]MagicEntry {
     @setEvalBranchQuota(8000);
     const bb = @import("bitboards.zig");
     var dm: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
@@ -98,7 +98,7 @@ fn compute_diagmain_magics() [64]MagicEntry {
     return dm;
 }
 
-fn compute_diaganti_magics() [64]MagicEntry {
+fn compute_diag_anti_magics() [64]MagicEntry {
     @setEvalBranchQuota(8000);
     const bb = @import("bitboards.zig");
     var am: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
@@ -199,7 +199,7 @@ fn compute_file_attacks() [64 * 64]u64 {
     return fa;
 }
 
-fn compute_diagmain_attacks()[64 * 64]u64 {
+fn compute_diag_main_attacks()[64 * 64]u64 {
     @setEvalBranchQuota(264000);
     var dma: [64 * 64]u64 = @splat(0);
     for (Square.all) |sq| {
@@ -232,7 +232,7 @@ fn compute_diagmain_attacks()[64 * 64]u64 {
     return dma;
 }
 
-fn compute_diaganti_attacks()[64 * 64]u64 {
+fn compute_diag_anti_attacks()[64 * 64]u64 {
     @setEvalBranchQuota(264000);
     var daa: [64 * 64]u64 = @splat(0);
     for (Square.all) |sq| {
@@ -331,8 +331,8 @@ fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     return switch(ori) {
         .horizontal => ((occ >> (sq.u & 0b111000)) & occ_index_mask) >> 1,
         .vertical   => file_magics[sq.u].attack_index(occ),
-        .diagmain   => main_magics[sq.u].attack_index(occ),
-        .diaganti   => anti_magics[sq.u].attack_index(occ),
+        .diagmain   => diag_main_magics[sq.u].attack_index(occ),
+        .diaganti   => diag_anti_magics[sq.u].attack_index(occ),
     };
 }
 
@@ -349,6 +349,7 @@ fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
     };
 }
 
+/// Not used anymore. TODO: remove
 /// A little speedup for combined attacks. We only need to calculate the offset once.
 fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, occ: u64) u64 {
     const offset: u64 = sq.idx() * 64;
@@ -377,6 +378,29 @@ fn combined_attacks_of(comptime orientations: []const Orientation, sq: Square, o
     return result;
 }
 
+fn slider_attacks_of(comptime piecetype: PieceType, sq: Square, occ: u64) u64 {
+    // We only need to calculate this offset once.
+    const offset: u64 = sq.idx() * 64;
+
+    return switch (piecetype) {
+        PieceType.bishop =>
+            diag_main_attacks[offset + attack_index_of(.diagmain, sq, occ)] |
+            diag_anti_attacks[offset + attack_index_of(.diaganti, sq, occ)]
+        ,
+        PieceType.rook =>
+            rank_attacks[offset + attack_index_of(.horizontal, sq, occ)] |
+            file_attacks[offset + attack_index_of(.vertical, sq, occ)]
+        ,
+        PieceType.queen =>
+            rank_attacks[offset + attack_index_of(.horizontal, sq, occ)] |
+            file_attacks[offset + attack_index_of(.vertical, sq, occ)] |
+            diag_main_attacks[offset + attack_index_of(.diagmain, sq, occ)] |
+            diag_anti_attacks[offset + attack_index_of(.diaganti, sq, occ)]
+        ,
+        else => unreachable
+    };
+}
+
 pub fn get_rank_attacks(sq: Square, occ: u64) u64 {
     return attacks_of(.horizontal, sq, occ);
 }
@@ -394,9 +418,9 @@ pub fn get_diaganti_attacks(sq: Square, occ: u64) u64 {
 }
 
 pub fn get_pawn_attacks(sq: Square, comptime us: Color) u64 {
-    return switch(us.e) {
-        .white => pawn_attacks_white[sq.u],
-        .black => pawn_attacks_black[sq.u]
+    return switch(us) {
+        Color.white => pawn_attacks_white[sq.u],
+        Color.black => pawn_attacks_black[sq.u]
     };
 }
 
@@ -405,28 +429,28 @@ pub fn get_knight_attacks(sq: Square) u64 {
 }
 
 pub fn get_bishop_attacks(sq: Square, occ: u64) u64 {
-    return combined_attacks_of(&.{ .diagmain, .diaganti }, sq, occ);
+    return slider_attacks_of(PieceType.bishop, sq, occ);
 }
 
 pub fn get_rook_attacks(sq: Square, occ: u64) u64 {
-    return combined_attacks_of(&.{ .horizontal, .vertical }, sq, occ);
+    return slider_attacks_of(PieceType.rook, sq, occ);
 }
 
 pub fn get_queen_attacks(sq: Square, occ: u64) u64 {
-    return combined_attacks_of(&.{ .horizontal, .vertical, .diagmain, .diaganti }, sq, occ);
+    return slider_attacks_of(PieceType.queen, sq, occ);
 }
 
 pub fn get_king_attacks(sq: Square) u64 {
     return king_attacks[sq.u];
 }
 
-pub fn get_piece_attacks(sq: Square, occ: u64, pc: PieceType, comptime us: Color) u64 {
-    return switch (pc.e) {
-        .pawn => get_pawn_attacks(sq, us),
-        .knight => get_knight_attacks(sq),
-        .bishop => get_bishop_attacks(sq, occ),
-        .rook => get_rook_attacks(sq, occ),
-        .queen => get_queen_attacks(sq, occ),
-        .king => get_king_attacks(sq),
+pub fn get_piece_attacks(sq: Square, occ: u64, pt: PieceType, comptime us: Color) u64 {
+    return switch (pt) {
+        PieceType.pawn => get_pawn_attacks(sq, us),
+        PieceType.knight => get_knight_attacks(sq),
+        PieceType.bishop => get_bishop_attacks(sq, occ),
+        PieceType.rook => get_rook_attacks(sq, occ),
+        PieceType.queen => get_queen_attacks(sq, occ),
+        PieceType.king => get_king_attacks(sq),
     };
 }

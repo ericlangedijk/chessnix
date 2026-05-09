@@ -7,7 +7,11 @@ const types = @import("types.zig");
 const ScorePair = types.ScorePair;
 const pair = types.pair;
 
-pub const Terms = struct {
+pub const Terms = extern struct {  // #testing extern to guarantee order
+    // #testing tuner
+    //backward_pawn: [8]ScorePair,
+
+
     piece_value_table: [6]ScorePair,
     king_passed_pawn_distance_table: [8]ScorePair,
     enemy_king_passed_pawn_distance_table: [8]ScorePair,
@@ -39,11 +43,29 @@ pub const Terms = struct {
     pawn_push_threat_table: [13]ScorePair,
     safe_check_bonus: [6]ScorePair,
     piece_square_table: [6][64]ScorePair,
+
+
 };
 
-pub const terms: *const Terms = &default_terms;
+//pub const terms: *const Terms = &default_terms;
+
+//pub const ConstOrMutableTerms: type = if (!lib.is_tuning) *const Terms else *Terms;
+//pub const terms: ConstOrMutableTerms = &default_terms;
+
+pub const terms = if (lib.is_tuning) &mutable_terms else &default_terms;
+
+pub var mutable_terms: Terms = if (lib.is_tuning) default_terms else void;
 
 pub const default_terms: Terms = .{
+
+    // .backward_pawn = .{ // #testing
+    //   //pair(0, 0), pair(-8, -12), pair(-2, -14), pair(-7, -12), pair(1, -18), pair(32, -13), pair(0, 0), pair(0, 0), // sir
+    //     //pair(0, 0), pair(-4, -6),  pair(-1, -7),  pair(-3, -6),  pair(1, -9),  pair(16, -6),  pair(0, 0), pair(0, 0),
+    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+    // },
+
+
+
     .piece_value_table = .{
         pair(75, 141), pair(301, 321), pair(331, 356), pair(439, 612), pair(874, 1080), pair(0, 0),
     },
@@ -62,6 +84,7 @@ pub const default_terms: Terms = .{
 
     .passed_pawn_bonus = .{
         pair(0, 0), pair(-10, -74), pair(-10, -60), pair(-8, -28), pair(18, 7), pair(11, 75), pair(28, 86), pair(0, 0),
+      //pair(0, 0), pair(-6, -70), pair(-6, -56), pair(-4, -24), pair(12, 11), pair(15, 80), pair(32, 90), pair(0, 0), // #testing real passed pawn
     },
 
     .protected_pawn_bonus = .{

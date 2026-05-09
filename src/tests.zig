@@ -30,7 +30,7 @@ pub fn run_silent_debugmode_tests() !void {
     const perfts_960: usize = try run_perfts_960(3);
     const flips: usize = try test_flip();
     const time = timer.read();
-    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, (time {D})\n", .{ perfts, perfts_960, flips, time });
+    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, (time {})\n", .{ perfts, perfts_960, flips, time });  // TODO: how to format duration?
     //_ = try test_flipped_eval();
     // _ = try test_flipped_eval();
 }
