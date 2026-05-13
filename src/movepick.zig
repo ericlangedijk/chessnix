@@ -259,10 +259,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.is_bad_capture = !hce.see(pos, ex.move, 0);
                         if (ex.is_bad_capture) {
-                            ex.score = Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
+                            ex.score = Scores.bad_capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
                         }
                         else {
-                            ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
+                            ex.score = Scores.capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
                         }
                         ex.score += hist.get_capture_score(ex.*);
 
@@ -272,7 +272,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                     },
                     Move.ep => {
-                        ex.score = Scores.capture + ex.captured.value() * 101 - ex.piece.value() >> 3;
+                        ex.score = Scores.capture + ex.captured.see_value() * 101 - ex.piece.see_value() >> 3;
                         ex.score += hist.get_capture_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {

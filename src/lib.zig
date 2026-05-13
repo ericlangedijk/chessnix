@@ -14,7 +14,7 @@ pub fn initialize(io_init: std.Io) !void {
 }
 
 pub fn finalize() void {
-    @import("position.zig").finalize();
+    // @import("position.zig").finalize();
     memory_context.deinit();
 }
 

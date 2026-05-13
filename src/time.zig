@@ -130,14 +130,14 @@ pub const TimeManager = struct {
 
         // Calculate time caps.
         const optime: f64 = optscale * f_timeleft;
-        self.opt_movetime_base = @intFromFloat(optime);
+        self.opt_movetime_base = @trunc(optime);
         const max_factor: f64 = 0.60;
         var maxtime: f64 = max_factor * f_time - f_move_overhead;
         // If we only have one move, spend max 500 ms.
         if (one_mover) {
             maxtime = @min(500, maxtime);
         }
-        const max_movetime: u64 = @intFromFloat(maxtime);
+        const max_movetime: u64 = @trunc(maxtime);
         self.max_endtime = self.started + max_movetime * 1_000_000;
         self.opt_endtime = self.started + self.opt_movetime_base * 1_000_000;
     }
@@ -150,7 +150,7 @@ pub const TimeManager = struct {
         const eval_scaling_factor: f64 = eval_stability_scales[eval_stability];
         const base: f64 = @floatFromInt(self.opt_movetime_base);
         const opt: f64 = base * node_scaling_factor * best_move_scaling_factor * eval_scaling_factor;
-        const opt_move_time: u64 = @intFromFloat(opt);
+        const opt_move_time: u64 = @trunc(opt);
         self.opt_endtime = self.started + opt_move_time * 1_000_000;
     }
 

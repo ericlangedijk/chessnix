@@ -20,8 +20,7 @@ const sliding_attacks: [8][64]u8 = compute_sliding_attackmasks();
 const file_magics: [64]MagicEntry = compute_file_magics();
 const diag_main_magics: [64]MagicEntry = compute_diag_main_magics();
 const diag_anti_magics: [64]MagicEntry = compute_diag_anti_magics();
-const pawn_attacks_white: [64]u64 = compute_pawn_hits_white();
-const pawn_attacks_black: [64]u64 = compute_pawn_hits_black();
+const pawn_attacks: [64][2]u64 = compute_pawn_attacks();
 const knight_attacks: [64]u64 = compute_knight_attacks();
 const king_attacks: [64]u64 = compute_king_attacks();
 const rank_attacks: [64 * 64]u64 = compute_rank_attacks();
@@ -111,26 +110,17 @@ fn compute_diag_anti_magics() [64]MagicEntry {
     return am;
 }
 
-fn compute_pawn_hits_white() [64]u64 {
+fn compute_pawn_attacks() [64][2]u64 {
     @setEvalBranchQuota(8000);
-    var phw: [64]u64 = @splat(0);
+    var result: [64][2]u64 = @splat(@splat(0));
     for (Square.all) |sq| {
-        // Pawn hits. Fake pawnhits are calculated for the first and last rank (for pawn tricks).
-        if (sq.next(.north_east))|n| phw[sq.u] |= n.to_bitboard();
-        if (sq.next(.north_west))|n| phw[sq.u] |= n.to_bitboard();
+        // Pawn hits. Fake pawnhits are calculated for the first and last rank (for inversion tricks).
+        if (sq.next(.north_east))|n| result[sq.u][0] |= n.to_bitboard();
+        if (sq.next(.north_west))|n| result[sq.u][0] |= n.to_bitboard();
+        if (sq.next(.south_east))|n| result[sq.u][1] |= n.to_bitboard();
+        if (sq.next(.south_west))|n| result[sq.u][1] |= n.to_bitboard();
     }
-    return phw;
-}
-
-fn compute_pawn_hits_black() [64]u64 {
-    @setEvalBranchQuota(8000);
-    var phb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        // Pawn hits. Fake pawnhits are calculated for the first and last rank (for pawn tricks).
-        if (sq.next(.south_east))|n| phb[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_west))|n| phb[sq.u] |= n.to_bitboard();
-    }
-    return phb;
+    return result;
 }
 
 fn compute_knight_attacks() [64]u64 {
@@ -389,10 +379,7 @@ pub fn get_diaganti_attacks(sq: Square, occ: u64) u64 {
 }
 
 pub fn get_pawn_attacks(sq: Square, comptime us: Color) u64 {
-    return switch(us) {
-        Color.white => pawn_attacks_white[sq.u],
-        Color.black => pawn_attacks_black[sq.u]
-    };
+    return pawn_attacks[sq.u][us.u];
 }
 
 pub fn get_knight_attacks(sq: Square) u64 {
@@ -415,7 +402,7 @@ pub fn get_king_attacks(sq: Square) u64 {
     return king_attacks[sq.u];
 }
 
-pub fn get_piece_attacks(sq: Square, occ: u64, pt: PieceType, comptime us: Color) u64 {
+pub fn get_piece_attacks(sq: Square, occ: u64, comptime pt: PieceType, comptime us: Color) u64 {
     return switch (pt) {
         PieceType.pawn => get_pawn_attacks(sq, us),
         PieceType.knight => get_knight_attacks(sq),

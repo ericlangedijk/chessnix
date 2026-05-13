@@ -9,4 +9,6 @@ Bench results:
 - Total nodes: 18999768562 15.086s 1259.4035 Mnodes/s (1.259.403.529) - After removing state pointers.
 - Total nodes: 18999768562 14.022s 1354.9611 Mnodes/s (1.360.961.059) - After implementing a bitloop function (1.3).
 - Total nodes: 18999768562 13.780s 1378.7580 Mnodes/s (1.378.758.004) - After removing one or two fields from position (1.4).
+- Total nodes: 18999768562 26.255s  723.6474 Mnodes/s (723.647.365) - Zig 0.16.0
+
 

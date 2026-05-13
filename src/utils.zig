@@ -151,17 +151,17 @@ pub const TextFileWriter = struct {
     writer: std.Io.File.Writer,
 
     pub fn init(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
-        const file = try std.fs.createFileAbsolute(filename, .{});
+        const file = try std.Io.Dir.createFileAbsolute(lib.zio, filename, .{});
         const buf = try allocator.alloc(u8, buffer_size);
         return .{
             .allocator = allocator,
             .buffer = buf,
-            .writer = file.writer(buf),
+            .writer = file.writer(lib.zio, buf),
         };
     }
 
     pub fn init_cwd(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
-        const file = try std.fs.cwd().createFile(filename, .{ .lock_nonblocking = true });
+        const file = try std.Io.Dir.cwd().createFile(lib.zio, filename, .{ .lock_nonblocking = true });
         const buf = try allocator.alloc(u8, buffer_size);
         return .{
             .allocator = allocator,
@@ -172,7 +172,7 @@ pub const TextFileWriter = struct {
 
     pub fn deinit(self: *TextFileWriter) void {
         self.writer.interface.flush() catch {};
-        self.writer.file.close();
+        self.writer.file.close(lib.zio);
         self.allocator.free(self.buffer);
     }
 

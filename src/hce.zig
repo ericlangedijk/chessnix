@@ -107,9 +107,14 @@ pub const Evaluator = struct {
         self.pawn_storm_areas[1] = bitboards.king_pawnstorm_areas_black[self.king_squares[1].u];
 
         self.pawn_attacks = .{
-            funcs.pawns_shift(pos.pawns(Color.white), Color.white, .northwest) | funcs.pawns_shift(pos.pawns(Color.white), Color.white, .northeast),
-            funcs.pawns_shift(pos.pawns(Color.black), Color.black, .northwest) | funcs.pawns_shift(pos.pawns(Color.black), Color.black, .northeast),
+            funcs.pawns_attacks(pos.pawns(Color.white), Color.white),
+            funcs.pawns_attacks(pos.pawns(Color.black), Color.black),
+            //funcs.pawns_shift(pos.pawns(Color.white), Color.white, .northwest) | funcs.pawns_shift(pos.pawns(Color.white), Color.white, .northeast),
+            //funcs.pawns_shift(pos.pawns(Color.black), Color.black, .northwest) | funcs.pawns_shift(pos.pawns(Color.black), Color.black, .northeast),
         };
+
+        // assert(self.pawn_attacks[0] == pos.attacks[0][0]); OK!
+        // assert(self.pawn_attacks[1] == pos.attacks[1][0]); OK!
 
         self.all_attacks = self.pawn_attacks;
 
@@ -311,13 +316,10 @@ pub const Evaluator = struct {
 
             // Outpost
             if (self.is_outpost(sq, us)) {
-                score.hce_inc(us, &terms.knight_outpost_table[relative_sq.u]);
-                // Knight outpost is also blocking an enemy pawn.
+                // Check outpost is also blocking an enemy pawn.
                 const sq_in_front: Square = if (us == Color.white) sq.add(8) else sq.sub(8);
-                const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them);
-                if (is_blocking) {
-                    score.hce_inc(us, &terms.knight_outpost_is_blocking_enemy_pawn); // TODO: make 2d array
-                }
+                const is_blocking: u1 = @intFromBool(pos.board[sq_in_front.u].is_pawn_of_color(them));
+                score.hce_inc(us, &terms.knight_outpost_table[is_blocking][relative_sq.u]); // TODO: check +4
             }
         }
         return score;
@@ -357,6 +359,8 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.bishop_attacks[us.u] |= moves;
+
+            //assert(self.bishop_attacks[us.u] == pos.get_attacks(us, PieceType.bishop)); // not ok because of pins
             self.all_attacks[us.u] |= moves;
 
             // Update attackpower.
@@ -507,6 +511,7 @@ pub const Evaluator = struct {
 
         // Their pawn threats.
         bb = self.pawn_attacks[them.u] & our_pieces;
+        //assert(bb == pos.attacks[them.u][0] & our_pieces);
         while (bitloop(&bb)) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
@@ -544,7 +549,9 @@ pub const Evaluator = struct {
         // Get the single pawn pushes.
         const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~their_protected_squares;
         // Which enemy piece (no pawn) would be attacked if we push our pawn.
-        var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
+        //var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
+        var pawn_push_threats: u64 = funcs.pawns_attacks(safe_pawn_pushes, us) & pos.by_color(them) & ~pos.pawns(them);
+        // assert(pawn_push_threats == funcs.pawns_attacks(safe_pawn_pushes, us) & pos.by_color(them) & ~pos.pawns(them));
         while (bitloop(&pawn_push_threats)) |sq| {
             const threatened: Piece = pos.board[sq.u];
             score.hce_inc(us, &terms.pawn_push_threat_table[threatened.u]);
@@ -576,6 +583,7 @@ pub const Evaluator = struct {
     }
 
     /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn.
+    /// Also the square is on rank 4,5,6
     fn is_outpost(self: *Self, sq: Square, comptime us: Color) bool {
         const them: Color = comptime us.opp();
         const sq_bb: u64 = sq.to_bitboard();
@@ -677,13 +685,13 @@ pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
     const to: Square = m.to;
 
     // Set the score to captured piece minus how much we are allowed to lose.
-    var score: i32 = pos.board[to.u].value() - threshold;
+    var score: i32 = pos.board[to.u].see_value() - threshold;
 
     if (score < 0) {
         return false;
     }
 
-    score = pos.board[from.u].value() - score;
+    score = pos.board[from.u].see_value() - score;
 
     // Equal or winning.
     if (score <= 0) {
@@ -748,7 +756,7 @@ pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
                     else => unreachable,
                 }
 
-                next_attacker_value = piecetype.value();
+                next_attacker_value = piecetype.see_value();
                 break :get_next_attacker;
             }
         }

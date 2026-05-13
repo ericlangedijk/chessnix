@@ -142,6 +142,8 @@ pub const Engine = struct {
         if (self.is_busy()) {
             return;
         }
+
+        // Note: the position itself can decide that is a chess960 position despite our options.
         try self.pos.set(fen, self.options.is_960);
 
         // #testing 960 shit.
@@ -163,7 +165,9 @@ pub const Engine = struct {
 
             // #testing 960 shit
             const ex: ExtMove = self.pos.parse_move(m) catch {
-                // lib.io.print("info string illegal move {s}\n", .{ m });
+                if (!self.mute) {
+                    lib.io.print("info string illegal move {s}\n", .{ m });
+                }
                 break;
             };
 
@@ -1338,7 +1342,7 @@ fn compute_lmr(depth: usize, moves: usize, base: f32, divisor: f32) u8 {
     const m: f32 = @floatFromInt(moves);
     const ln_depth: f32 = @log(d);
     const ln_moves: f32 = @log(m);
-    return @intFromFloat(base + ln_depth * ln_moves / divisor);
+    return @trunc(base + ln_depth * ln_moves / divisor);
 }
 
 fn compute_lmr_table() LmrTable {

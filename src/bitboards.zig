@@ -2,6 +2,7 @@
 
 //! Lots of bitboards.
 
+const std = @import("std");
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");
 const types = @import("types.zig");
@@ -16,8 +17,12 @@ const Square = types.Square;
 
 /// Information about a pair of squares.
 pub const SquarePair = struct {
-    /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
+    /// The ray bitboard **excluded** from and **included** to.
     ray: u64 = 0,
+    /// The squares inbetween.
+    in_between: u64 = 0,
+    /// The squares inbetween.
+    in_between_inclusive: u64 = 0,
     /// The from-to direction.
     direction: ?Direction = null,
     /// The from-to or to-from orientation.
@@ -175,6 +180,10 @@ pub const bb_rook: [64]u64 = compute_rook_bitboards();
 pub const bb_queen: [64]u64 = compute_queen_bitboards();
 
 const pairs: [64 * 64]SquarePair = compute_squarepairs();
+
+// pub const inbetween_u8: [8][8]u8 = compute_inbetween_u8();
+// pub const inbetween_inclusive_u8: [8][8]u8 = compute_inbetween_inclusive_u8();
+
 pub const ep_masks: [64]u64 = compute_ep_masks(); // indexing on to-square (e2e4).
 pub const passed_pawn_masks_white: [64]u64 = compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [64]u64 = compute_passed_pawn_masks_black();
@@ -182,11 +191,11 @@ pub const backward_pawn_masks_white: [64]u64 = compute_backward_pawn_masks_white
 pub const backward_pawn_masks_black: [64]u64 = compute_backward_pawn_masks_black(); // #testing tuner.
 
 pub const adjacent_file_masks: [64]u64 = compute_adjacent_file_masks();
-pub const king_areas: [64]u64 = compute_king_areas();
+//pub const king_areas: [64]u64 = compute_king_areas();
 
-/// Hce
+/// Hce.
 pub const king_areas_white: [64]u64 = compute_king_areas_white();
-/// Hce
+/// Hce.
 pub const king_areas_black: [64]u64 = compute_king_areas_black();
 /// Hce. Pawnstorm areas from the perspective of the white king. Indexing by [white-king-square]
 pub const king_pawnstorm_areas_white: [64]u64 = compute_king_pawnstorm_areas_white();
@@ -253,7 +262,7 @@ fn compute_squarepairs() [64 * 64]SquarePair {
         }
     }
 
-    // Set ray bitboards
+    // Set bitboards
     for (Square.all) |from| {
         for (Square.all) |to| {
             const idx: usize = from.idx() * 64 + to.idx();
@@ -268,13 +277,66 @@ fn compute_squarepairs() [64 * 64]SquarePair {
                     if (sq.u == to.u) break;
                 }
             }
-            // #deprecated
-            // In between.
-            // sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
+            // TODO: #deprecated? or not
+            sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
+            sp[idx].in_between_inclusive = sp[idx].ray | from.to_bitboard();
         }
     }
     return sp;
 }
+
+// pub fn compute_inbetween_u8() [8][8]u8 {
+//     var result: [8][8]u8 = @splat(@splat(0));
+//     for (0..8) |a| {
+//         const first: i32 = @intCast(a);
+//         for (0..8) |b| {
+//             const second: i32 = @intCast(b);
+//             //if (first == second or)
+//             if (a > b or @abs(first - second) < 2) {
+//                 continue;
+//             }
+//             //lib.io.debugprint("{} {} -> ", .{ a, b});
+//             for (a + 1..b) |bit| {
+//                 //lib.io.debugprint("{}, ", .{ bit});
+//                 const one: u8 = 1;
+//                 const shift: u3 = @intCast(bit);
+//                 result[a][b] |= one << shift;
+//                 result[b][a] |= one << shift;
+//             }
+//             //lib.io.debugprint("\n", .{});
+//         }
+//     }
+//     return result;
+// }
+
+// pub fn compute_inbetween_inclusive_u8() [8][8]u8 {
+//     var result: [8][8]u8 = @splat(@splat(0));
+//     for (0..8) |a| {
+// //        const first: i32 = @intCast(a);
+//         for (0..8) |b| {
+//             result[a][b] = inbetween_u8[a][b];
+//             const a1 = @as(u8, 1) << a;
+//             const b1 = @as(u8, 1) << b;
+//             result[a][b] |= (a1 | b1);
+//   //          const second: i32 = @intCast(b);
+//             //if (first == second or)
+//             // if (a > b or @abs(first - second) < 2) {
+//             //     continue;
+//             // }
+//             // if (a > b) continue;
+//             // //lib.io.debugprint("{} {} -> ", .{ a, b});
+//             // for (a..b) |bit| {
+//             //     //lib.io.debugprint("{}, ", .{ bit});
+//             //     const one: u8 = 1;
+//             //     const shift: u3 = @intCast(bit);
+//             //     result[a][b] |= one << shift;
+//             //     result[b][a] |= one << shift;
+//             // }
+//             //lib.io.debugprint("\n", .{});
+//         }
+//     }
+//     return result;
+// }
 
 fn compute_passed_pawn_masks_white() [64]u64 {
     var pp: [64]u64 = @splat(0);
@@ -330,22 +392,22 @@ fn compute_ep_masks() [64]u64 {
     return ep;
 }
 
-fn compute_king_areas() [64]u64 {
-    @setEvalBranchQuota(8000);
-    var ka: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        // ka[sq.u] |= sq.to_bitboard();
-        if (sq.next(.north))|n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.east)) |n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.south))|n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.west)) |n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.north_west))|n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.north_east))|n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
-        if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
-    }
-    return ka;
-}
+// fn compute_king_areas() [64]u64 {
+//     @setEvalBranchQuota(8000);
+//     var ka: [64]u64 = @splat(0);
+//     for (Square.all) |sq| {
+//         // ka[sq.u] |= sq.to_bitboard();
+//         if (sq.next(.north))|n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.east)) |n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.south))|n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.west)) |n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.north_west))|n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.north_east))|n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
+//         if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
+//     }
+//     return ka;
+// }
 
 fn compute_adjacent_file_masks() [64]u64 {
     var afm: [64]u64 = @splat(0);
@@ -424,12 +486,22 @@ pub fn get_squarepair(from: Square, to: Square) *const SquarePair {
     return &pairs[idx];
 }
 
-/// Convenience function.
+/// SquarePair Convenience function.
+pub fn get_ray(a: Square, b: Square) u64 {
+    return get_squarepair(a, b).ray;
+}
+
+/// SquarePair Convenience function.
+pub fn get_inbetween(a: Square, b: Square) u64 {
+    return get_squarepair(a, b).in_between;
+}
+
+/// SquarePair Convenience function.
 pub fn dist(a: Square, b: Square) u3 {
     return get_squarepair(a, b).dist;
 }
 
-/// Convenience function.
+/// SquarePair Convenience function.
 pub fn manh(a: Square, b: Square) u4 {
     return get_squarepair(a, b).manh;
 }
@@ -452,17 +524,29 @@ pub fn forward_file(comptime us: Color, sq: Square) u64 {
     return if (us == Color.white) bb_north[sq.u] else bb_south[sq.u];
 }
 
-/// Experimental.
-pub const BitBoard = struct {
-    u: u64,
+pub fn iterator(comptime max: u7) type {
+    return struct {
+        const Self = @This();
+        u: u64,
+        loops: u7,
 
-    pub inline fn init(u: u64) BitBoard {
-        return .{ .u = u };
-    }
+        pub fn init(bitboard: u64) Self {
+            return .{
+                .u = bitboard,
+                .loops = 0,
+            };
+        }
 
-    pub fn next(self: *BitBoard) ?Square {
-        if (self.u == 0) return null;
-        defer self.u &= (self.u - 1);
-        return .{ .u = @intCast(@ctz(self.u)) };
-    }
-};
+        pub fn next(self: *Self) ?Square {
+            std.debug.assert(self.loops <= max);
+            if (self.u == 0) return null;
+            defer {
+                self.loops += 1;
+                self.u &= (self.u - 1);
+            }
+            return .{ .u = @intCast(@ctz(self.u)) };
+        }
+
+    };
+
+}

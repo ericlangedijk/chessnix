@@ -34,7 +34,9 @@ pub fn run() void {
 fn uci_loop(is_tty: bool) !void {
     if (is_tty) {
         // Enable cls (clear screen) and maybe later some fancy coloring.
-        //_ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
+        //const supp: bool = std.Io.File.stdout().supportsAnsiEscapeCodes(lib.zio) catch false;
+        //lib.io.debugprint("escape supported {}\n", .{ supp });
+        //std.Io.File.stdout().enableAnsiEscapeCodes(lib.zio) catch {};
         TTY.print_hello();
     }
 
@@ -300,6 +302,7 @@ const TTY = struct {
         io.print("chessnix {s} builddate: {s}\n", .{ lib.version, lib.builddate });
         io.print("builtmode: {t}\n", .{ builtin.mode });
         io.print("cpu: {t}\n", .{ builtin.cpu.arch });
+        //io.print("instr: {t}\n", .{ builtin.cpu.has(.x86, )) });
         io.print("engine busy: {}\n", .{ engine.is_busy()});
         io.print("tt: {} MB, buckets: {}, entries per bucket: {} bucketsize: {}, entry size: {}\n", .{ engine.options.hash_size, engine.transpositiontable.hash.data.len, tt.EPB, tt.Bucket.STRUCTSIZE, tt.Entry.STRUCTSIZE });
     }

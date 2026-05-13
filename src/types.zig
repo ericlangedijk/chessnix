@@ -59,7 +59,6 @@ pub const CastleType = packed union {
         s,
         l
     };
-
     /// The enum value
     e: Enum,
     /// The numeric value
@@ -71,11 +70,7 @@ pub const CastleType = packed union {
 };
 
 pub const Color = packed union(u1) {
-    pub const Enum = enum(u1) {
-        w,
-        b
-    };
-
+    pub const Enum = enum(u1) { w, b };
     /// The enum value
     e: Enum,
     /// The numeric value
@@ -93,6 +88,9 @@ pub const Color = packed union(u1) {
         return self.u;
     }
 };
+
+pub const File = u3;
+pub const Rank = u3;
 
 pub const Coord = packed struct {
     /// file == x. raw bits: Square.u & 7 (0b000111)
@@ -420,12 +418,16 @@ pub const PieceType = packed union(u4) {
         return self.u;
     }
 
-    pub fn value(self: PieceType) i32 {
-        return piece_values[self.u];
+    pub fn to_piece(self: PieceType, us: Color) Piece {
+        return if (us == Color.white) .{ .u = self.u } else .{ .u = self.u + 6 };
+    }
+
+    pub fn see_value(self: PieceType) i32 {
+        return see_values[self.u];
     }
 
     pub fn simple_value(self: PieceType) i32 {
-        return simple_piece_values[self.u];
+        return simple_values[self.u];
     }
 
     pub fn to_char(self: PieceType) u8 {
@@ -543,30 +545,48 @@ pub const Piece = packed union(u4) {
         return pt == PieceType.knight or pt == PieceType.bishop;
     }
 
+    pub fn is_minor_of_color(self: Piece, comptime us: Color) bool {
+        return switch (us) {
+            Color.white => self == Piece.white_knight or self == Piece.white_bishop,
+            Color.black => self == Piece.black_knight or self == Piece.black_bishop,
+        };
+    }
+
     pub fn is_major(self: Piece) bool {
         const pt: PieceType = self.piecetype();
         return pt == PieceType.rook or pt == PieceType.queen;
+    }
+
+    pub fn is_major_of_color(self: Piece, comptime us: Color) bool {
+        return switch (us) {
+            Color.white => self == Piece.white_rook or self == Piece.white_queen,
+            Color.black => self == Piece.black_rook or self == Piece.black_queen,
+        };
     }
 
     pub fn is_king(self: Piece) bool {
         return self.piecetype() == PieceType.king;
     }
 
-    pub fn is_pawn_of_color(self: Piece, comptime us: Color) bool {
+    pub fn is_king_of_color(self: Piece, us: Color) bool {
+        return if (us == Color.white) self == Piece.white_king else self == Piece.black_king;
+    }
+
+    pub fn is_pawn_of_color(self: Piece, us: Color) bool {
         return if (us == Color.white) self == Piece.white_pawn else self == Piece.black_pawn;
     }
 
-    pub fn is_rook_of_color(self: Piece, comptime us: Color) bool {
+    pub fn is_rook_of_color(self: Piece, us: Color) bool {
         return if (us == Color.white) self == Piece.white_rook else self == Piece.black_rook;
     }
 
     /// Returns the static exchange evaluation value. It is allowed to call this for no-piece. TODO: rename to see_value
-    pub fn value(self: Piece) i32 {
-        return piece_values[self.u];
+    pub fn see_value(self: Piece) i32 {
+        return see_values[self.u];
     }
 
     pub fn simple_value(self: Piece) i32 {
-        return simple_piece_values[self.u];
+        return simple_values[self.u];
     }
 
     pub fn to_print_char(self: Piece) u8 {
@@ -627,6 +647,11 @@ pub const Move = packed struct(u16) {
     pub const noisy_mask               : u4 = capture_mask | promotion_mask;
 
     pub const castle_flags: [2]u4 = .{ castle_short, castle_long };
+
+    // TODO: maybe simplify flags. on the other hand: we do not have a capture bit then anymore.
+    // 2 bits for type -> (default, ep, castle, promotion)
+    // 2 bits for promotionpiece
+
     /// 6 bits.
     from: Square = .zero,
     /// 6 bits.
@@ -754,6 +779,7 @@ pub const Move = packed struct(u16) {
     }
 };
 
+/// 64 bits extended move.
 pub const ExtMove = packed struct {
     move: Move = .empty,
     /// Set during move generation.
@@ -876,6 +902,7 @@ pub fn pair(mg: i16, eg: i16) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
+/// Errors during parsing of fen or move.
 pub const ParsingError = error {
     /// Garbage piece inside fen string.
     InvalidFenPiece,
@@ -883,10 +910,15 @@ pub const ParsingError = error {
     IllegalMove,
     /// Garbage promotion character.
     InvalidPromotionChar,
+    /// We do not allow positions without a king.
+    MissingKing,
+    /// Some castling logical error.
+    CastlingLogic,
 };
 
 // --- Constants ---
 pub const megabyte: usize = 1024 * 1024;
+pub const million: usize = 1000_000;
 
 /// This is how far we go.
 pub const max_game_length: usize = 1024;
@@ -898,16 +930,16 @@ pub const max_noisy_count: u8 = 128;
 pub const max_search_depth: u8 = 128;
 
 // Scores for SEE and move ordering.
-pub const value_pawn: i32 = 98;
-pub const value_knight: i32 = 299;
-pub const value_bishop: i32 = 300;
-pub const value_rook: i32 = 533;
-pub const value_queen: i32 = 921;
-pub const value_king: i32 = 0;
+pub const see_value_pawn: i32 = 98;
+pub const see_value_knight: i32 = 299;
+pub const see_value_bishop: i32 = 300;
+pub const see_value_rook: i32 = 533;
+pub const see_value_queen: i32 = 921;
+pub const see_value_king: i32 = 0;
 
-const piece_values: [13]i32 = .{
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
+const see_values: [13]i32 = .{
+    see_value_pawn, see_value_knight, see_value_bishop, see_value_rook, see_value_queen, see_value_king,
+    see_value_pawn, see_value_knight, see_value_bishop, see_value_rook, see_value_queen, see_value_king,
     0,
 };
 
@@ -918,7 +950,7 @@ pub const simple_value_rook: i32 = 500;
 pub const simple_value_queen: i32 = 900;
 pub const simple_value_king: i32 = 0;
 
-const simple_piece_values: [13]i32 = .{
+const simple_values: [13]i32 = .{
     simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
     simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
     0,
@@ -942,22 +974,3 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const eg: i32 = score.eg;
     return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
-
-// pub fn phase_factor(phase: u8) f32 {
-//     const ph: f32 = @floatFromInt(@min(max_phase, phase));
-//     const max: f32 = @floatFromInt(max_phase);
-//     return ph / max;
-// }
-
-
-// const kbn_white_distances: [64]u8 = .{
-//     0, 1, 2, 3, 3, 2, 1, 0, // rank 1
-//     1, 2, 3, 4, 4, 3, 2, 1,
-//     2, 3, 4, 5, 5, 4, 3, 2,
-//     3, 4, 5, 6, 6, 5, 4, 3,
-//     3, 4, 5, 6, 6, 5, 4, 3,
-//     2, 3, 4, 5, 5, 4, 3, 2,
-//     1, 2, 3, 4, 4, 3, 2, 1,
-//     0, 1, 2, 3, 3, 2, 1, 0
-// };
-

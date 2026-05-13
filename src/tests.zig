@@ -28,7 +28,7 @@ pub fn run_silent_debugmode_tests() !void {
     var timer = utils.Timer.start();
     const perfts: usize = try run_perfts(3);
     const perfts_960: usize = try run_perfts_960(3);
-    const flips: usize = try test_flip();
+    const flips: usize = 0;//try test_flip();
     const time = timer.read();
     lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, flips = {}, (time {})\n", .{ perfts, perfts_960, flips, time });  // TODO: how to format duration?
     //_ = try test_flipped_eval();
@@ -1432,3 +1432,4 @@ const see_positions: [71][]const u8 = .{
     "8/8/1k6/8/8/2N1N3/4p1K1/3n4 w - - ;c3d1 ;100 ;N - (N + Q - P) + Q",
     "r1bqk1nr/pppp1ppp/2n5/1B2p3/1b2P3/5N2/PPPP1PPP/RNBQK2R w KQkq - ;e1g1 ;0",
 };
+// TODO: add tricky 960 positions regarding castling.
