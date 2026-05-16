@@ -23,8 +23,8 @@ pub fn run(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
     const nodes: u64 = switch (pos.stm.e) {
-        .white => do_run(true, true, Color.WHITE, depth, pos),
-        .black => do_run(true, true, Color.BLACK, depth, pos),
+        .white => do_run(true, true, Color.white, depth, pos),
+        .black => do_run(true, true, Color.black, depth, pos),
     };
     const time = t.lap();
     io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
@@ -35,8 +35,8 @@ pub fn qrun(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
     const nodes: u64 = switch (pos.stm.e) {
-        .white => do_run(false, true, Color.WHITE, depth, pos),
-        .black => do_run(false, true, Color.BLACK, depth, pos),
+        .white => do_run(false, true, Color.white, depth, pos),
+        .black => do_run(false, true, Color.black, depth, pos),
     };
     const time = t.lap();
     io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
@@ -45,8 +45,8 @@ pub fn qrun(pos: *const Position, depth: u8) void
 /// No output. Just return node count.
 pub fn run_quick(pos: *const Position, depth: u8) u64 {
     switch (pos.stm.e) {
-        .white => return do_run(false, true, Color.WHITE, depth, pos),
-        .black => return do_run(false, true, Color.BLACK, depth, pos),
+        .white => return do_run(false, true, Color.white, depth, pos),
+        .black => return do_run(false, true, Color.black, depth, pos),
     }
 }
 
@@ -111,7 +111,7 @@ pub fn bench() !void {
 
     var pos: Position = .empty;
 
-    main_loop: inline for (&testruns) |*testrun| {
+    main_loop: for (&testruns) |*testrun| {
         for (1..testrun.end_depth + 1) |depth| {
             try pos.set(testrun.fen, false);
             var timer = utils.Timer.start();

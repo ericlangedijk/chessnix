@@ -292,7 +292,7 @@ pub const Searcher = struct {
             .nodes = create_nodes(),
             .nodes_spent = @splat(0),
             .hist = .init(),
-            .chessnix = Color.WHITE,
+            .chessnix = Color.white,
             .stopped = false,
             .stats = .empty,
         };
@@ -332,8 +332,8 @@ pub const Searcher = struct {
         self.nodes_spent = @splat(0);
 
         switch (pos.stm.e) {
-            .white => self.iterate(Color.WHITE, &pos),
-            .black => self.iterate(Color.BLACK, &pos),
+            .white => self.iterate(Color.white, &pos),
+            .black => self.iterate(Color.black, &pos),
         }
     }
 
