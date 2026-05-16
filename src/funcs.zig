@@ -24,6 +24,10 @@ const wtf = lib.wtf;
 /// Enum for shifting pawn moves.
 pub const PawnShift = enum(u2) { up, northwest, northeast };
 
+// fn abs_diff(a: usize, b: usize) usize {
+//     return @max(a, b) - @min(a, b);
+// }
+
 /// Note that these are stored in SquarePair
 pub inline fn square_distance(a: Square, b: Square) u3 {
     //lib.comptime_only();
@@ -47,28 +51,24 @@ pub inline fn manhattan_distance(a: Square, b: Square) u8 {
     return @intCast(rank_distance + file_distance);
 }
 
-pub fn relative_rank_1_bitboard(us: Color) u64 {
-    return if (us == Color.white) bitboards.bb_rank_1 else bitboards.bb_rank_8;
-}
-
 pub fn relative_rank_7_bitboard(us: Color) u64 {
-    return if (us == Color.white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
+    return if (us.e == .white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
 }
 
 pub fn relative_rank_8_bitboard(us: Color) u64 {
-    return if (us == Color.white) bitboards.bb_rank_8 else bitboards.bb_rank_1;
+    return if (us.e == .white) bitboards.bb_rank_8 else bitboards.bb_rank_1;
 }
 
 pub fn relative_rank_3_bitboard(us: Color) u64 {
-    return if (us == Color.white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
+    return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
 }
 
 pub fn relative_rank(us: Color, rank: u3) u3 {
-    return if (us == Color.white) rank else 7 - rank;
+    return if (us.e == .white) rank else 7 - rank;
 }
 
 pub fn is_relative_rank_456(us: Color, rank: u3) bool {
-    return if (us == Color.white)
+    return if (us.e == .white)
         rank >= bitboards.rank_4 and rank <= bitboards.rank_6
     else
         rank >= bitboards.rank_3 and rank <= bitboards.rank_5;
@@ -76,35 +76,31 @@ pub fn is_relative_rank_456(us: Color, rank: u3) bool {
 
 /// Relative rank 4,5,6
 pub fn outpost(comptime us: Color) u64 {
-    return if (us == Color.white) bitboards.bb_rank_4 | bitboards.bb_rank_5 | bitboards.bb_rank_6 else bitboards.bb_rank_3 | bitboards.bb_rank_4 | bitboards.bb_rank_5;
+    return if (us.e == .white) bitboards.bb_rank_4 | bitboards.bb_rank_5 | bitboards.bb_rank_6 else bitboards.bb_rank_3 | bitboards.bb_rank_4 | bitboards.bb_rank_5;
 }
 
 pub fn relative_side_bitboard(comptime us: Color) u64 {
-    return if (us == Color.white) bitboards.bb_white_side else bitboards.bb_black_side;
+    return if (us.e == .white) bitboards.bb_white_side else bitboards.bb_black_side;
 }
 
 pub fn relative_rank_bb(us: Color, rank: u3) u64 {
-    return if (us == Color.white) bitboards.rank_bitboards[rank] else bitboards.rank_bitboards[7 - rank];
-}
-
-pub fn relative_rank_1(us: Color) u3 {
-    return if (us == Color.white) bitboards.rank_1 else bitboards.rank_8;
+    return if (us.e == .white) bitboards.rank_bitboards[rank] else bitboards.rank_bitboards[7 - rank];
 }
 
 pub fn relative_rank_7(us: Color) u3 {
-    return if (us == Color.white) bitboards.rank_7 else bitboards.rank_2;
+    return if (us.e == .white) bitboards.rank_7 else bitboards.rank_2;
 }
 
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64 {
-    switch(us) {
-        Color.white => {
+    switch(us.e) {
+        .white => {
            return switch(shift) {
                 .up        => pawns << 8,
                 .northwest => (pawns & ~bitboards.bb_file_a) << 7,
                 .northeast => (pawns & ~bitboards.bb_file_h) << 9,
             };
         },
-        Color.black => {
+        .black => {
             return switch(shift) {
                 .up        => pawns >> 8,
                 .northwest => (pawns & ~bitboards.bb_file_h) >> 7, // southeast
@@ -114,24 +110,17 @@ pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u6
     }
 }
 
-pub fn pawns_attacks(pawns: u64, comptime us: Color) u64 {
-    return switch(us) {
-        Color.white => (pawns & ~bitboards.bb_file_a) << 7 | (pawns & ~bitboards.bb_file_h) << 9,
-        Color.black => (pawns & ~bitboards.bb_file_h) >> 7 | (pawns & ~bitboards.bb_file_a) >> 9,
-    };
-}
-
 /// Returns the from square of a moved pawn.
 pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Square {
-    switch (us) {
-        Color.white => {
+    switch (us.e) {
+        .white => {
             return switch(shift) {
                 .up        => to.sub(8),
                 .northwest => to.sub(7),
                 .northeast => to.sub(9),
             };
         },
-        Color.black => {
+        .black => {
             return switch(shift) {
                 .up        => to.add(8),
                 .northwest => to.add(7), // southeast
@@ -184,40 +173,11 @@ pub fn first_square(bitboard: u64) Square {
     return .{ .u = lsb };
 }
 
-/// Unsafe lsb. Assumes bitboard != 0.
-pub fn last_square(bitboard: u64) Square {
-    if (comptime lib.is_paranoid) {
-        assert(bitboard != 0);
-    }
-    const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));
-    return .{ .u = msb };
-}
-
-pub fn first_square_or_null(bitboard: u64) ?Square {
-    if (bitboard == 0) return null;
-    const lsb: u6 = @intCast(@ctz(bitboard));
-    return .{ .u = lsb };
-}
-
-pub fn last_square_or_null(bitboard: u64) ?Square {
-    if (bitboard == 0) return null;
-    const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));
-    return .{ .u = msb };
-}
-
-/// bit scan forwards, using lsb
+/// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
 pub inline fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
     defer bitboard.* &= (bitboard.* - 1);
     return .{ .u = @intCast(@ctz(bitboard.*)) };
-}
-
-/// bit scan backwards. using msb.
-pub inline fn bitloop_backwards(bitboard: *u64) ?Square {
-    if (bitboard.* == 0) return null;
-    const sq: Square = last_square(bitboard.*);
-    clear_square(bitboard, sq);
-    return sq;
 }
 
 /// Note: This requires x86-64 and the BMI2 instruction set.
@@ -239,7 +199,7 @@ pub fn get_nth_set_bit_or_null(bitboard: u64, n: u6) ?u6 {
 }
 
 /// Note: This requires x86-64 and the BMI2 instruction set.
-pub inline fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
+pub fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
     const nth_bit = @as(u64, 1) << n;
     // PDEP (Parallel Bit Deposit) magic via inline assembly
     const isolated = asm (
@@ -255,11 +215,6 @@ pub fn clear_square(bitboard: *u64, sq: Square) void {
     bitboard.* &= ~sq.to_bitboard();
 }
 
-fn clear_bit(bitboard: *u64, bit: u6) void {
-    const mask: u64 = @as(u64, 1) << bit;
-    bitboard.* &= ~mask;
-}
-
 pub fn test_bit_u8(u: u8, bit: u3) bool {
     const one: u8 = @as(u8, 1) << bit;
     return u & one != 0;
@@ -267,6 +222,12 @@ pub fn test_bit_u8(u: u8, bit: u3) bool {
 
 pub fn test_bit_64(u: u64, bit: u6) bool {
     const one: u64 = @as(u64, 1) << bit;
+    return u & one != 0;
+}
+
+pub fn test_bit(u: comptime_int, bit: comptime_int) bool {
+    const int_type = @TypeOf(u);
+    const one: u64 = @as(int_type, 1) << bit;
     return u & one != 0;
 }
 
@@ -284,7 +245,7 @@ pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
 pub fn mate_to_dtm(mv: i32, stm: Color) i32 {
     if (mv == 0) return 0;
     const white_wins: bool = mv > 0;
-    const white_to_move: bool = stm == Color.white;
+    const white_to_move: bool = stm.e == .white;
     return (if (white_wins) mv * 2 else -mv * 2) - @intFromBool(white_wins == white_to_move);
 }
 
@@ -308,7 +269,7 @@ pub fn nps(count: usize, elapsed_nanoseconds: u64) u64 {
     const a: f64 = @floatFromInt(count);
     const b: f64 = @floatFromInt(elapsed_nanoseconds);
     const s: f64 = (a * 1_000_000_000.0) / b;
-    return @trunc(s);
+    return @intFromFloat(s);
 }
 
 /// Calculates something in millions per second.
@@ -333,19 +294,19 @@ pub fn percent(max: usize, count: usize) usize {
     if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
     const m: f32 = @floatFromInt(max);
-    return @trunc((c * 100) / m);
+    return @intFromFloat((c * 100) / m);
 }
 
 pub fn permille(max: usize, count: usize) usize {
     if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
     const m: f32 = @floatFromInt(max);
-    return @trunc((c * 1000) / m);
+    return @intFromFloat((c * 1000) / m);
 }
 
 /// multiply any int with float.
 pub fn fmul(i: anytype, f: f32) @TypeOf(i) {
-    return @trunc(float32(i) * f);
+    return @intFromFloat(float32(i) * f);
 }
 
 /// Debug only
@@ -376,9 +337,7 @@ pub fn print_bits(u: u8) void {
     lib.io.debugprint("\n", .{});
 }
 
-pub fn fmt_duration(duration: u64, writer: *std.Io.Writer) !void {
-    try writer.print("{}", .{ duration });
-}
+
 
 
 // fn float(x: anytype) f64 {
@@ -389,12 +348,10 @@ pub fn fmt_duration(duration: u64, writer: *std.Io.Writer) !void {
 //     };
 // }
 
-fn int(comptime T: type, x: anytype) T {
-    return switch (@typeInfo(@TypeOf(x))) {
-        .int, .comptime_int => @intCast(x),
-        .float, .comptime_float => @trunc(x),
-        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{ @TypeOf(x) })),
-    };
-}
-
-// TODO: write some low level tests for all these bit operations.
+// fn int(comptime T: type, x: anytype) T {
+//     return switch (@typeInfo(@TypeOf(x))) {
+//         .int, .comptime_int => @intCast(x),
+//         .float, .comptime_float => @intFromFloat(x),
+//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+//     };
+// }

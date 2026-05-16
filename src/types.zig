@@ -1,7 +1,6 @@
 // zig fmt: off
 
 //! Basic types and consts, used almost everywhere.
-//! Enums which need indexing are inside packed unions.
 
 const std = @import("std");
 const utils = @import("utils.zig");
@@ -12,8 +11,6 @@ const lib = @import("lib.zig");
 
 const assert = std.debug.assert;
 const io = lib.io;
-
-const register_term_usage = if (lib.is_tuning) @import("tuner.zig").register_term_usage else void;
 
 pub const Axis = enum(u2) {
     none, orth, diag,
@@ -29,9 +26,7 @@ pub const Direction = enum(u3) {
     pub const all: [8]Direction = .{ .north, .east, .south, .west, .north_west, .north_east, .south_east, .south_west };
 
     pub fn relative(self: Direction, comptime color: Color) Direction {
-        if (color == Color.white) {
-            return self;
-        }
+        if (color.e == .white) return self;
         return switch(self) {
             .north => .south,
             .east => .west,
@@ -55,30 +50,31 @@ pub const Direction = enum(u3) {
 };
 
 pub const CastleType = packed union {
-    pub const Enum = enum(u1) {
-        s,
-        l
-    };
+    pub const count: usize = 2;
+
+    pub const Enum = enum(u1) { short, long };
     /// The enum value
     e: Enum,
     /// The numeric value
     u: u1,
 
-    pub const short: CastleType = .{ .e = .s };
-    pub const long: CastleType = .{ .e = .l };
-    pub const all: [2]CastleType = .{ short, long };
+    pub const all: [2]CastleType = .{ SHORT, LONG };
+    pub const SHORT: CastleType = .{ .e = .short };
+    pub const LONG: CastleType = .{ .e = .long };
 };
 
-pub const Color = packed union(u1) {
-    pub const Enum = enum(u1) { w, b };
+pub const Color = packed union {
+    pub const count: usize = 2;
+
+    pub const Enum = enum(u1) { white, black };
     /// The enum value
     e: Enum,
     /// The numeric value
     u: u1,
 
-    pub const white: Color = .{ .e = .w };
-    pub const black: Color = .{ .e = .b };
-    pub const all: [2]Color = .{ white, black };
+    pub const all: [2]Color = .{ WHITE, BLACK };
+    pub const WHITE: Color = .{ .e = .white };
+    pub const BLACK: Color = .{ .e = .black };
 
     pub fn opp(self: Color) Color {
         return .{ .u  = self.u ^ 1 };
@@ -99,8 +95,10 @@ pub const Coord = packed struct {
     rank: u3,
 };
 
-pub const Square = packed union(u6) {
-    pub const Enum = enum(u6) {
+pub const Square = packed union {
+    pub const count: usize = 64;
+
+    pub const E = enum(u6) {
         a1, b1, c1, d1, e1, f1, g1, h1,
         a2, b2, c2, d2, e2, f2, g2, h2,
         a3, b3, c3, d3, e3, f3, g3, h3,
@@ -111,7 +109,7 @@ pub const Square = packed union(u6) {
         a8, b8, c8, d8, e8, f8, g8, h8,
     };
     /// The enum value.
-    e: Enum,
+    e: E,
     /// The numeric value
     u: u6,
     /// The file and rank bits match nicely.
@@ -141,14 +139,14 @@ pub const Square = packed union(u6) {
     };
 
     const colors: [64]Color = .{
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, // rank 1
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, // rank 1
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE,
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE,
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
+        Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE,
+        Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK, Color.WHITE, Color.BLACK,
     };
 
     const manhattan_distances_to_center: [64]u8 = .{
@@ -293,7 +291,7 @@ pub const Square = packed union(u6) {
 
     /// Returns the square when `us` is white otherwise the vertically mirrored square.
     pub fn relative(self: Square, us: Color) Square {
-        return if (us == Color.white) self else .{ .u = self.u ^ 56 };
+        return if (us.e == .white) self else .{ .u = self.u ^ 56 };
     }
 
     pub fn flipped(self: Square) Square {
@@ -375,7 +373,7 @@ pub const Square = packed union(u6) {
 
     /// Garbage in garbage out. No crash.
     pub fn from_string(str: []const u8) Square {
-        if (str.len < 2) return Square.a1;
+        if (str.len < 2) return Square.A1;
         // This math can never crash
         const v: u6 = @truncate((str[1] -| '1') *% 8 +| (str[0] -| 'a'));
         return .{ .u = v };
@@ -390,122 +388,123 @@ pub const Square = packed union(u6) {
     }
 };
 
-pub const PieceType = packed union(u4) {
-    /// Although 3 bits are enough 4 bits is easier for conversions. TODO: maybe make u3 again
-    pub const Enum = enum(u4) {
-        p = 0,
-        n = 1,
-        b = 2,
-        r = 3,
-        q = 4,
-        k = 5,
+pub const PieceType = packed union {
+    pub const count: usize = 6;
+
+    /// Although 3 bits are enough 4 bits is easier for conversions.
+    pub const E = enum(u4) {
+        pawn = 0,
+        knight = 1,
+        bishop = 2,
+        rook = 3,
+        queen = 4,
+        king = 5,
     };
     /// The enum value.
-    e: Enum,
+    e: E,
     /// The numeric value.
     u: u4,
 
-    pub const pawn: PieceType = .{ .e = .p };
-    pub const knight: PieceType = .{ .e = .n };
-    pub const bishop: PieceType = .{ .e = .b };
-    pub const rook: PieceType = .{ .e = .r };
-    pub const queen: PieceType = .{ .e = .q };
-    pub const king: PieceType = .{ .e = .k };
+    pub const all: [PieceType.count]PieceType = .{ pawn, knight, bishop, rook, queen, king };
 
-    pub const all: [6]PieceType = .{ pawn, knight, bishop, rook, queen, king };
+    pub const pawn: PieceType = .{ .e = .pawn };
+    pub const knight: PieceType = .{ .e = .knight };
+    pub const bishop: PieceType = .{ .e = .bishop };
+    pub const rook: PieceType = .{ .e = .rook };
+    pub const queen: PieceType = .{ .e = .queen };
+    pub const king: PieceType = .{ .e = .king };
 
     pub fn idx(self: PieceType) usize {
         return self.u;
     }
 
-    pub fn to_piece(self: PieceType, us: Color) Piece {
-        return if (us == Color.white) .{ .u = self.u } else .{ .u = self.u + 6 };
-    }
-
-    pub fn see_value(self: PieceType) i32 {
-        return see_values[self.u];
+    pub fn value(self: PieceType) i32 {
+        return piece_values[self.u];
     }
 
     pub fn simple_value(self: PieceType) i32 {
-        return simple_values[self.u];
+        return simple_piece_values[self.u];
     }
 
     pub fn to_char(self: PieceType) u8 {
-        return switch(self) {
-            pawn => 0,
-            knight => 'N',
-            bishop => 'B',
-            rook => 'R',
-            queen => 'Q',
-            king => 'K',
+        return switch(self.e) {
+            .pawn => 0,
+            .knight => 'N',
+            .bishop => 'B',
+            .rook => 'R',
+            .queen => 'Q',
+            .king => 'K',
         };
     }
 };
 
-pub const Piece = packed union(u4) {
+pub const Piece = packed union {
+    pub const count: usize = 12;
+    pub const count_included_empty: usize = 13;
+
     /// To have convenient array indexing the values are just sequential.
-    pub const Enum = enum(u4) {
-        wp = 0,  // 0000
-        wn = 1,  // 0001
-        wb = 2,  // 0010
-        wr = 3,  // 0011
-        wq = 4,  // 0100
-        wk = 5,  // 0101
+    pub const E = enum(u4) {
+        w_pawn   = 0,  // 0000
+        w_knight = 1,  // 0001
+        w_bishop = 2,  // 0010
+        w_rook   = 3,  // 0011
+        w_queen  = 4,  // 0100
+        w_king   = 5,  // 0101
+        b_pawn   = 6,  // 0110
+        b_knight = 7,  // 0111
+        b_bishop = 8,  // 1000
+        b_rook   = 9,  // 1001
+        b_queen  = 10, // 1010
+        b_king   = 11, // 1011
 
-        bp = 6,  // 0110
-        bn = 7,  // 0111
-        bb = 8,  // 1000
-        br = 9,  // 1001
-        bq = 10, // 1010
-        bk = 11, // 1011
-
-        none = 12,
+        no_piece = 12,
     };
+
     /// The enum value.
-    e: Enum,
+    e: E,
     /// The numeric value.
     u: u4,
 
     /// All valid pieces.
     pub const all: [12]Piece = .{
-        white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
-        black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king,
+        w_pawn, w_knight, w_bishop, w_rook, w_queen, w_king,
+        b_pawn, b_knight, b_bishop, b_rook, b_queen, b_king,
     };
 
-    pub const white_pawn   : Piece = .{ .e = .wp };
-    pub const white_knight : Piece = .{ .e = .wn };
-    pub const white_bishop : Piece = .{ .e = .wb };
-    pub const white_rook   : Piece = .{ .e = .wr };
-    pub const white_queen  : Piece = .{ .e = .wq };
-    pub const white_king   : Piece = .{ .e = .wk };
+    pub const w_pawn   : Piece = .{ .e = .w_pawn };
+    pub const w_knight : Piece = .{ .e = .w_knight };
+    pub const w_bishop : Piece = .{ .e = .w_bishop };
+    pub const w_rook   : Piece = .{ .e = .w_rook };
+    pub const w_queen  : Piece = .{ .e = .w_queen };
+    pub const w_king   : Piece = .{ .e = .w_king };
 
-    pub const black_pawn   : Piece = .{ .e = .bp };
-    pub const black_knight : Piece = .{ .e = .bn };
-    pub const black_bishop : Piece = .{ .e = .bb };
-    pub const black_rook   : Piece = .{ .e = .br };
-    pub const black_queen  : Piece = .{ .e = .bq };
-    pub const black_king   : Piece = .{ .e = .bk };
+    pub const b_pawn   : Piece = .{ .e = .b_pawn };
+    pub const b_knight : Piece = .{ .e = .b_knight };
+    pub const b_bishop : Piece = .{ .e = .b_bishop };
+    pub const b_rook   : Piece = .{ .e = .b_rook };
+    pub const b_queen  : Piece = .{ .e = .b_queen };
+    pub const b_king   : Piece = .{ .e = .b_king };
 
-    pub const no_piece     : Piece = .{ .e = .none };
+    pub const no_piece : Piece = .{ .e = .no_piece };
 
     pub fn init(pt: PieceType, side: Color) Piece {
-        return if (side == Color.white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
+        return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
     }
 
     pub fn is_empty(self: Piece) bool {
-        return self == no_piece;
+        return self.e == .no_piece;
     }
 
     pub fn is_piece(self: Piece) bool {
-        return self != no_piece;
+        return self.e != .no_piece;
     }
 
     /// Don't call for no_piece.
     pub fn color(self: Piece) Color {
         if (comptime lib.is_paranoid) {
-            assert(self != no_piece);
+            assert(self.e != .no_piece);
         }
-        return if (self.u < 6) Color.white else Color.black;
+        return if (self.u < 6) Color.WHITE else Color.BLACK;
     }
 
     pub fn is_white(self: Piece) bool {
@@ -513,15 +512,22 @@ pub const Piece = packed union(u4) {
     }
 
     pub fn is_color(self: Piece, comptime us: Color) bool {
-        return if (us == Color.white) self.u < 6 else self.u >= 6 and self.u <= 11;
+        return if (us.e == .white) self.u < 6 else self.u >= 6 and self.u <= 11;
     }
 
     /// Don't call for no_piece.
     pub fn piecetype(self: Piece) PieceType {
         if (comptime lib.is_paranoid) {
-            assert(self != no_piece);
+            assert(self.e != .no_piece);
         }
         return if (self.u < 6) .{ .u = self.u } else .{.u = self. u - 6 };
+    }
+
+    pub fn piecetype_for_known_color(self: Piece, comptime us: Color) PieceType {
+        if (comptime lib.is_paranoid) {
+            assert(self.e != .no_piece and self.color().e == us.e);
+        }
+        return if (us.e == .white) .{ .u = self.u } else .{.u = self. u - 6 };
     }
 
     /// Used for flipping the board.
@@ -529,77 +535,79 @@ pub const Piece = packed union(u4) {
         if (self.is_empty()) {
             return Piece.no_piece;
         }
-        return if (self.color() == Color.white ) .{ .u = self.u + 6 } else .{ .u = self.u - 6 };
+        return if (self.color().e == .white ) .{ .u = self.u + 6 } else .{ .u = self.u - 6 };
     }
 
     pub fn is_pawn(self: Piece) bool {
-        return self.piecetype() == PieceType.pawn;
+        return self.piecetype().e == .pawn;
     }
 
     pub fn is_rook(self: Piece) bool {
-        return self.piecetype() == PieceType.rook;
+        return self.piecetype().e == .rook;
     }
 
     pub fn is_minor(self: Piece) bool {
-        const pt: PieceType = self.piecetype();
-        return pt == PieceType.knight or pt == PieceType.bishop;
-    }
-
-    pub fn is_minor_of_color(self: Piece, comptime us: Color) bool {
-        return switch (us) {
-            Color.white => self == Piece.white_knight or self == Piece.white_bishop,
-            Color.black => self == Piece.black_knight or self == Piece.black_bishop,
-        };
+        const pt: PieceType.E = self.piecetype().e;
+        return pt == .knight or pt == .bishop;
     }
 
     pub fn is_major(self: Piece) bool {
-        const pt: PieceType = self.piecetype();
-        return pt == PieceType.rook or pt == PieceType.queen;
-    }
-
-    pub fn is_major_of_color(self: Piece, comptime us: Color) bool {
-        return switch (us) {
-            Color.white => self == Piece.white_rook or self == Piece.white_queen,
-            Color.black => self == Piece.black_rook or self == Piece.black_queen,
-        };
+        const pt: PieceType.E = self.piecetype().e;
+        return pt == .rook or pt == .queen;
     }
 
     pub fn is_king(self: Piece) bool {
-        return self.piecetype() == PieceType.king;
+        return self.piecetype().e == .king;
     }
 
-    pub fn is_king_of_color(self: Piece, us: Color) bool {
-        return if (us == Color.white) self == Piece.white_king else self == Piece.black_king;
+    pub fn is_king_of_color(self: Piece, comptime us: Color) bool {
+        return switch (us.e) {
+            .white => self.e == .w_king,
+            .black => self.e == .b_king,
+        };
     }
 
-    pub fn is_pawn_of_color(self: Piece, us: Color) bool {
-        return if (us == Color.white) self == Piece.white_pawn else self == Piece.black_pawn;
+    pub fn is_pawn_of_color(self: Piece, comptime us: Color) bool {
+        return if (us.e == .white) self.e == .w_pawn else self.e == .b_pawn;
     }
 
-    pub fn is_rook_of_color(self: Piece, us: Color) bool {
-        return if (us == Color.white) self == Piece.white_rook else self == Piece.black_rook;
+    pub fn is_rook_of_color(self: Piece, comptime us: Color) bool {
+        return if (us.e == .white) self.e == .w_rook else self.e == .b_rook;
     }
 
-    /// Returns the static exchange evaluation value. It is allowed to call this for no-piece. TODO: rename to see_value
-    pub fn see_value(self: Piece) i32 {
-        return see_values[self.u];
+    pub fn is_minor_of_color(self: Piece, comptime us: Color) bool {
+        return switch (us.e) {
+            .white => self.e == .w_knight or self.e == .w_bishop,
+            .black => self.e == .b_knight or self.e == .b_bishop,
+        };
+    }
+
+    pub fn is_major_of_color(self: Piece, comptime us: Color) bool {
+        return switch (us.e) {
+            .white => self.e == .w_rook or self.e == .w_queen,
+            .black => self.e == .b_rook or self.e == .b_queen,
+        };
+    }
+
+    /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
+    pub fn value(self: Piece) i32 {
+        return piece_values[self.u];
     }
 
     pub fn simple_value(self: Piece) i32 {
-        return simple_values[self.u];
+        return simple_piece_values[self.u];
     }
 
     pub fn to_print_char(self: Piece) u8 {
-        var ch: u8 = switch(self.piecetype()) {
-            PieceType.pawn => 'P',
-            PieceType.knight => 'N',
-            PieceType.bishop => 'B',
-            PieceType.rook => 'R',
-            PieceType.queen => 'Q',
-            PieceType.king => 'K',
-            else => unreachable,
+        var ch: u8 = switch(self.piecetype().e) {
+            .pawn => 'P',
+            .knight => 'N',
+            .bishop => 'B',
+            .rook => 'R',
+            .queen => 'Q',
+            .king => 'K',
         };
-        if (self.color() == Color.black) ch = std.ascii.toLower(ch);
+        if (self.color().e == .black) ch = std.ascii.toLower(ch);
         return ch;
     }
 
@@ -609,18 +617,18 @@ pub const Piece = packed union(u4) {
 
     pub fn from_char(char: u8) ParsingError!Piece {
         return switch(char) {
-            'P' => Piece.white_pawn,
-            'N' => Piece.white_knight,
-            'B' => Piece.white_bishop,
-            'R' => Piece.white_rook,
-            'Q' => Piece.white_queen,
-            'K' => Piece.white_king,
-            'p' => Piece.black_pawn,
-            'n' => Piece.black_knight,
-            'b' => Piece.black_bishop,
-            'r' => Piece.black_rook,
-            'q' => Piece.black_queen,
-            'k' => Piece.black_king,
+            'P' => w_pawn,
+            'N' => w_knight,
+            'B' => w_bishop,
+            'R' => w_rook,
+            'Q' => w_queen,
+            'K' => w_king,
+            'p' => b_pawn,
+            'n' => b_knight,
+            'b' => b_bishop,
+            'r' => b_rook,
+            'q' => b_queen,
+            'k' => b_king,
             else => ParsingError.InvalidFenPiece,
         };
     }
@@ -645,12 +653,6 @@ pub const Move = packed struct(u16) {
     pub const capture_mask             : u4 = 0b1000; // bit 3 = capture.
     pub const promotion_mask           : u4 = 0b0100; // bit 2 = promotion
     pub const noisy_mask               : u4 = capture_mask | promotion_mask;
-
-    pub const castle_flags: [2]u4 = .{ castle_short, castle_long };
-
-    // TODO: maybe simplify flags. on the other hand: we do not have a capture bit then anymore.
-    // 2 bits for type -> (default, ep, castle, promotion)
-    // 2 bits for promotionpiece
 
     /// 6 bits.
     from: Square = .zero,
@@ -732,12 +734,12 @@ pub const Move = packed struct(u16) {
         // Only in classic chess we need to decode our "king takes rook". In Chess960 this is default.
         if (!is_960) {
             if (self.flags == Move.castle_short) {
-                const color: Color = if (to.u < 8) Color.white else Color.black;
-                to = position.king_castle_destination_squares[color.u][CastleType.short.u];
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u];
             }
             else if (self.flags == Move.castle_long) {
-                const color: Color = if (to.u < 8) Color.white else Color.black;
-                to = position.king_castle_destination_squares[color.u][CastleType.long.u];
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
             }
         }
 
@@ -758,17 +760,17 @@ pub const Move = packed struct(u16) {
         // Only in classic chess we need to decode our "king takes rook". In Chess960 this is default.
         if (!is_960) {
             if (self.flags == Move.castle_short) {
-                const color: Color = if (to.u < 8) Color.white else Color.black;
-                to = position.king_castle_destination_squares[color.u][CastleType.short.u];
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.SHORT.u];
             }
             else if (self.flags == Move.castle_long) {
-                const color: Color = if (to.u < 8) Color.white else Color.black;
-                to = position.king_castle_destination_squares[color.u][CastleType.long.u];
+                const color: Color = if (to.u < 8) Color.WHITE else Color.BLACK;
+                to = position.king_castle_destination_squares[color.u][CastleType.LONG.u];
             }
         }
 
-        result.print_assume_capacity("{t}", .{ from.e });
-        result.print_assume_capacity("{t}", .{ to.e });
+        result.print_assume_capacity("{t}", .{ from.e});
+        result.print_assume_capacity("{t}", .{ to.e});
 
         if (self.is_promotion()) {
             const prom = self.promoted_to();
@@ -779,7 +781,6 @@ pub const Move = packed struct(u16) {
     }
 };
 
-/// 64 bits extended move.
 pub const ExtMove = packed struct {
     move: Move = .empty,
     /// Set during move generation.
@@ -835,7 +836,7 @@ pub fn ExtMoveList(max: u8) type {
     };
 }
 
-pub const ScorePair = extern struct { // #testing extern to guarantee order
+pub const ScorePair = struct {
     /// Middlegame
     mg: i16,
     /// Endgame
@@ -872,29 +873,6 @@ pub const ScorePair = extern struct { // #testing extern to guarantee order
     pub fn fmul(self: ScorePair, factor: f32) ScorePair {
         return .{ .mg = funcs.fmul(self.mg, factor), .eg = funcs.fmul(self.eg, factor)};
     }
-
-    /// Specialized function for hce usage only. It needs the address of the term.
-    /// For each used term we register it if we are tuning.
-    pub inline fn hce_inc(self: *ScorePair, comptime us: Color, term: *const ScorePair) void {
-        self.inc(term.*);
-        if (comptime lib.is_tuning) {
-            register_term_usage(us, term, 1);
-        }
-    }
-
-    pub inline fn hce_inc_mult(self: *ScorePair, comptime us: Color, term: *const ScorePair, times: u8) void {
-        self.inc(term.*.mul(times));
-        if (comptime lib.is_tuning) {
-            register_term_usage(us, term, times);
-        }
-    }
-
-    pub inline fn hce_dec_mult(self: *ScorePair, comptime us: Color, term: *const ScorePair, times: u8) void {
-        self.dec(term.*.mul(times));
-        if (comptime lib.is_tuning) {
-            register_term_usage(us, term, times);
-        }
-    }
 };
 
 /// Easy initialization function for eval tables.
@@ -902,7 +880,6 @@ pub fn pair(mg: i16, eg: i16) ScorePair {
     return .{ .mg = mg, .eg = eg };
 }
 
-/// Errors during parsing of fen or move.
 pub const ParsingError = error {
     /// Garbage piece inside fen string.
     InvalidFenPiece,
@@ -910,15 +887,10 @@ pub const ParsingError = error {
     IllegalMove,
     /// Garbage promotion character.
     InvalidPromotionChar,
-    /// We do not allow positions without a king.
-    MissingKing,
-    /// Some castling logical error.
-    CastlingLogic,
 };
 
 // --- Constants ---
 pub const megabyte: usize = 1024 * 1024;
-pub const million: usize = 1000_000;
 
 /// This is how far we go.
 pub const max_game_length: usize = 1024;
@@ -930,16 +902,16 @@ pub const max_noisy_count: u8 = 128;
 pub const max_search_depth: u8 = 128;
 
 // Scores for SEE and move ordering.
-pub const see_value_pawn: i32 = 98;
-pub const see_value_knight: i32 = 299;
-pub const see_value_bishop: i32 = 300;
-pub const see_value_rook: i32 = 533;
-pub const see_value_queen: i32 = 921;
-pub const see_value_king: i32 = 0;
+pub const value_pawn: i32 = 98;
+pub const value_knight: i32 = 299;
+pub const value_bishop: i32 = 300;
+pub const value_rook: i32 = 533;
+pub const value_queen: i32 = 921;
+pub const value_king: i32 = 0;
 
-const see_values: [13]i32 = .{
-    see_value_pawn, see_value_knight, see_value_bishop, see_value_rook, see_value_queen, see_value_king,
-    see_value_pawn, see_value_knight, see_value_bishop, see_value_rook, see_value_queen, see_value_king,
+const piece_values: [13]i32 = .{
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
+    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     0,
 };
 
@@ -950,7 +922,7 @@ pub const simple_value_rook: i32 = 500;
 pub const simple_value_queen: i32 = 900;
 pub const simple_value_king: i32 = 0;
 
-const simple_values: [13]i32 = .{
+const simple_piece_values: [13]i32 = .{
     simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
     simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
     0,
@@ -974,3 +946,22 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const eg: i32 = score.eg;
     return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
+
+// pub fn phase_factor(phase: u8) f32 {
+//     const ph: f32 = @floatFromInt(@min(max_phase, phase));
+//     const max: f32 = @floatFromInt(max_phase);
+//     return ph / max;
+// }
+
+
+// const kbn_white_distances: [64]u8 = .{
+//     0, 1, 2, 3, 3, 2, 1, 0, // rank 1
+//     1, 2, 3, 4, 4, 3, 2, 1,
+//     2, 3, 4, 5, 5, 4, 3, 2,
+//     3, 4, 5, 6, 6, 5, 4, 3,
+//     3, 4, 5, 6, 6, 5, 4, 3,
+//     2, 3, 4, 5, 5, 4, 3, 2,
+//     1, 2, 3, 4, 4, 3, 2, 1,
+//     0, 1, 2, 3, 3, 2, 1, 0
+// };
+

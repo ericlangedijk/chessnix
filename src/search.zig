@@ -142,13 +142,7 @@ pub const Engine = struct {
         if (self.is_busy()) {
             return;
         }
-
-        // Note: the position itself can decide that is a chess960 position despite our options.
         try self.pos.set(fen, self.options.is_960);
-
-        // #testing 960 shit.
-        //self.options.is_960 = self.pos.is_960;
-
         self.repetition_table[0] = self.pos.key;
         if (moves) |m| {
             self.parse_moves(m);
@@ -161,16 +155,7 @@ pub const Engine = struct {
         var tokenizer = std.mem.tokenizeScalar(u8, moves, ' ');
         var idx: usize = 1;
         while (tokenizer.next()) |m| {
-            //const ex: ExtMove = self.pos.parse_move(m) catch break;
-
-            // #testing 960 shit
-            const ex: ExtMove = self.pos.parse_move(m) catch {
-                if (!self.mute) {
-                    lib.io.print("info string illegal move {s}\n", .{ m });
-                }
-                break;
-            };
-
+            const ex: ExtMove = self.pos.parse_move(m) catch break;
             self.pos.lazy_do_move(ex);
             self.repetition_table[idx] = self.pos.key;
             idx += 1;
@@ -307,7 +292,7 @@ pub const Searcher = struct {
             .nodes = create_nodes(),
             .nodes_spent = @splat(0),
             .hist = .init(),
-            .chessnix = Color.white,
+            .chessnix = Color.WHITE,
             .stopped = false,
             .stats = .empty,
         };
@@ -329,7 +314,7 @@ pub const Searcher = struct {
 
     fn go(self: *Searcher) void {
         // Backlink stuff from engine.
-        self.engine = @alignCast(@fieldParentPtr("searcher", self));
+        self.engine = @fieldParentPtr("searcher", self);
         self.transpositiontable = &self.engine.transpositiontable;
         self.tm = &self.engine.tm;
 
@@ -346,8 +331,9 @@ pub const Searcher = struct {
         self.stats = .empty;
         self.nodes_spent = @splat(0);
 
-        switch (pos.stm) {
-            inline else => |us| self.iterate(us, &pos)
+        switch (pos.stm.e) {
+            .white => self.iterate(Color.WHITE, &pos),
+            .black => self.iterate(Color.BLACK, &pos),
         }
     }
 
@@ -658,7 +644,7 @@ pub const Searcher = struct {
 
             is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_complex_margin;
 
-            if (!is_root and prevnode != null) { // TODO: checkout is_root icw nullable unwrap.
+            if (prevnode != null) {
                 is_improving = node.static_eval > prevnode.?.static_eval;
                 is_opponent_worsening = parentnode.?.static_eval != null_score and node.static_eval + parentnode.?.static_eval > 1;
             }
@@ -1342,7 +1328,7 @@ fn compute_lmr(depth: usize, moves: usize, base: f32, divisor: f32) u8 {
     const m: f32 = @floatFromInt(moves);
     const ln_depth: f32 = @log(d);
     const ln_moves: f32 = @log(m);
-    return @trunc(base + ln_depth * ln_moves / divisor);
+    return @intFromFloat(base + ln_depth * ln_moves / divisor);
 }
 
 fn compute_lmr_table() LmrTable {

@@ -6,20 +6,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 const utils = @import("utils.zig");
 
-pub fn initialize(io_init: std.Io) !void {
+pub fn initialize() !void {
     comptime compilation_check();
-    zio = io_init;
     memory_context = .init();
     io_context = .init();
 }
 
 pub fn finalize() void {
-    // @import("position.zig").finalize();
+    @import("position.zig").finalize();
     memory_context.deinit();
 }
 
 fn compilation_check() void {
-    const v = "0.16.0";
+    const v = "0.15.2";
     if (!std.mem.eql(u8, builtin.zig_version_string, v)) {
         @compileError("this chessnix version requires zig " ++ v);
     }
@@ -29,31 +28,19 @@ fn compilation_check() void {
     }
 }
 
-pub const Program = enum {
-    uci_engine,
-    lichess_tool,
-    tuner,
-};
-
 // --- Globals ---
-pub const program: Program =
-    .uci_engine;
-    //.lichess_tool;
-    //.tuner;
-pub const version = "2.0";
-pub const builddate = "2026-05-09";
+pub const version = "1.5";
+pub const builddate = "2026-05-15";
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_paranoid: bool = is_debug;
 pub const verifications: bool = is_debug or is_release_safe;
-pub const is_tuning: bool = program == .tuner;
 
 // --- Io and memory ---
 pub const ctx: *const MemoryContext = &memory_context;
-var memory_context: MemoryContext = undefined;
-
 pub const io: *IoContext = &io_context;
+var memory_context: MemoryContext = undefined;
 var io_context: IoContext = undefined;
 
 /// The global memory context of our exe.
@@ -75,11 +62,10 @@ pub const MemoryContext = struct {
     }
 };
 
-pub var zio: std.Io = undefined;
 var in_buffer: [8192]u8 = @splat(0);
 var out_buffer: [4096]u8 = @splat(0);
-var stdin: std.Io.File.Reader = undefined;
-var stdout: std.Io.File.Writer = undefined;
+var stdin: std.fs.File.Reader = undefined;
+var stdout: std.fs.File.Writer = undefined;
 
 const IoContext = struct {
     in: *std.Io.Reader,
@@ -87,8 +73,8 @@ const IoContext = struct {
 
     fn init() IoContext {
         // Thanks to Jonathan Hallström.
-        stdin = std.Io.File.stdin().readerStreaming(zio, &in_buffer);
-        stdout = std.Io.File.stdout().writerStreaming(zio, &out_buffer);
+        stdin = std.fs.File.stdin().readerStreaming(&in_buffer);
+        stdout = std.fs.File.stdout().writerStreaming(&out_buffer);
         return .{
             .in = &stdin.interface,
             .out = &stdout.interface,
@@ -127,7 +113,7 @@ const IoContext = struct {
 
 /// Are we in terminal mode?
 pub fn is_tty() bool {
-    return std.Io.File.stdin().isTty(zio) catch wtf("is_tty", .{});
+    return std.fs.File.stdin().isTty();
 }
 
 /// Call this anywhere where we do not want this in a release version.

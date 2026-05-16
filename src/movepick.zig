@@ -259,10 +259,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         ex.is_bad_capture = !hce.see(pos, ex.move, 0);
                         if (ex.is_bad_capture) {
-                            ex.score = Scores.bad_capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
+                            ex.score = Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         }
                         else {
-                            ex.score = Scores.capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
+                            ex.score = Scores.capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         }
                         ex.score += hist.get_capture_score(ex.*);
 
@@ -272,24 +272,24 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                     },
                     Move.ep => {
-                        ex.score = Scores.capture + ex.captured.see_value() * 101 - ex.piece.see_value() >> 3;
+                        ex.score = Scores.capture + ex.captured.value() * 101 - ex.piece.value() >> 3;
                         ex.score += hist.get_capture_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
                         const prom: PieceType = ex.move.promoted_to();
-                        switch (prom) {
-                            PieceType.queen => ex.score = Scores.promotion + 2000,
-                            PieceType.knight => ex.score = Scores.promotion + 1000,
-                            PieceType.bishop, PieceType.rook => ex.score = Scores.promotion,
+                        switch (prom.e) {
+                            .queen => ex.score = Scores.promotion + 2000,
+                            .knight => ex.score = Scores.promotion + 1000,
+                            .bishop, .rook => ex.score = Scores.promotion,
                             else => unreachable,
                         }
                     },
                     Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
                         const prom: PieceType = ex.move.promoted_to();
-                        switch (prom) {
-                            PieceType.queen => ex.score = Scores.promotion + 2000,
-                            PieceType.knight => ex.score = Scores.promotion + 1000,
-                            PieceType.bishop, PieceType.rook => ex.score = Scores.promotion,
+                        switch (prom.e) {
+                            .queen => ex.score = Scores.promotion + 2000,
+                            .knight => ex.score = Scores.promotion + 1000,
+                            .bishop, .rook => ex.score = Scores.promotion,
                             else => unreachable,
                         }
                         ex.score += hist.get_capture_score(ex.*);

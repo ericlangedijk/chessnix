@@ -11,24 +11,16 @@ const assert = std.debug.assert;
 const wtf = lib.wtf;
 
 pub const Timer = struct {
-    // zig 0.16.0
-    // std.time.Instant ➡️ std.Io.Timestamp
-    // std.time.Timer ➡️ std.Io.Timestamp
-    // std.time.timestamp ➡️ std.Io.Timestamp.now
+    const Instant = std.time.Instant;
 
-    pub const Timestamp = std.Io.Timestamp;
-
-    started: Timestamp,
-    previous: Timestamp,
+    started: Instant,
+    previous: Instant,
 
     pub const empty: Timer = std.mem.zeroes(Timer);
 
     pub fn start() Timer {
-        const current = Timestamp.now(lib.zio, .awake);
-        return .{
-            .started = current,
-            .previous = current
-        };
+        const current = Instant.now() catch wtf("no timer", .{});
+        return Timer{ .started = current, .previous = current };
     }
 
     pub fn reset(self: *Timer) void {
@@ -38,15 +30,15 @@ pub const Timer = struct {
 
     /// Elapsed nanoseconds.
     pub fn read(self: *Timer) u64 {
-        const current: Timestamp = self.sample();
-        return @intCast(self.started.durationTo(current).nanoseconds);
+        const current: Instant = self.sample();
+        return current.since(self.started);
     }
 
     /// Returns elapsed nanoseconds and resets.
     pub fn lap(self: *Timer) u64 {
-        const current: Timestamp = self.sample();
+        const current: Instant = self.sample();
         defer self.started = current;
-        return @intCast(self.started.durationTo(current).nanoseconds);
+        return current.since(self.started);
     }
 
     pub fn elapsed_ms(self: *Timer) u64 {
@@ -62,11 +54,11 @@ pub const Timer = struct {
         return true;
     }
 
-    fn sample(self: *Timer) Timestamp {
-        const current: Timestamp = Timestamp.now(lib.zio, .awake);
-//        if (current.order(self.previous) == .gt) {
+    fn sample(self: *Timer) Instant {
+        const current: Instant = Instant.now() catch unreachable;
+        if (current.order(self.previous) == .gt) {
             self.previous = current;
-//        }
+        }
         return self.previous;
     }
 };
@@ -115,32 +107,32 @@ pub const Random = struct {
 pub const TextFileReader = struct {
     allocator: std.mem.Allocator,
     buffer: []u8,
-    reader: std.Io.File.Reader,
+    reader: std.fs.File.Reader,
 
     pub fn init(filename: []const u8, allocator: std.mem.Allocator, linebuffer_size: usize) !TextFileReader {
-        const file = try std.Io.Dir.openFileAbsolute(lib.zio, filename, .{});
+        const file = try std.fs.openFileAbsolute(filename, .{});
         const buf = try allocator.alloc(u8, linebuffer_size);
         return .{
             .allocator = allocator,
             .buffer = buf,
-            .reader = file.reader(lib.zio, buf),
+            .reader = file.reader(buf),
         };
     }
 
     pub fn deinit(self: *TextFileReader) void {
-        self.reader.file.close(lib.zio);
+        self.reader.file.close();
         self.allocator.free(self.buffer);
     }
 
     pub fn readline(self: *TextFileReader) !?[]const u8 {
         const line = self.reader.interface.takeDelimiterInclusive('\n') catch |err| {
-            return if (err == std.Io.Reader.DelimiterError.EndOfStream) null else err;
+            return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
         };
         return std.mem.trimEnd(u8, line, "\r\n");
     }
 
-    pub fn reset(self: *TextFileReader) !void {
-        try self.reader.seekTo(0);
+    pub fn reset(self: *TextFileReader) void {
+        self.reader.seekTo(0);
     }
 };
 
@@ -148,20 +140,20 @@ pub const TextFileReader = struct {
 pub const TextFileWriter = struct {
     allocator: std.mem.Allocator,
     buffer: []u8,
-    writer: std.Io.File.Writer,
+    writer: std.fs.File.Writer,
 
     pub fn init(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
-        const file = try std.Io.Dir.createFileAbsolute(lib.zio, filename, .{});
+        const file = try std.fs.createFileAbsolute(filename, .{});
         const buf = try allocator.alloc(u8, buffer_size);
         return .{
             .allocator = allocator,
             .buffer = buf,
-            .writer = file.writer(lib.zio, buf),
+            .writer = file.writer(buf),
         };
     }
 
     pub fn init_cwd(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
-        const file = try std.Io.Dir.cwd().createFile(lib.zio, filename, .{ .lock_nonblocking = true });
+        const file = try std.fs.cwd().createFile(filename, .{ .lock_nonblocking = true });
         const buf = try allocator.alloc(u8, buffer_size);
         return .{
             .allocator = allocator,
@@ -172,7 +164,7 @@ pub const TextFileWriter = struct {
 
     pub fn deinit(self: *TextFileWriter) void {
         self.writer.interface.flush() catch {};
-        self.writer.file.close(lib.zio);
+        self.writer.file.close();
         self.allocator.free(self.buffer);
     }
 
@@ -258,7 +250,7 @@ pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
         pub fn print_assume_capacity(self: *Self, comptime fmt: []const u8, args: anytype) void {
             comptime assert(T == u8);
             assert(self.len < buffer_capacity);
-            var w: std.Io.Writer = .fixed(self.unused_capacity_slice());
+            var w: std.io.Writer = .fixed(self.unused_capacity_slice());
             w.print(fmt, args) catch lib.wtf("print", .{});
             self.len += w.end;
         }

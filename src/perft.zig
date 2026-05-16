@@ -22,28 +22,31 @@ const JustCount = position.JustCount;
 pub fn run(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
-    const nodes: u64 = switch (pos.stm) {
-        inline else => |us| do_run(true, true, us, depth, pos)
+    const nodes: u64 = switch (pos.stm.e) {
+        .white => do_run(true, true, Color.WHITE, depth, pos),
+        .black => do_run(true, true, Color.BLACK, depth, pos),
     };
     const time = t.lap();
-    io.print("perft {}: nodes: {}, time {}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
 }
 
 /// Only show output when ready.
 pub fn qrun(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
-    const nodes: u64 = switch (pos.stm) {
-        inline else => |us| do_run(false, true, us, depth, pos)
+    const nodes: u64 = switch (pos.stm.e) {
+        .white => do_run(false, true, Color.WHITE, depth, pos),
+        .black => do_run(false, true, Color.BLACK, depth, pos),
     };
     const time = t.lap();
-    io.print("perft {}: nodes: {}, time {}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
+    io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
 }
 
 /// No output. Just return node count.
 pub fn run_quick(pos: *const Position, depth: u8) u64 {
-    switch (pos.stm) {
-        inline else => |us| return do_run(false, true, us, depth, pos)
+    switch (pos.stm.e) {
+        .white => return do_run(false, true, Color.WHITE, depth, pos),
+        .black => return do_run(false, true, Color.BLACK, depth, pos),
     }
 }
 
@@ -95,7 +98,8 @@ pub fn bench() !void {
         end_depth_nodes: u64,
     };
 
-    const testruns: [4]Test = .{
+    const testruns: [4]Test =
+    .{
         .{.name = "Startpos", .fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",                 .end_depth = 7, .end_depth_nodes = 3195901860 },
         .{.name = "Kiwipete", .fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",     .end_depth = 6, .end_depth_nodes = 8031647685 },
         .{.name = "Midgame",  .fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", .end_depth = 6, .end_depth_nodes = 6923051137 },
@@ -113,8 +117,7 @@ pub fn bench() !void {
             var timer = utils.Timer.start();
             const nodes: u64 = run_quick(&pos, @truncate(depth));
             const time = timer.read();
-            //io.print("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
-            io.print("Perft {s} {}: {d:<12} {}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) }); // TODO: how to format time?
+            io.print("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
 
             if (depth == testrun.end_depth) {
                 totalnodes += nodes;
@@ -130,5 +133,5 @@ pub fn bench() !void {
         }
     }
 
-    io.print("Total nodes: {} {} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });  // TODO: how to format duration?
+    io.print("Total nodes: {} {D} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
 }

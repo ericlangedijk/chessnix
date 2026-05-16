@@ -2,7 +2,6 @@
 
 //! Lots of bitboards.
 
-const std = @import("std");
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");
 const types = @import("types.zig");
@@ -17,12 +16,8 @@ const Square = types.Square;
 
 /// Information about a pair of squares.
 pub const SquarePair = struct {
-    /// The ray bitboard **excluded** from and **included** to.
+    /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
     ray: u64 = 0,
-    /// The squares inbetween.
-    in_between: u64 = 0,
-    /// The squares inbetween.
-    in_between_inclusive: u64 = 0,
     /// The from-to direction.
     direction: ?Direction = null,
     /// The from-to or to-from orientation.
@@ -70,6 +65,8 @@ pub const bb_corners: u64 = bb_a1 | bb_h1 | bb_a8 | bb_h8;
 
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
+
+pub const bits: [8]u8 = .{ 1, 2, 4, 8, 16, 32, 64, 128 };
 
 // rank and file indexes
 pub const rank_1 : u3 = 0;
@@ -180,22 +177,16 @@ pub const bb_rook: [64]u64 = compute_rook_bitboards();
 pub const bb_queen: [64]u64 = compute_queen_bitboards();
 
 const pairs: [64 * 64]SquarePair = compute_squarepairs();
-
-// pub const inbetween_u8: [8][8]u8 = compute_inbetween_u8();
-// pub const inbetween_inclusive_u8: [8][8]u8 = compute_inbetween_inclusive_u8();
-
+pub const small_rays: [8][8]u8 = compute_small_rays();
 pub const ep_masks: [64]u64 = compute_ep_masks(); // indexing on to-square (e2e4).
 pub const passed_pawn_masks_white: [64]u64 = compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [64]u64 = compute_passed_pawn_masks_black();
-pub const backward_pawn_masks_white: [64]u64 = compute_backward_pawn_masks_white(); // #testing tuner.
-pub const backward_pawn_masks_black: [64]u64 = compute_backward_pawn_masks_black(); // #testing tuner.
-
 pub const adjacent_file_masks: [64]u64 = compute_adjacent_file_masks();
-//pub const king_areas: [64]u64 = compute_king_areas();
+pub const king_areas: [64]u64 = compute_king_areas();
 
-/// Hce.
+/// Hce
 pub const king_areas_white: [64]u64 = compute_king_areas_white();
-/// Hce.
+/// Hce
 pub const king_areas_black: [64]u64 = compute_king_areas_black();
 /// Hce. Pawnstorm areas from the perspective of the white king. Indexing by [white-king-square]
 pub const king_pawnstorm_areas_white: [64]u64 = compute_king_pawnstorm_areas_white();
@@ -210,37 +201,35 @@ pub const direction_bitboards: [8][*]const u64 = .{
 // --- Computing ---
 fn compute_direction_bitboards(comptime dir: Direction) [64]u64 {
     @setEvalBranchQuota(8000);
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = sq.ray_bitboard(dir);
+    var result: [64]u64 = @splat(0);
+    for (Square.all, &result) |sq, *ptr| {
+        ptr.* = sq.ray_bitboard(dir);
     }
-    return bb;
+    return result;
 }
 
 fn compute_bishop_bitboards() [64]u64 {
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
+    var result: [64]u64 = @splat(0);
+    for (Square.all, &result) |sq, *ptr| {
+        ptr.* = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
     }
-    return bb;
+    return result;
 }
 
 fn compute_rook_bitboards() [64]u64 {
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
+    var result: [64]u64 = @splat(0);
+    for (Square.all, &result) |sq, *ptr| {
+        ptr.* = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
     }
-    return bb;
+    return result;
 }
 
 fn compute_queen_bitboards() [64]u64 {
-    var bb: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] =
-            bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] |
-            bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
+    var result: [64]u64 = @splat(0);
+    for (Square.all, &result) |sq, *ptr| {
+        ptr.* = bb_rook[sq.u] | bb_bishop[sq.u];// bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] | bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
     }
-    return bb;
+    return result;
 }
 
 fn compute_squarepairs() [64 * 64]SquarePair {
@@ -262,7 +251,7 @@ fn compute_squarepairs() [64 * 64]SquarePair {
         }
     }
 
-    // Set bitboards
+    // Set ray bitboards
     for (Square.all) |from| {
         for (Square.all) |to| {
             const idx: usize = from.idx() * 64 + to.idx();
@@ -277,66 +266,31 @@ fn compute_squarepairs() [64 * 64]SquarePair {
                     if (sq.u == to.u) break;
                 }
             }
-            // TODO: #deprecated? or not
-            sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
-            sp[idx].in_between_inclusive = sp[idx].ray | from.to_bitboard();
+            // #deprecated
+            // In between.
+            // sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
         }
     }
     return sp;
 }
 
-// pub fn compute_inbetween_u8() [8][8]u8 {
-//     var result: [8][8]u8 = @splat(@splat(0));
-//     for (0..8) |a| {
-//         const first: i32 = @intCast(a);
-//         for (0..8) |b| {
-//             const second: i32 = @intCast(b);
-//             //if (first == second or)
-//             if (a > b or @abs(first - second) < 2) {
-//                 continue;
-//             }
-//             //lib.io.debugprint("{} {} -> ", .{ a, b});
-//             for (a + 1..b) |bit| {
-//                 //lib.io.debugprint("{}, ", .{ bit});
-//                 const one: u8 = 1;
-//                 const shift: u3 = @intCast(bit);
-//                 result[a][b] |= one << shift;
-//                 result[b][a] |= one << shift;
-//             }
-//             //lib.io.debugprint("\n", .{});
-//         }
-//     }
-//     return result;
-// }
-
-// pub fn compute_inbetween_inclusive_u8() [8][8]u8 {
-//     var result: [8][8]u8 = @splat(@splat(0));
-//     for (0..8) |a| {
-// //        const first: i32 = @intCast(a);
-//         for (0..8) |b| {
-//             result[a][b] = inbetween_u8[a][b];
-//             const a1 = @as(u8, 1) << a;
-//             const b1 = @as(u8, 1) << b;
-//             result[a][b] |= (a1 | b1);
-//   //          const second: i32 = @intCast(b);
-//             //if (first == second or)
-//             // if (a > b or @abs(first - second) < 2) {
-//             //     continue;
-//             // }
-//             // if (a > b) continue;
-//             // //lib.io.debugprint("{} {} -> ", .{ a, b});
-//             // for (a..b) |bit| {
-//             //     //lib.io.debugprint("{}, ", .{ bit});
-//             //     const one: u8 = 1;
-//             //     const shift: u3 = @intCast(bit);
-//             //     result[a][b] |= one << shift;
-//             //     result[b][a] |= one << shift;
-//             // }
-//             //lib.io.debugprint("\n", .{});
-//         }
-//     }
-//     return result;
-// }
+fn compute_small_rays() [8][8]u8 {
+    // Use the already computed first rank squarepairs.
+    var result: [8][8]u8 = @splat(@splat(0));
+    for (0..8) |f| {
+        const from: u3 = @intCast(f);
+        for (0..8) |t| {
+            const to: u3 = @intCast(t);
+            const from_sq: Square = Square.from_rank_file(0, from);
+            const to_sq: Square = Square.from_rank_file(0, to);
+            const pair: *const SquarePair = get_squarepair(from_sq, to_sq);
+            const mask: u64 = pair.ray;
+            const v: u8 = @intCast(mask & 0xff);
+            result[f][t] = v;
+        }
+    }
+    return result;
+}
 
 fn compute_passed_pawn_masks_white() [64]u64 {
     var pp: [64]u64 = @splat(0);
@@ -356,29 +310,10 @@ fn compute_passed_pawn_masks_white() [64]u64 {
 fn compute_passed_pawn_masks_black() [64]u64 {
     var pp: [64]u64 = @splat(0);
     for (Square.all) |sq| {
-        const black_sq: Square = sq.relative(Color.black);
+        const black_sq: Square = sq.relative(Color.BLACK);
         pp[black_sq.u] = funcs.mirror_vertically(passed_pawn_masks_white[sq.u]);
     }
     return pp;
-}
-
-fn compute_backward_pawn_masks_white() [64]u64 {
-    var result: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        result[sq.u] = passed_pawn_masks_black[sq.u];
-        result[sq.u] &= ~file_bitboards[sq.coord.file];
-        if (sq.next(.west)) |n| result[sq.u] |= n.to_bitboard();
-        if (sq.next(.east)) |n| result[sq.u] |= n.to_bitboard();
-    }
-    return result;
-}
-
-fn compute_backward_pawn_masks_black() [64]u64 {
-    var result: [64]u64 = @splat(0);
-    for (Square.all) |sq| {
-        result[sq.u] = funcs.mirror_vertically(backward_pawn_masks_white[sq.u]);
-    }
-    return result;
 }
 
 fn compute_ep_masks() [64]u64 {
@@ -392,22 +327,22 @@ fn compute_ep_masks() [64]u64 {
     return ep;
 }
 
-// fn compute_king_areas() [64]u64 {
-//     @setEvalBranchQuota(8000);
-//     var ka: [64]u64 = @splat(0);
-//     for (Square.all) |sq| {
-//         // ka[sq.u] |= sq.to_bitboard();
-//         if (sq.next(.north))|n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.east)) |n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.south))|n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.west)) |n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.north_west))|n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.north_east))|n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
-//         if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
-//     }
-//     return ka;
-// }
+fn compute_king_areas() [64]u64 {
+    @setEvalBranchQuota(8000);
+    var ka: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        // ka[sq.u] |= sq.to_bitboard(); // TODO: include or not??
+        if (sq.next(.north))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.east)) |n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.south))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.west)) |n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.north_west))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.north_east))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.south_east))|n| ka[sq.u] |= n.to_bitboard();
+        if (sq.next(.south_west))|n| ka[sq.u] |= n.to_bitboard();
+    }
+    return ka;
+}
 
 fn compute_adjacent_file_masks() [64]u64 {
     var afm: [64]u64 = @splat(0);
@@ -419,23 +354,23 @@ fn compute_adjacent_file_masks() [64]u64 {
     return afm;
 }
 
-// fn compute_backward_pawn_masks_black()[64]u64 {
-//     var bpm: [64]u64 = @splat(0);
-//     for (Square.all) |sq| {
-//         if (sq.coord.rank <= 1 or sq.coord.rank == 7) {
-//             continue;
-//         }
-//         var bb: u64 = passed_pawn_masks_white[sq.u] & ~file_bitboards[sq.coord.file];
-//         if (sq.coord.file > 0) {
-//             bb |= sq.sub(1).to_bitboard();
-//         }
-//         if (sq.coord.file < 7) {
-//             bb |= sq.add(1).to_bitboard();
-//         }
-//         bpm[sq.u] = bb;
-//     }
-//     return bpm;
-// }
+fn compute_backward_pawn_masks_black()[64]u64 {
+    var bpm: [64]u64 = @splat(0);
+    for (Square.all) |sq| {
+        if (sq.coord.rank <= 1 or sq.coord.rank == 7) {
+            continue;
+        }
+        var bb: u64 = passed_pawn_masks_white[sq.u] & ~file_bitboards[sq.coord.file];
+        if (sq.coord.file > 0) {
+            bb |= sq.sub(1).to_bitboard();
+        }
+        if (sq.coord.file < 7) {
+            bb |= sq.add(1).to_bitboard();
+        }
+        bpm[sq.u] = bb;
+    }
+    return bpm;
+}
 
 /// hce eval
 fn compute_king_areas_white() [64]u64 {
@@ -443,7 +378,7 @@ fn compute_king_areas_white() [64]u64 {
     for (Square.all) |sq| {
         ka[sq.u] = sq.to_bitboard() | attacks.get_king_attacks(sq);
         // Go 1 rank further.
-        ka[sq.u] |= funcs.pawns_shift(ka[sq.u], Color.white, .up);
+        ka[sq.u] |= funcs.pawns_shift(ka[sq.u], Color.WHITE, .up);
     }
     return ka;
 }
@@ -454,7 +389,7 @@ fn compute_king_areas_black() [64]u64 {
     for (Square.all) |sq| {
         ka[sq.u] = sq.to_bitboard() | attacks.get_king_attacks(sq);
         // Go 1 rank further.
-        ka[sq.u] |= funcs.pawns_shift(ka[sq.u], Color.black, .up);
+        ka[sq.u] |= funcs.pawns_shift(ka[sq.u], Color.BLACK, .up);
     }
     return ka;
 }
@@ -465,7 +400,7 @@ fn compute_king_pawnstorm_areas_white() [64]u64 {
     for (Square.all) |sq| {
         ps[sq.u] = passed_pawn_masks_white[sq.u];
         // Include the squares next to the king.
-        ps[sq.u] |= funcs.pawns_shift(ps[sq.u], Color.black, .up);
+        ps[sq.u] |= funcs.pawns_shift(ps[sq.u], Color.BLACK, .up);
     }
     return ps;
 }
@@ -476,7 +411,7 @@ fn compute_king_pawnstorm_areas_black() [64]u64 {
     for (Square.all) |sq| {
         ps[sq.u] = passed_pawn_masks_black[sq.u];
         // Include the squares next to the king.
-        ps[sq.u] |= funcs.pawns_shift(ps[sq.u], Color.white, .up);
+        ps[sq.u] |= funcs.pawns_shift(ps[sq.u], Color.WHITE, .up);
     }
     return ps;
 }
@@ -486,67 +421,23 @@ pub fn get_squarepair(from: Square, to: Square) *const SquarePair {
     return &pairs[idx];
 }
 
-/// SquarePair Convenience function.
-pub fn get_ray(a: Square, b: Square) u64 {
-    return get_squarepair(a, b).ray;
-}
-
-/// SquarePair Convenience function.
-pub fn get_inbetween(a: Square, b: Square) u64 {
-    return get_squarepair(a, b).in_between;
-}
-
-/// SquarePair Convenience function.
+/// Convenience function.
 pub fn dist(a: Square, b: Square) u3 {
     return get_squarepair(a, b).dist;
 }
 
-/// SquarePair Convenience function.
+/// Convenience function.
 pub fn manh(a: Square, b: Square) u4 {
     return get_squarepair(a, b).manh;
 }
 
 pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
-    return switch (us) {
+    return switch (us.e) {
         .white => passed_pawn_masks_white[sq.u],
         .black => passed_pawn_masks_black[sq.u],
     };
 }
 
-pub fn get_backward_pawn_mask(comptime us: Color, sq: Square) u64 {
-    return switch (us) {
-        .white => backward_pawn_masks_white[sq.u],
-        .black => backward_pawn_masks_black[sq.u],
-    };
-}
-
 pub fn forward_file(comptime us: Color, sq: Square) u64 {
-    return if (us == Color.white) bb_north[sq.u] else bb_south[sq.u];
-}
-
-pub fn iterator(comptime max: u7) type {
-    return struct {
-        const Self = @This();
-        u: u64,
-        loops: u7,
-
-        pub fn init(bitboard: u64) Self {
-            return .{
-                .u = bitboard,
-                .loops = 0,
-            };
-        }
-
-        pub fn next(self: *Self) ?Square {
-            std.debug.assert(self.loops <= max);
-            if (self.u == 0) return null;
-            defer {
-                self.loops += 1;
-                self.u &= (self.u - 1);
-            }
-            return .{ .u = @intCast(@ctz(self.u)) };
-        }
-
-    };
-
+    return if (us.e == .white) bb_north[sq.u] else bb_south[sq.u];
 }

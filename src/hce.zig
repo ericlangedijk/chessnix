@@ -33,7 +33,6 @@ const Move = types.Move;
 const Position = position.Position;
 
 const terms = hceterms.terms;
-const register_term_usage = if (lib.is_tuning) @import("tuner.zig").register_term_usage else void;
 
 pub const Evaluator = struct {
     const Self = @This();
@@ -69,24 +68,46 @@ pub const Evaluator = struct {
     attack_power: [2]ScorePair,
 
     pub fn init() Self {
-        return .{
-            .pos = undefined,
-            .pins = 0,
-            .has_pawns = .{ false, false },
-            .king_squares = .{ .a1, .a1 },
-            .king_areas = .{ 0, 0 },
-            .pawn_storm_areas = .{ 0, 0 },
-            .mobility_areas = .{ 0, 0 },
-            .pawn_attacks = .{ 0, 0 },
-            .knight_attacks = .{ 0, 0 },
-            .bishop_attacks = .{ 0, 0 },
-            .rook_attacks = .{ 0, 0 },
-            .queen_attacks = .{ 0, 0 },
-            .king_attacks = .{ 0, 0 },
-            .all_attacks = .{ 0, 0},
-            .attack_power = .{ .empty, .empty },
-        };
+        return undefined; // TODO: as useless init.
+        // return .{
+        //     .pos = undefined,
+        //     .pins = 0,
+        //     .has_pawns = .{ false, false },
+        //     .king_squares = .{ .A1, .A1 },
+        //     .king_areas = .{ 0, 0 },
+        //     .pawn_storm_areas = .{ 0, 0 },
+        //     .mobility_areas = .{ 0, 0 },
+        //     .pawn_attacks = .{ 0, 0 },
+        //     .knight_attacks = .{ 0, 0 },
+        //     .bishop_attacks = .{ 0, 0 },
+        //     .rook_attacks = .{ 0, 0 },
+        //     .queen_attacks = .{ 0, 0 },
+        //     .king_attacks = .{ 0, 0 },
+        //     .all_attacks = .{ 0, 0},
+        //     .attack_power = .{ .empty, .empty },
+        // };
     }
+
+    // pub fn init() Self {
+    //     return undefined;
+    //     // return .{
+    //     //     .pos = undefined,
+    //     //     .pins = undefined,
+    //     //     .has_pawns = undefined,
+    //     //     .king_squares = undefined,
+    //     //     .king_areas = undefined,
+    //     //     .pawn_storm_areas = undefined,
+    //     //     .mobility_areas = undefined,
+    //     //     .pawn_attacks = undefined,
+    //     //     .knight_attacks = undefined,
+    //     //     .bishop_attacks = undefined,
+    //     //     .rook_attacks = undefined,
+    //     //     .queen_attacks = undefined,
+    //     //     .king_attacks = undefined,
+    //     //     .all_attacks = undefined,
+    //     //     .attack_power = undefined,
+    //     // };
+    // }
 
     pub fn evaluate(self: *Self, pos: *const Position) i32 {
         // Init pos reference.
@@ -95,10 +116,10 @@ pub const Evaluator = struct {
 
         // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner.
         self.pins = pos.our_pins() & pos.by_color(pos.stm);
-        self.has_pawns = .{ pos.pawns(Color.white) != 0, pos.pawns(Color.black) != 0};
+        self.has_pawns = .{ pos.pawns(Color.WHITE) != 0, pos.pawns(Color.BLACK) != 0};
 
         // Init stuff.
-        self.king_squares = .{ pos.king_square(Color.white), pos.king_square(Color.black) };
+        self.king_squares = .{ pos.king_square(Color.WHITE), pos.king_square(Color.BLACK) };
 
         self.king_areas[0] = bitboards.king_areas_white[self.king_squares[0].u];
         self.king_areas[1] = bitboards.king_areas_black[self.king_squares[1].u];
@@ -107,20 +128,15 @@ pub const Evaluator = struct {
         self.pawn_storm_areas[1] = bitboards.king_pawnstorm_areas_black[self.king_squares[1].u];
 
         self.pawn_attacks = .{
-            funcs.pawns_attacks(pos.pawns(Color.white), Color.white),
-            funcs.pawns_attacks(pos.pawns(Color.black), Color.black),
-            //funcs.pawns_shift(pos.pawns(Color.white), Color.white, .northwest) | funcs.pawns_shift(pos.pawns(Color.white), Color.white, .northeast),
-            //funcs.pawns_shift(pos.pawns(Color.black), Color.black, .northwest) | funcs.pawns_shift(pos.pawns(Color.black), Color.black, .northeast),
+            funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northwest) | funcs.pawns_shift(pos.pawns(Color.WHITE), Color.WHITE, .northeast),
+            funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northwest) | funcs.pawns_shift(pos.pawns(Color.BLACK), Color.BLACK, .northeast),
         };
-
-        // assert(self.pawn_attacks[0] == pos.attacks[0][0]); OK!
-        // assert(self.pawn_attacks[1] == pos.attacks[1][0]); OK!
 
         self.all_attacks = self.pawn_attacks;
 
         self.mobility_areas = .{
-            ~(pos.by_color(Color.white) | self.pawn_attacks[Color.black.u]),
-            ~(pos.by_color(Color.black) | self.pawn_attacks[Color.white.u]),
+            ~(pos.by_color(Color.WHITE) | self.pawn_attacks[Color.BLACK.u]),
+            ~(pos.by_color(Color.BLACK) | self.pawn_attacks[Color.WHITE.u]),
         };
 
         self.knight_attacks = @splat(0);
@@ -134,31 +150,31 @@ pub const Evaluator = struct {
         self.attack_power = @splat(ScorePair.empty);
 
         // And perform eval.
-        score.inc(self.eval_pawns(Color.white));
-        score.dec(self.eval_pawns(Color.black));
+        score.inc(self.eval_pawns(Color.WHITE));
+        score.dec(self.eval_pawns(Color.BLACK));
 
-        score.inc(self.eval_knights(Color.white));
-        score.dec(self.eval_knights(Color.black));
+        score.inc(self.eval_knights(Color.WHITE));
+        score.dec(self.eval_knights(Color.BLACK));
 
-        score.inc(self.eval_bishops(Color.white));
-        score.dec(self.eval_bishops(Color.black));
+        score.inc(self.eval_bishops(Color.WHITE));
+        score.dec(self.eval_bishops(Color.BLACK));
 
-        score.inc(self.eval_rooks(Color.white));
-        score.dec(self.eval_rooks(Color.black));
+        score.inc(self.eval_rooks(Color.WHITE));
+        score.dec(self.eval_rooks(Color.BLACK));
 
-        score.inc(self.eval_queens(Color.white));
-        score.dec(self.eval_queens(Color.black));
+        score.inc(self.eval_queens(Color.WHITE));
+        score.dec(self.eval_queens(Color.BLACK));
 
-        score.inc(self.eval_king(Color.white));
-        score.dec(self.eval_king(Color.black));
+        score.inc(self.eval_king(Color.WHITE));
+        score.dec(self.eval_king(Color.BLACK));
 
-        score.inc(self.eval_threats(Color.white));
-        score.dec(self.eval_threats(Color.black));
+        score.inc(self.eval_threats(Color.WHITE));
+        score.dec(self.eval_threats(Color.BLACK));
 
         // First add in the tempo bonus. That is what the data was originally tuned for.
-        switch (pos.stm) {
-            Color.white => score.inc(terms.tempo_bonus),
-            Color.black => score.dec(terms.tempo_bonus),
+        switch (pos.stm.e) {
+            .white => score.inc(terms.tempo_bonus),
+            .black => score.dec(terms.tempo_bonus),
         }
 
         score.mg = std.math.clamp(score.mg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
@@ -169,7 +185,7 @@ pub const Evaluator = struct {
         const scale: f32 = endgame.scale(pos, result);
         result = funcs.fmul(result, scale);
         result = std.math.clamp(result, -scoring.static_eval_threshold, scoring.static_eval_threshold);
-        if (pos.stm == Color.black) {
+        if (pos.stm.e == .black) {
             result = -result;
         }
         return result;
@@ -179,15 +195,13 @@ pub const Evaluator = struct {
         var sp: ScorePair = .empty;
         // Skip king.
         inline for (0..5) |pt| {
-            sp.hce_inc_mult(Color.white, &terms.piece_value_table[pt], pos.material.counts[0][pt]);
-            sp.hce_dec_mult(Color.black, &terms.piece_value_table[pt], pos.material.counts[1][pt]);
-            // const vp: ScorePair = terms.piece_value_table[pt];
-            // const white_count: u8 = pos.material.counts[0][pt];
-            // const black_count: u8 = pos.material.counts[1][pt];
-            // sp.mg += vp.mg * white_count;
-            // sp.eg += vp.eg * white_count;
-            // sp.mg -= vp.mg * black_count;
-            // sp.eg -= vp.eg * black_count;
+            const vp: ScorePair = terms.piece_value_table[pt];
+            const white_count: u8 = pos.material.counts[0][pt];
+            const black_count: u8 = pos.material.counts[1][pt];
+            sp.mg += vp.mg * white_count;
+            sp.eg += vp.eg * white_count;
+            sp.mg -= vp.mg * black_count;
+            sp.eg -= vp.eg * black_count;
         }
         return sp;
     }
@@ -210,10 +224,10 @@ pub const Evaluator = struct {
         var phalanx_pawns: u64 = (funcs.shift_bitboard(our_pawns, .east)) & our_pawns;
         while (bitloop(&phalanx_pawns)) |sq| {
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
-            score.hce_inc(us, &terms.pawn_phalanx_bonus[relative_rank]);
+            score.inc(terms.pawn_phalanx_bonus[relative_rank]);
         }
 
-        // Loop through our pawns.
+        // Loop through our pawns. Determine passed pawns.
         var loop_pawns: u64 = our_pawns;
         while (bitloop(&loop_pawns)) |sq| {
             const sq_bb: u64 = sq.to_bitboard();
@@ -222,63 +236,52 @@ pub const Evaluator = struct {
             const file: u3 = sq.coord.file;
 
             // Psqt.
-            score.hce_inc(us, &terms.piece_square_table[PieceType.pawn.u][relative_sq.u]);
+            score.inc(terms.piece_square_table[PieceType.pawn.u][relative_sq.u]);
 
             // Protected pawn.
             const is_protected: bool = self.pawn_attacks[us.u] & sq_bb != 0;
             if (is_protected) {
-                score.hce_inc(us, &terms.protected_pawn_bonus[relative_rank]);
+                score.inc(terms.protected_pawn_bonus[relative_rank]);
             }
 
             // Doubled pawn.
             const pawns_ahead_on_file = bitboards.forward_file(us, sq) & our_pawns;
             const is_doubled: bool = pawns_ahead_on_file != 0;
             if (is_doubled) {
-                score.hce_inc(us, &terms.doubled_pawn_penalty[file]);
+                score.inc(terms.doubled_pawn_penalty[file]);
             }
 
             // Passed pawn.
             const their_pawns_ahead: u64 = bitboards.get_passed_pawn_mask(us, sq) & their_pawns;
-            //const is_passed: bool = pawns_ahead_on_file == 0 and their_pawns_ahead == 0; // #testing (also higher passed pawn scores in hceterms)
             const is_passed: bool = their_pawns_ahead == 0;
             if (is_passed) {
                 passed_pawns |= sq_bb; // Update passed pawns.
-                score.hce_inc(us, &terms.passed_pawn_bonus[relative_rank]);
+                score.inc(terms.passed_pawn_bonus[relative_rank]);
             }
 
             // Isolated pawn.
             const pawns_on_adjacent_files = bitboards.adjacent_file_masks[sq.u] & our_pawns;
             const is_isolated: bool = pawns_on_adjacent_files == 0;
             if (is_isolated) {
-                score.hce_inc(us, &terms.isolated_pawn_penalty[file]);
+                score.inc(terms.isolated_pawn_penalty[file]);
             }
-
-            // Backward pawn. #testing tuner.
-            // if (!is_isolated and !is_passed and !is_doubled and bitboards.get_backward_pawn_mask(us, sq) & our_pawns == 0 and attacks.get_pawn_attacks(sq, us) & our_pawns != 0) {
-            //     const sq_in_front: Square = if (us == Color.white) sq.add(8) else sq.sub(8);
-            //     const pc_in_front: Piece = pos.board[sq_in_front.u];
-            //     if ((pc_in_front.is_empty() or !pc_in_front.is_pawn()) and attacks.get_pawn_attacks(sq_in_front, us) & their_pawns != 0) {
-            //         score.hce_inc(us, &terms.backward_pawn[relative_rank]);
-            //     }
-            // }
-
         }
 
         // Passed pawns with kings.
         const king_sq: Square = self.king_squares[us.u];
         const their_king_sq: Square = self.king_squares[them.u];
         while (bitloop(&passed_pawns)) |sq| {
-            const their_move: u1 = @intFromBool(pos.stm == them);
+            const their_move: u1 = @intFromBool(pos.stm.e == them.e);
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
             const dist_to_king: u3 = funcs.square_distance(sq, king_sq);
-            score.hce_inc(us, &terms.king_passed_pawn_distance_table[dist_to_king]);
+            score.inc(terms.king_passed_pawn_distance_table[dist_to_king]);
             const dist_to_enemy_king: u3 = funcs.square_distance(sq, their_king_sq);
-            score.hce_inc(us, &terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king]);
+            score.inc(terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king]);
             // Square rule for pawn race.
             const enemy_non_pawn_king_pieces: u64 = pos.by_color(them) & ~pos.kings(them) & ~pos.pawns(them);
             const dist_to_promotion: u3 = (7 - relative_rank);
             if (enemy_non_pawn_king_pieces == 0 and dist_to_promotion < dist_to_enemy_king - their_move) {
-                score.hce_inc(us, &terms.king_cannot_reach_passed_pawn_bonus);
+                score.inc(terms.king_cannot_reach_passed_pawn_bonus);
             }
         }
         return score;
@@ -294,32 +297,34 @@ pub const Evaluator = struct {
             const relative_sq: Square = sq.relative(us);
 
             // Psqt.
-            score.hce_inc(us, &terms.piece_square_table[PieceType.knight.u][relative_sq.u]);
+            score.inc(terms.piece_square_table[PieceType.knight.u][relative_sq.u]);
 
             // Mobility.
             const legal_moves: u64 = self.legalize_moves(PieceType.knight, us, sq, attacks.get_knight_attacks(sq));
             const mobility: u64 = legal_moves & self.mobility_areas[us.u];
             const cnt: u7 = popcnt(mobility);
-            score.hce_inc(us, &terms.knight_mobility_table[cnt]);
+            score.inc(terms.knight_mobility_table[cnt]);
 
             // Update attacks.
             self.knight_attacks[us.u] |= legal_moves;
             self.all_attacks[us.u] |= legal_moves;
 
-            // Update attackpower.
+            // Attacks to the enemy king.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.knight.u][king_attack_count]);
-                if (comptime lib.is_tuning) register_term_usage(us, &terms.attack_power[PieceType.KNIGHT.u][king_attack_count], 1);
             }
 
             // Outpost
             if (self.is_outpost(sq, us)) {
-                // Check outpost is also blocking an enemy pawn.
-                const sq_in_front: Square = if (us == Color.white) sq.add(8) else sq.sub(8);
-                const is_blocking: u1 = @intFromBool(pos.board[sq_in_front.u].is_pawn_of_color(them));
-                score.hce_inc(us, &terms.knight_outpost_table[is_blocking][relative_sq.u]); // TODO: check +4
+                score.inc(terms.knight_outpost_table[relative_sq.u]);
+                // Knight outpost is also blocking an enemy pawn.
+                const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
+                const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them);
+                if (is_blocking) {
+                    score.inc(terms.knight_outpost_is_blocking_enemy_pawn);
+                }
             }
         }
         return score;
@@ -328,7 +333,8 @@ pub const Evaluator = struct {
     fn eval_bishops(self: *Self, comptime us: Color) ScorePair {
         const them: Color = comptime us.opp();
         const pos: *const Position = self.pos;
-        const mobility_mask: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
+        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
+        // const pawns_on_color_ratio: [2]f32 = self.get_pawns_on_color_ratio(us);
 
         var score: ScorePair = .empty;
         var our_bishops: u64 = pos.bishops(us);
@@ -336,7 +342,7 @@ pub const Evaluator = struct {
 
         // Bishop pair.
         if ((our_bishops & bitboards.bb_black_squares != 0) and (our_bishops & bitboards.bb_white_squares != 0)) {
-            score.hce_inc(us, &terms.bishop_pair_bonus);
+            score.inc(terms.bishop_pair_bonus);
         }
 
         while (bitloop(&our_bishops)) |sq| {
@@ -344,36 +350,34 @@ pub const Evaluator = struct {
             const relative_sq: Square = sq.relative(us);
 
             // Psqt.
-            score.hce_inc(us, &terms.piece_square_table[PieceType.bishop.u][relative_sq.u]);
+            score.inc(terms.piece_square_table[PieceType.bishop.u][relative_sq.u]);
 
             // Mobility.
-            const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, mobility_mask));
+            const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, occ));
             const mobility: u64 = moves & self.mobility_areas[us.u];
             const mobility_cnt: u7 = popcnt(mobility);
-            score.hce_inc(us, &terms.bishop_mobility_table[mobility_cnt]);
+            score.inc(terms.bishop_mobility_table[mobility_cnt]);
 
             // Bishop on long diagonal.
             if (popcnt(moves & bitboards.bb_center_4) > 1) {
-                score.hce_inc(us, &terms.bishop_long_diagonal);
+                score.inc(terms.bishop_long_diagonal);
             }
 
             // Update attacks.
             self.bishop_attacks[us.u] |= moves;
-
-            //assert(self.bishop_attacks[us.u] == pos.get_attacks(us, PieceType.bishop)); // not ok because of pins
             self.all_attacks[us.u] |= moves;
 
-            // Update attackpower.
+            // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
+
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.bishop.u][king_attack_count]);
-                if (comptime lib.is_tuning) register_term_usage(us, &terms.attack_power[PieceType.bishop.u][king_attack_count], 1);
             }
 
             // Outpost.
             if (self.is_outpost(sq, us)) {
-                score.hce_inc(us, &terms.bishop_outpost_table[relative_sq.u]);
+                score.inc(terms.bishop_outpost_table[relative_sq.u]);
             }
         }
         return score;
@@ -384,7 +388,7 @@ pub const Evaluator = struct {
         const pos: *const Position = self.pos;
         const our_pawns: u64 = pos.pawns(us);
         const their_pawns: u64 = pos.pawns(them);
-        const mobility_mask: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
+        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
 
         var score: ScorePair = .empty;
         var our_rooks: u64 = pos.rooks(us);
@@ -393,24 +397,23 @@ pub const Evaluator = struct {
             const relative_sq: Square = sq.relative(us);
 
             // Psqt.
-            score.hce_inc(us, &terms.piece_square_table[PieceType.rook.u][relative_sq.u]);
+            score.inc(terms.piece_square_table[PieceType.rook.u][relative_sq.u]);
 
             // Mobility.
-            const legal_moves: u64 = self.legalize_moves(PieceType.rook, us, sq, attacks.get_rook_attacks(sq, mobility_mask));
+            const legal_moves: u64 = self.legalize_moves(PieceType.rook, us, sq, attacks.get_rook_attacks(sq, occ));
             const mobility: u64 = legal_moves & self.mobility_areas[us.u];
             const cnt: u7 = popcnt(mobility);
-            score.hce_inc(us, &terms.rook_mobility_table[cnt]);
+            score.inc(terms.rook_mobility_table[cnt]);
 
             // Update attacks.
             self.rook_attacks[us.u] |= legal_moves;
             self.all_attacks[us.u] |= legal_moves;
 
-            // Update attackpower.
+            // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
-                self.attack_power[us.u].hce_inc(us, &terms.attack_power[PieceType.rook.u][king_attack_count]);
-                if (comptime lib.is_tuning) register_term_usage(us, &terms.attack_power[PieceType.ROOK.u][king_attack_count], 1);
+                self.attack_power[us.u].inc(terms.attack_power[PieceType.rook.u][king_attack_count]);
             }
 
             // Open file.
@@ -418,7 +421,7 @@ pub const Evaluator = struct {
             if (our_pawns_on_file == 0) {
                 const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[sq.coord.file];
                 const half_open: u1 = @intFromBool(their_pawns_on_file != 0);
-                score.hce_inc(us, &terms.rook_on_file_bonus[half_open][sq.coord.file]);
+                score.inc(terms.rook_on_file_bonus[half_open][sq.coord.file]);
             }
         }
         return score;
@@ -428,31 +431,32 @@ pub const Evaluator = struct {
         var score: ScorePair = .empty;
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
-        const mobility_mask = pos.all() ^ pos.bishops(us) ^ pos.rooks(us);
+        //const occupied = pos.all() ^ pos.bishops(us) ^ pos.rooks(us);
+        const occupied = pos.all() & ~pos.bishops(us) & ~pos.rooks(us);
 
         var our_queens: u64 = pos.queens(us);
         while (bitloop(&our_queens)) |sq| {
             const relative_sq: Square = sq.relative(us);
 
             // Psqt
-            score.hce_inc(us, &terms.piece_square_table[PieceType.queen.u][relative_sq.u]);
+            score.inc(terms.piece_square_table[PieceType.queen.u][relative_sq.u]);
 
             // Mobility
-            const moves: u64 = self.legalize_moves(PieceType.queen, us, sq, attacks.get_queen_attacks(sq, mobility_mask));
+            const moves: u64 = self.legalize_moves(PieceType.queen, us, sq, attacks.get_queen_attacks(sq, occupied));
             const mobility: u64 = moves & self.mobility_areas[us.u];
             const cnt: u7 = popcnt(mobility);
-            score.hce_inc(us, &terms.queen_mobility_table[cnt]);
+            score.inc(terms.queen_mobility_table[cnt]);
 
-            // Update attacks.
+            // Update
             self.queen_attacks[us.u] |= moves;
             self.all_attacks[us.u] |= moves;
 
-            // Update attackpower.
+            // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.queen.u][king_attack_count]);
-                if (comptime lib.is_tuning) register_term_usage(us, &terms.attack_power[PieceType.QUEEN.u][king_attack_count], 1);
+
             }
         }
         return score;
@@ -469,20 +473,20 @@ pub const Evaluator = struct {
 
         // Psqt
         const relative_sq: Square = our_king_sq.relative(us);
-        score.hce_inc(us, &terms.piece_square_table[PieceType.king.u][relative_sq.u]);
+        score.inc(terms.piece_square_table[PieceType.king.u][relative_sq.u]);
 
         // Pawn protection
         var protecting_pawns: u64 = our_pawns & self.king_areas[us.u];
         while (bitloop(&protecting_pawns)) |sq| {
             const sp: *const ScorePair = get_pawn_protection_scorepair(us, our_king_sq, sq);
-            score.hce_inc(us, sp);
+            score.inc(sp.*);
         }
 
         // Pawn storm to enemy king.
         var storming_pawns: u64 = our_pawns & self.pawn_storm_areas[them.u];
         while (bitloop(&storming_pawns)) |sq| {
             const sp: *const ScorePair = get_pawn_storm_scorepair(us, their_king_sq, sq);
-            score.hce_inc(us, sp);
+            score.inc(sp.*);
         }
 
         // Open files to our king.
@@ -490,7 +494,7 @@ pub const Evaluator = struct {
         if (our_pawns_on_file == 0) {
             const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[our_king_sq.coord.file];
             const half_open: u1 = if (their_pawns_on_file != 0) 1 else 0;
-            score.hce_inc(us, &terms.king_on_file_penalty[half_open][our_king_sq.coord.file]);
+            score.inc(terms.king_on_file_penalty[half_open][our_king_sq.coord.file]);
         }
 
         // King danger.
@@ -511,11 +515,10 @@ pub const Evaluator = struct {
 
         // Their pawn threats.
         bb = self.pawn_attacks[them.u] & our_pieces;
-        //assert(bb == pos.attacks[them.u][0] & our_pieces);
         while (bitloop(&bb)) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
-            score.hce_inc(us, &terms.threatened_by_pawn_penalty[threatened_piece.u][is_defended]);
+            score.inc(terms.threatened_by_pawn_penalty[threatened_piece.u][is_defended]);
         }
 
         // Their knight threats.
@@ -523,7 +526,7 @@ pub const Evaluator = struct {
         while (bitloop(&bb)) |sq|{
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
-            score.hce_inc(us, &terms.threatened_by_knight_penalty[threatened_piece.u][is_defended]);
+            score.inc(terms.threatened_by_knight_penalty[threatened_piece.u][is_defended]);
         }
 
         // Their bishop threats.
@@ -531,7 +534,7 @@ pub const Evaluator = struct {
         while (bitloop(&bb)) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
-            score.hce_inc(us, &terms.threatened_by_bishop_penalty[threatened_piece.u][is_defended]);
+            score.inc(terms.threatened_by_bishop_penalty[threatened_piece.u][is_defended]);
         }
 
         // Their rook threats.
@@ -539,7 +542,7 @@ pub const Evaluator = struct {
         while (bitloop(&bb)) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
-            score.hce_inc(us, &terms.threatened_by_rook_penalty[threatened_piece.u][is_defended]);
+            score.inc(terms.threatened_by_rook_penalty[threatened_piece.u][is_defended]);
         }
 
         // Our pawn push threats.
@@ -549,12 +552,10 @@ pub const Evaluator = struct {
         // Get the single pawn pushes.
         const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~their_protected_squares;
         // Which enemy piece (no pawn) would be attacked if we push our pawn.
-        //var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
-        var pawn_push_threats: u64 = funcs.pawns_attacks(safe_pawn_pushes, us) & pos.by_color(them) & ~pos.pawns(them);
-        // assert(pawn_push_threats == funcs.pawns_attacks(safe_pawn_pushes, us) & pos.by_color(them) & ~pos.pawns(them));
+        var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them);
         while (bitloop(&pawn_push_threats)) |sq| {
             const threatened: Piece = pos.board[sq.u];
-            score.hce_inc(us, &terms.pawn_push_threat_table[threatened.u]);
+            score.inc(terms.pawn_push_threat_table[threatened.u]);
         }
 
         // Possible checks.
@@ -573,17 +574,15 @@ pub const Evaluator = struct {
         const bishop_checks: u64 = not_pawns & checking_squares_bishop & self.bishop_attacks[us.u];
         const rook_checks  : u64 = not_pawns & checking_squares_rook & self.rook_attacks[us.u];
         const queen_checks : u64 = not_pawns & checking_squares_queen & self.queen_attacks[us.u];
-
-        score.hce_inc_mult(us, &terms.safe_check_bonus[PieceType.knight.u], popcnt(knight_checks & safe));
-        score.hce_inc_mult(us, &terms.safe_check_bonus[PieceType.bishop.u], popcnt(bishop_checks & safe));
-        score.hce_inc_mult(us, &terms.safe_check_bonus[PieceType.rook.u], popcnt(rook_checks & safe));
-        score.hce_inc_mult(us, &terms.safe_check_bonus[PieceType.queen.u], popcnt(queen_checks & safe));
+        score.inc(terms.safe_check_bonus[PieceType.knight.u].mul(popcnt(knight_checks & safe)));
+        score.inc(terms.safe_check_bonus[PieceType.bishop.u].mul(popcnt(bishop_checks & safe)));
+        score.inc(terms.safe_check_bonus[PieceType.rook.u].mul(popcnt(rook_checks & safe)));
+        score.inc(terms.safe_check_bonus[PieceType.queen.u].mul(popcnt(queen_checks & safe)));
 
         return score;
     }
 
     /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn.
-    /// Also the square is on rank 4,5,6
     fn is_outpost(self: *Self, sq: Square, comptime us: Color) bool {
         const them: Color = comptime us.opp();
         const sq_bb: u64 = sq.to_bitboard();
@@ -602,7 +601,7 @@ pub const Evaluator = struct {
         const pawn_file: i32 = our_pawn_sq.coord.file;
         const rank_diff: i32 = pawn_rank - our_king_sq.coord.rank;
         const file_diff: i32 = pawn_file - our_king_sq.coord.file;
-        const mul: i32 = comptime if (us == Color.black) -1 else 1;
+        const mul: i32 = comptime if (us.e == .black) -1 else 1;
         const idx: i32 = king_index - (rank_diff * area_width + file_diff) * mul;
         assert(idx >= 0);
         const i: u32 = @abs(idx);
@@ -621,7 +620,7 @@ pub const Evaluator = struct {
         const pawn_file: i32 = our_pawn_sq.coord.file;
         const rank_diff: i32 = pawn_rank - their_king_sq.coord.rank;
         const file_diff: i32 = pawn_file - their_king_sq.coord.file;
-        const mul: i32 = comptime if (them == Color.black) -1 else 1;
+        const mul: i32 = comptime if (them.e == .black) -1 else 1;
         const idx: i32 = king_index - (rank_diff * area_width + file_diff) * mul;
         assert(idx >= 0);
         const i: u32 = @abs(idx);
@@ -639,11 +638,11 @@ pub const Evaluator = struct {
         // We cannot handle these pins, because they are not there.
         // Remember the position pins include the opponents pieces. That is the tricky part.
         if (comptime lib.verifications) {
-            lib.verify(us == self.pos.stm, "Evaluator.legalize_moves()", .{});
+            lib.verify(us.e == self.pos.stm.e, "Evaluator.legalize_moves()", .{});
         }
 
         // Pinned knight cannot escape a pin.
-        if (pt == PieceType.knight) {
+        if (pt.e == .knight) {
             return 0;
         }
 
@@ -658,7 +657,7 @@ pub const Evaluator = struct {
 
     /// Check if the pawn square is inside the 3x4 king area.
     fn verify_king_pawn_protection_area(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) void {
-        const area: u64 = if (us == Color.white) bitboards.king_areas_white[our_king_sq.u] else bitboards.king_areas_black[our_king_sq.u];
+        const area: u64 = if (us.e == .white) bitboards.king_areas_white[our_king_sq.u] else bitboards.king_areas_black[our_king_sq.u];
         const ok: bool = funcs.contains_square(area, our_pawn_sq);
         if (!ok) {
             lib.verify(ok, "verify_king_pawn_protection_area", .{});
@@ -667,7 +666,7 @@ pub const Evaluator = struct {
 
     /// Check if the pawn square is inside the 3x4 king area.
     fn verify_king_pawn_storm_area(comptime attacker: Color, their_king_sq: Square, our_pawn_sq: Square) void {
-        const area: u64 = if (attacker == Color.black) bitboards.king_pawnstorm_areas_white[their_king_sq.u] else bitboards.king_pawnstorm_areas_black[their_king_sq.u];
+        const area: u64 = if (attacker.e == .black) bitboards.king_pawnstorm_areas_white[their_king_sq.u] else bitboards.king_pawnstorm_areas_black[their_king_sq.u];
         const ok: bool = funcs.contains_square(area, our_pawn_sq);
         if (!ok) {
             lib.verify(ok, "verify_king_pawn_storm_area", .{});
@@ -685,13 +684,13 @@ pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
     const to: Square = m.to;
 
     // Set the score to captured piece minus how much we are allowed to lose.
-    var score: i32 = pos.board[to.u].see_value() - threshold;
+    var score: i32 = pos.board[to.u].value() - threshold;
 
     if (score < 0) {
         return false;
     }
 
-    score = pos.board[from.u].see_value() - score;
+    score = pos.board[from.u].value() - score;
 
     // Equal or winning.
     if (score <= 0) {
@@ -732,31 +731,30 @@ pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
                 const sq: Square = funcs.first_square(next_attacker);
                 funcs.clear_square(&occupied, sq);
                 // Reveal next x-ray attacker on the attacks bitboard.
-                switch (piecetype) {
-                    PieceType.pawn   => {
+                switch (piecetype.e) {
+                    .pawn   => {
                         all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
                     },
-                    PieceType.knight => {
+                    .knight => {
                         // Do nothing: a knight move cannot reveal a new slider.
                     },
-                    PieceType.bishop => {
+                    .bishop => {
                         all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
                     },
-                    PieceType.rook   => {
+                    .rook   => {
                         all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
                     },
-                    PieceType.queen  => {
+                    .queen  => {
                         all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
                         all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
                     },
-                    PieceType.king   => {
+                    .king   => {
                         // We can exit here: if the king captures and the opponent can capture our king we lose othersize we win.
                         return if (all_attacks & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
                     },
-                    else => unreachable,
                 }
 
-                next_attacker_value = piecetype.see_value();
+                next_attacker_value = piecetype.value();
                 break :get_next_attacker;
             }
         }

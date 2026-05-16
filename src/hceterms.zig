@@ -7,8 +7,7 @@ const types = @import("types.zig");
 const ScorePair = types.ScorePair;
 const pair = types.pair;
 
-/// Extern to guarantee memory order.
-pub const Terms = extern struct {
+pub const Terms = struct {
     piece_value_table: [6]ScorePair,
     king_passed_pawn_distance_table: [8]ScorePair,
     enemy_king_passed_pawn_distance_table: [8]ScorePair,
@@ -25,7 +24,8 @@ pub const Terms = extern struct {
     rook_mobility_table: [15]ScorePair,
     queen_mobility_table: [28]ScorePair,
     attack_power: [6][8]ScorePair,
-    knight_outpost_table: [2][64]ScorePair,
+    knight_outpost_table: [64]ScorePair,
+    knight_outpost_is_blocking_enemy_pawn: ScorePair,
     bishop_outpost_table: [64]ScorePair,
     bishop_long_diagonal: ScorePair,
     rook_on_file_bonus: [2][8]ScorePair,
@@ -41,9 +41,7 @@ pub const Terms = extern struct {
     piece_square_table: [6][64]ScorePair,
 };
 
-pub const terms = if (lib.is_tuning) &mutable_terms else &default_terms;
-
-pub var mutable_terms: Terms = if (lib.is_tuning) default_terms else void;
+pub const terms: *const Terms = &default_terms;
 
 pub const default_terms: Terms = .{
     .piece_value_table = .{
@@ -115,30 +113,20 @@ pub const default_terms: Terms = .{
     },
 
     .knight_outpost_table = .{
-        .{ // normal
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
-            pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
-            pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-        },
-        .{ // also blocking pawn
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(13, 14), pair(10, 7), pair(6, 20), pair(12, 22), pair(11, 25), pair(-3, 23), pair(6, 13), pair(4, 13),
-            pair(5, 18), pair(17, 20), pair(21, 24), pair(13, 38), pair(17, 27), pair(15, 23), pair(18, 18), pair(0, 28),
-            pair(22, 27), pair(20, 17), pair(40, 25), pair(47, 26), pair(51, 32), pair(35, 47), pair(47, 21), pair(1, 43),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-        },
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 1
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
+        pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
+        pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
     },
 
+    .knight_outpost_is_blocking_enemy_pawn = pair(4, 4),
+
     .bishop_outpost_table = .{
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 1
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
         pair(-23, 31), pair(10, 6), pair(3, 20), pair(18, 14), pair(23, 24), pair(2, 10), pair(14, 0), pair(-47, 10),
