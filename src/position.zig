@@ -608,10 +608,10 @@ pub const Position = struct {
             // In chess960 the uci encoding is the same as ours: king takes rook.
             if (!self.is_960) {
                 if (from.u == self.layout.king_start_squares[us.u].u and self.board[from.u].e == Piece.init(PieceType.king, us).e) {
-                    if (to.e == Square.G1.e or to.e == Square.G8.e) {
+                    if (to.e == Square.g1.e or to.e == Square.g8.e) {
                         to = self.layout.rook_start_squares[us.u][CastleType.SHORT.u]; // King takes rook.
                     }
-                    else if (to.e == Square.C1.e or to.e == Square.C8.e) {
+                    else if (to.e == Square.c1.e or to.e == Square.c8.e) {
                         to = self.layout.rook_start_squares[us.u][CastleType.LONG.u]; // King takes rook.
                     }
                 }

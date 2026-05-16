@@ -373,7 +373,7 @@ pub const Square = packed union {
 
     /// Garbage in garbage out. No crash.
     pub fn from_string(str: []const u8) Square {
-        if (str.len < 2) return Square.A1;
+        if (str.len < 2) return Square.zero;
         // This math can never crash
         const v: u6 = @truncate((str[1] -| '1') *% 8 +| (str[0] -| 'a'));
         return .{ .u = v };
