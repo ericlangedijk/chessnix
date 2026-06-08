@@ -13,7 +13,6 @@ pub fn initialize() !void {
 }
 
 pub fn finalize() void {
-    @import("position.zig").finalize();
     memory_context.deinit();
 }
 
@@ -28,16 +27,27 @@ fn compilation_check() void {
     }
 }
 
+pub const Program = enum {
+    uci_engine,
+    lichess_tool,
+    tuner,
+};
+
 // --- Globals ---
+pub const program: Program =
+    .uci_engine;
+    //.lichess_tool;
+    //.tuner;
+
 pub const version = "1.5";
-pub const builddate = "2026-05-15";
+pub const builddate = "2026-06-08";
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_paranoid: bool = is_debug;
 pub const verifications: bool = is_debug or is_release_safe;
 
-// --- Io and memory ---
+// --- Memory and Io ---
 pub const ctx: *const MemoryContext = &memory_context;
 pub const io: *IoContext = &io_context;
 var memory_context: MemoryContext = undefined;

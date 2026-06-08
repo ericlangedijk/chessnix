@@ -11,9 +11,19 @@ pub fn main() !void {
     defer lib.finalize();
 
     // Debug tests.
-    if (comptime lib.is_debug) {
-       try @import("tests.zig").run_silent_debugmode_tests();
+    if (comptime lib.is_debug and lib.program == .uci_engine) {
+        try @import("tests.zig").run_silent_debugmode_tests();
     }
 
-    uci.run();
+    switch (lib.program) {
+        .uci_engine => {
+            uci.run();
+        },
+        .lichess_tool => {
+            try @import("tools/lichess.zig").convert_lichess_dataset();
+        },
+        .tuner => {
+            // try @import("tuner.zig").run();
+        }
+    }
 }

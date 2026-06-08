@@ -24,10 +24,6 @@ const wtf = lib.wtf;
 /// Enum for shifting pawn moves.
 pub const PawnShift = enum(u2) { up, northwest, northeast };
 
-// fn abs_diff(a: usize, b: usize) usize {
-//     return @max(a, b) - @min(a, b);
-// }
-
 /// Note that these are stored in SquarePair
 pub inline fn square_distance(a: Square, b: Square) u3 {
     //lib.comptime_only();
@@ -103,18 +99,6 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
             };
         }
     }
-}
-
-
-
-pub fn test_bit_u8(u: u8, bit: u3) bool {
-    const one: u8 = @as(u8, 1) << bit;
-    return u & one != 0;
-}
-
-pub fn test_bit_64(u: u64, bit: u6) bool {
-    const one: u64 = @as(u64, 1) << bit;
-    return u & one != 0;
 }
 
 pub fn test_bit(u: comptime_int, bit: comptime_int) bool {
@@ -240,10 +224,10 @@ pub fn print_bits(u: u8) void {
 //     };
 // }
 
-// fn int(comptime T: type, x: anytype) T {
-//     return switch (@typeInfo(@TypeOf(x))) {
-//         .int, .comptime_int => @intCast(x),
-//         .float, .comptime_float => @intFromFloat(x),
-//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
-//     };
-// }
+pub fn int(comptime T: type, x: anytype) T {
+    return switch (@typeInfo(@TypeOf(x))) {
+        .int, .comptime_int => @intCast(x),
+        .float, .comptime_float => @intFromFloat(x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
+    };
+}

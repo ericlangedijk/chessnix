@@ -62,9 +62,10 @@ pub const Color = packed union {
     /// The numeric value
     u: u1,
 
-    pub const all: [2]Color = .{ white, black };
     pub const white: Color = .{ .e = .white };
     pub const black: Color = .{ .e = .black };
+
+    pub const all: [Color.count]Color = .{ white, black };
 
     pub fn opp(self: Color) Color {
         return .{ .u  = self.u ^ 1 };
@@ -113,16 +114,16 @@ pub const PieceType = packed union {
         return simple_piece_values[self.u];
     }
 
-    pub fn to_char(self: PieceType) u8 {
-        return switch(self.e) {
-            .pawn => 0,
-            .knight => 'N',
-            .bishop => 'B',
-            .rook => 'R',
-            .queen => 'Q',
-            .king => 'K',
-        };
-    }
+    // pub fn to_char(self: PieceType) u8 {
+    //     return switch(self.e) {
+    //         .pawn => 0,
+    //         .knight => 'N',
+    //         .bishop => 'B',
+    //         .rook => 'R',
+    //         .queen => 'Q',
+    //         .king => 'K',
+    //     };
+    // }
 };
 
 pub const Piece = packed union {
@@ -144,19 +145,13 @@ pub const Piece = packed union {
         b_queen  = 10, // 1010
         b_king   = 11, // 1011
 
-        no_piece = 12, // #testing
+        no_piece = 12, // 1010
     };
 
     /// The enum value.
     e: E,
     /// The numeric value.
     u: u4,
-
-    /// All valid pieces.
-    pub const all: [12]Piece = .{
-        w_pawn, w_knight, w_bishop, w_rook, w_queen, w_king,
-        b_pawn, b_knight, b_bishop, b_rook, b_queen, b_king,
-    };
 
     pub const w_pawn   : Piece = .{ .e = .w_pawn };
     pub const w_knight : Piece = .{ .e = .w_knight };
@@ -173,6 +168,12 @@ pub const Piece = packed union {
     pub const b_king   : Piece = .{ .e = .b_king };
 
     pub const no_piece : Piece = .{ .e = .no_piece };
+
+    /// All valid pieces.
+    pub const all: [Piece.count]Piece = .{
+        w_pawn, w_knight, w_bishop, w_rook, w_queen, w_king,
+        b_pawn, b_knight, b_bishop, b_rook, b_queen, b_king,
+    };
 
     pub fn init(pt: PieceType, side: Color) Piece {
         return if (side.e == .white) .{ .u = pt.u } else .{ .u = pt.u + 6 };
@@ -331,9 +332,10 @@ pub const CastleType = packed union {
     /// The numeric value
     u: u1,
 
-    pub const all: [2]CastleType = .{ short, long };
     pub const short: CastleType = .{ .e = .short };
     pub const long: CastleType = .{ .e = .long };
+
+    pub const all: [CastleType.count]CastleType = .{ short, long };
 };
 
 pub const File = u3;
@@ -365,62 +367,6 @@ pub const Square = packed union {
     u: u6,
     /// The file and rank bits match nicely.
     coord: Coord,
-
-    pub const all: [64]Square = .{
-        a1, b1, c1, d1, e1, f1, g1, h1,
-        a2, b2, c2, d2, e2, f2, g2, h2,
-        a3, b3, c3, d3, e3, f3, g3, h3,
-        a4, b4, c4, d4, e4, f4, g4, h4,
-        a5, b5, c5, d5, e5, f5, g5, h5,
-        a6, b6, c6, d6, e6, f6, g6, h6,
-        a7, b7, c7, d7, e7, f7, g7, h7,
-        a8, b8, c8, d8, e8, f8, g8, h8,
-    };
-
-    /// Top down squares for print.
-    pub const all_for_printing: [64]Square = .{
-        a8, b8, c8, d8, e8, f8, g8, h8,
-        a7, b7, c7, d7, e7, f7, g7, h7,
-        a6, b6, c6, d6, e6, f6, g6, h6,
-        a5, b5, c5, d5, e5, f5, g5, h5,
-        a4, b4, c4, d4, e4, f4, g4, h4,
-        a3, b3, c3, d3, e3, f3, g3, h3,
-        a2, b2, c2, d2, e2, f2, g2, h2,
-        a1, b1, c1, d1, e1, f1, g1, h1,
-    };
-
-    const colors: [64]Color = .{
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
-        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
-    };
-
-    const manhattan_distances_to_center: [64]u8 = .{
-        6, 5, 4, 3, 3, 4, 5, 6,
-        5, 4, 3, 2, 2, 3, 4, 5,
-        4, 3, 2, 1, 1, 2, 3, 4,
-        3, 2, 1, 0, 0, 1, 2, 3,
-        3, 2, 1, 0, 0, 1, 2, 3,
-        4, 3, 2, 1, 1, 2, 3, 4,
-        5, 4, 3, 2, 2, 3, 4, 5,
-        6, 5, 4, 3, 3, 4, 5, 6
-    };
-
-    const manhattan_distances_to_corner: [64]u8 = .{
-        0, 1, 2, 3, 3, 2, 1, 0,
-        1, 2, 3, 4, 4, 3, 2, 1,
-        2, 3, 4, 5, 5, 4, 3, 2,
-        3, 4, 5, 6, 6, 5, 4, 3,
-        3, 4, 5, 6, 6, 5, 4, 3,
-        2, 3, 4, 5, 5, 4, 3, 2,
-        1, 2, 3, 4, 4, 3, 2, 1,
-        0, 1, 2, 3, 3, 2, 1, 0
-    };
 
     pub const zero: Square = a1;
 
@@ -489,6 +435,62 @@ pub const Square = packed union {
     pub const g8: Square = .{ .u = 62 };
     pub const h8: Square = .{ .u = 63 };
 
+    pub const all: [Square.count]Square = .{
+        a1, b1, c1, d1, e1, f1, g1, h1,
+        a2, b2, c2, d2, e2, f2, g2, h2,
+        a3, b3, c3, d3, e3, f3, g3, h3,
+        a4, b4, c4, d4, e4, f4, g4, h4,
+        a5, b5, c5, d5, e5, f5, g5, h5,
+        a6, b6, c6, d6, e6, f6, g6, h6,
+        a7, b7, c7, d7, e7, f7, g7, h7,
+        a8, b8, c8, d8, e8, f8, g8, h8,
+    };
+
+    /// Top down squares for print.
+    pub const all_for_printing: [Square.count]Square = .{
+        a8, b8, c8, d8, e8, f8, g8, h8,
+        a7, b7, c7, d7, e7, f7, g7, h7,
+        a6, b6, c6, d6, e6, f6, g6, h6,
+        a5, b5, c5, d5, e5, f5, g5, h5,
+        a4, b4, c4, d4, e4, f4, g4, h4,
+        a3, b3, c3, d3, e3, f3, g3, h3,
+        a2, b2, c2, d2, e2, f2, g2, h2,
+        a1, b1, c1, d1, e1, f1, g1, h1,
+    };
+
+    const colors: [Square.count]Color = .{
+        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
+        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
+        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
+        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
+        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
+        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
+        Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white,
+        Color.white, Color.black, Color.white, Color.black, Color.white, Color.black, Color.white, Color.black,
+    };
+
+    const manhattan_distances_to_center: [Square.count]u8 = .{
+        6, 5, 4, 3, 3, 4, 5, 6,
+        5, 4, 3, 2, 2, 3, 4, 5,
+        4, 3, 2, 1, 1, 2, 3, 4,
+        3, 2, 1, 0, 0, 1, 2, 3,
+        3, 2, 1, 0, 0, 1, 2, 3,
+        4, 3, 2, 1, 1, 2, 3, 4,
+        5, 4, 3, 2, 2, 3, 4, 5,
+        6, 5, 4, 3, 3, 4, 5, 6
+    };
+
+    const manhattan_distances_to_corner: [Square.count]u8 = .{
+        0, 1, 2, 3, 3, 2, 1, 0,
+        1, 2, 3, 4, 4, 3, 2, 1,
+        2, 3, 4, 5, 5, 4, 3, 2,
+        3, 4, 5, 6, 6, 5, 4, 3,
+        3, 4, 5, 6, 6, 5, 4, 3,
+        2, 3, 4, 5, 5, 4, 3, 2,
+        1, 2, 3, 4, 4, 3, 2, 1,
+        0, 1, 2, 3, 3, 2, 1, 0
+    };
+
     pub fn from(index: u6) Square {
         return .{ .u = index };
     }
@@ -518,11 +520,9 @@ pub const Square = packed union {
     }
 
     pub fn color(self: Square) Color {
-
-        const c: u1 = @intCast(((self.u ^ (self.coord.rank)) & 1) ^ 1); // #testing speed
+        const c: u1 = @intCast(((self.u ^ (self.coord.rank)) & 1) ^ 1); // #testing
         return .{ .u = c };
         // assert(c == colors[self.u].u);
-
         //return colors[self.u];
     }
 
@@ -536,6 +536,10 @@ pub const Square = packed union {
 
     pub fn to_bitboard(self: Square) u64 {
         return @as(u64, 1) << self.u;
+    }
+
+    pub fn inc(self: *Square, d: i7) Square {
+        self.u +%= d;
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -668,6 +672,8 @@ pub const Move = packed struct(u16) {
     pub const promotion_mask           : u4 = 0b0100; // bit 2 = promotion
     pub const noisy_mask               : u4 = capture_mask | promotion_mask;
 
+    pub const castles: [CastleType.count]u4 = .{ castle_short, castle_long };
+
     /// 6 bits.
     from: Square = .zero,
     /// 6 bits.
@@ -749,11 +755,11 @@ pub const Move = packed struct(u16) {
         if (!is_960) {
             if (self.flags == Move.castle_short) {
                 const color: Color = if (to.u < 8) Color.white else Color.black;
-                to = position.king_castle_destination_squares[color.u][CastleType.short.u];
+                to = position.Castling.king_dest(color, CastleType.short);
             }
             else if (self.flags == Move.castle_long) {
                 const color: Color = if (to.u < 8) Color.white else Color.black;
-                to = position.king_castle_destination_squares[color.u][CastleType.long.u];
+                to = position.Castling.king_dest(color, CastleType.long);
             }
         }
 
@@ -905,6 +911,7 @@ pub const ParsingError = error {
 
 // --- Constants ---
 pub const megabyte: usize = 1024 * 1024;
+pub const million: usize = 1000 * 1000;
 
 /// This is how far we go.
 pub const max_game_length: usize = 1024;

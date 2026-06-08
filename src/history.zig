@@ -17,6 +17,7 @@ const clamp = std.math.clamp;
 
 const Color = types.Color;
 const Square = types.Square;
+const PieceType = types.PieceType;
 const Piece = types.Piece;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
@@ -95,7 +96,8 @@ pub const History = struct {
 pub const QuietHistory = struct {
 
     /// Quiet move scores. Indexing: [piece][from][to]
-    table: [12][64][64]i16,
+    //table: [12][64][64]i16,
+    table: [Piece.count][Square.count][Square.count]i16,
 
     fn update(self: *QuietHistory, depth: i32, ex: ExtMove, quiets: []const ExtMove) void {
         const bonus: i16 = HistCalc.get_bonus(depth);
@@ -124,7 +126,8 @@ pub const QuietHistory = struct {
 pub const CaptureHistory = struct {
 
     /// Capture move scores. Indexing: [piece][to][captured-piecetype]
-    table: [12][64][6]i16,
+    //table: [12][64][6]i16,
+    table: [Piece.count][Square.count][PieceType.count]i16,
 
     pub fn update(self: *CaptureHistory, depth: i32, ex: ExtMove) void {
         const bonus: i16 = HistCalc.get_bonus(depth);
@@ -153,7 +156,7 @@ pub const CaptureHistory = struct {
     }
 };
 
-pub const ContinuationEntry = *[12][64]i16;
+pub const ContinuationEntry = *[Piece.count][Square.count]i16;
 
 /// Heuristics for quiet continuation moves.
 pub const ContinuationHistory = struct {
@@ -162,7 +165,8 @@ pub const ContinuationHistory = struct {
     const depths_delta: [3]u16 = .{ 1, 2, 4 };
 
     /// Move pair scores. Indexing: [prevpiece][to][piece][to]
-    table: [12][64][12][64]i16,
+    //table: [12][64][12][64]i16,
+    table: [Piece.count][Square.count][Piece.count][Square.count]i16,
 
     /// The node's continuation_entry is used, so we do not need Self.
     pub fn update(depth: i32, ex: ExtMove, ply: u16, nodes: []const Node, bad_quiets: []const ExtMove) void {
@@ -226,21 +230,20 @@ pub const ContinuationHistory = struct {
     }
 };
 
-
 /// Small entitities.
 pub const CorrectionHistory = struct {
     const table_size: usize = 16384;
 
-    /// Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
-    pawn_table: [2][table_size]i16,
-    /// Entries for white pieces. Indexing: [color][position.non_pawns_white_key % tablesize]
-    white_table: [2][table_size]i16,
-    /// Entries for black pieces. Indexing: [color][position.non_pawns_black_key % tablesize]
-    black_table: [2][table_size]i16,
-    // Entries for minors. Indexing: [color][position.minorkey-index % tablesize]
-    minor_table: [2][table_size]i16,
-    // Entries for majors. Indexing: [color][position.majorkey-index % tablesize]
-    major_table: [2][table_size]i16,
+    /// Entries for pawns.
+    pawn_table: [Color.count][table_size]i16,
+    /// Entries for white pieces.
+    white_table: [Color.count][table_size]i16,
+    /// Entries for black pieces.
+    black_table: [Color.count][table_size]i16,
+    // Entries for minors.
+    minor_table: [Color.count][table_size]i16,
+    // Entries for majors.
+    major_table: [Color.count][table_size]i16,
 
     /// Updates the error values: the difference between the search score and the static eval.
     /// The static_eval argument must be the value after correction to prevent explosion.

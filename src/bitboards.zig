@@ -168,20 +168,18 @@ pub const bb_h8: u64 = 0x8000000000000000;
 
 // --- Computed stuff ---
 pub const bb_north: [64]u64 = Computing.compute_direction_bitboards(.north);
+pub const bb_east: [64]u64 = Computing.compute_direction_bitboards(.east);
 pub const bb_south: [64]u64 = Computing.compute_direction_bitboards(.south);
 pub const bb_west: [64]u64 = Computing.compute_direction_bitboards(.west);
-pub const bb_east: [64]u64 = Computing.compute_direction_bitboards(.east);
 pub const bb_northwest: [64]u64 = Computing.compute_direction_bitboards(.north_west);
-pub const bb_southeast: [64]u64 = Computing.compute_direction_bitboards(.south_east);
 pub const bb_northeast: [64]u64 = Computing.compute_direction_bitboards(.north_east);
+pub const bb_southeast: [64]u64 = Computing.compute_direction_bitboards(.south_east);
 pub const bb_southwest: [64]u64 = Computing.compute_direction_bitboards(.south_west);
-pub const bb_bishop: [64]u64 = Computing.compute_bishop_bitboards();
-pub const bb_rook: [64]u64 = Computing.compute_rook_bitboards();
-pub const bb_queen: [64]u64 = Computing.compute_queen_bitboards();
 
 const pairs: [64 * 64]SquarePair = Computing.compute_squarepairs();
 
 pub const small_rays: [8][8]u8 = Computing.compute_small_rays();
+
 pub const ep_masks: [64]u64 = Computing.compute_ep_masks(); // indexing on to-square (e2e4).
 pub const passed_pawn_masks_white: [64]u64 = Computing.compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [64]u64 = Computing.compute_passed_pawn_masks_black();
@@ -206,30 +204,6 @@ const Computing = struct {
         var result: [64]u64 = @splat(0);
         for (Square.all, &result) |sq, *ptr| {
             ptr.* = sq.ray_bitboard(dir);
-        }
-        return result;
-    }
-
-    fn compute_bishop_bitboards() [64]u64 {
-        var result: [64]u64 = @splat(0);
-        for (Square.all, &result) |sq, *ptr| {
-            ptr.* = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
-        }
-        return result;
-    }
-
-    fn compute_rook_bitboards() [64]u64 {
-        var result: [64]u64 = @splat(0);
-        for (Square.all, &result) |sq, *ptr| {
-            ptr.* = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
-        }
-        return result;
-    }
-
-    fn compute_queen_bitboards() [64]u64 {
-        var result: [64]u64 = @splat(0);
-        for (Square.all, &result) |sq, *ptr| {
-            ptr.* = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] | bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
         }
         return result;
     }
@@ -295,7 +269,7 @@ const Computing = struct {
     }
 
     fn compute_passed_pawn_masks_white() [64]u64 {
-        var result: [64]u64 = @splat(0); // #testing smarter loop.
+        var result: [64]u64 = @splat(0);
         for (Square.all, &result) |sq, *ptr| {
             const file: u3 = sq.coord.file;
             var bb: u64 = bb_north[sq.u];
@@ -304,19 +278,6 @@ const Computing = struct {
             ptr.* = bb;
         }
         return result;
-
-        // var pp: [64]u64 = @splat(0);
-        // for (all_ranks) |rank| {
-        //     for (all_files) |file| {
-        //         var bb: u64 = 0;
-        //         const sq: Square = .from_rank_file(rank, file);
-        //         bb = bb_north[sq.u]; // square file
-        //         if (file > file_a) bb |= bb_north[sq.sub(1).u]; // file forwards left of square
-        //         if (file < file_h) bb |= bb_north[sq.add(1).u]; // file forwards right of square
-        //         pp[sq.u] = bb;
-        //     }
-        // }
-        // return pp;
     }
 
     fn compute_passed_pawn_masks_black() [64]u64 {
@@ -512,7 +473,20 @@ pub fn popcnt(bitboard: u64) u7 {
 
 pub fn contains_square(bitboard: u64, sq: Square) bool {
     return bitboard & sq.to_bitboard() != 0;
-    //return test_bit_64(bitboard, sq.u);
+}
+
+pub fn clear_square(bitboard: *u64, sq: Square) void {
+    bitboard.* &= ~sq.to_bitboard();
+}
+
+pub fn first_square_or_null(bitboard: u64) ?Square {
+    if (bitboard == 0) return null;
+    return .{ .u = @intCast(@ctz(bitboard)) };
+}
+
+pub fn last_square_or_null(bitboard: u64) ?Square {
+    if (bitboard == 0) return null;
+    return .{ .u = @intCast(63 - @clz(bitboard)) };
 }
 
 /// Unsafe lsb. Assumes bitboard != 0.
@@ -525,7 +499,7 @@ pub fn first_square(bitboard: u64) Square {
 }
 
 /// Fastest bit loop I can produce.
-pub inline fn bitloop(bitboard: *u64) ?Square {
+pub fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
     defer bitboard.* &= (bitboard.* - 1);
     return .{ .u = @intCast(@ctz(bitboard.*)) };
@@ -564,6 +538,42 @@ fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
     return @intCast(@ctz(isolated));
 }
 
-pub fn clear_square(bitboard: *u64, sq: Square) void {
-    bitboard.* &= ~sq.to_bitboard();
+/// Not used.
+pub fn pext(src: u64, mask: u64) u64 {
+    if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
+        var res: u64 = 0;
+        var i: u6, var m: u64 = .{ 0, mask };
+        while (m != 0) {
+            res |= ((src >> @intCast(@ctz(m))) & 1) << i;
+            i += 1;
+            m &= m - 1;
+        }
+        return res;
+    } else return asm ("pextq %[mask], %[src], %[res]"
+        : [res] "=r" (-> u64),
+        : [src] "r" (src),
+          [mask] "r" (mask),
+    );
 }
+
+/// Not used.
+pub fn pdep(src: u64, mask: u64) u64 {
+    if (@inComptime() or !std.Target.x86.featureSetHas(@import("builtin").cpu.model.features, .bmi2)) {
+        var res: u64 = 0;
+        var bit: u6 = 0;
+        var m: u64 = mask;
+        while (m != 0) {
+            if (((src >> bit) & 1) != 0) {
+                res |= m & -%m;
+            }
+            m &= m - 1;
+            bit += 1;
+        }
+        return res;
+    } else return asm ("pdepq %[mask], %[src], %[res]"
+        : [res] "=r" (-> u64),
+        : [src] "r" (src),
+          [mask] "r" (mask),
+    );
+}
+

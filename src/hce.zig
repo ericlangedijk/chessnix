@@ -325,7 +325,7 @@ pub const Evaluator = struct {
                 score.inc(terms.knight_outpost_table[relative_sq.u]);
                 // Knight outpost is also blocking an enemy pawn.
                 const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
-                const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them);
+                const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them); // TODO: make the knight outpost table 2 dimensional?
                 if (is_blocking) {
                     score.inc(terms.knight_outpost_is_blocking_enemy_pawn);
                 }
@@ -392,7 +392,7 @@ pub const Evaluator = struct {
         const pos: *const Position = self.pos;
         const our_pawns: u64 = pos.pawns(us);
         const their_pawns: u64 = pos.pawns(them);
-        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
+        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us); // TODO: rename to mobility_mask for clarity.
 
         var score: ScorePair = .empty;
         var our_rooks: u64 = pos.rooks(us);
@@ -556,7 +556,6 @@ pub const Evaluator = struct {
         // Get the single pawn pushes.
         const safe_pawn_pushes: u64 = funcs.pawns_shift(pos.pawns(us), us, .up) & ~pos.all() & ~their_protected_squares;
         // Which enemy piece (no pawn) would be attacked if we push our pawn.
-        //var pawn_push_threats: u64 = (funcs.pawns_shift(safe_pawn_pushes, us, .northwest) | funcs.pawns_shift(safe_pawn_pushes, us, .northeast)) & pos.by_color(them) & ~pos.pawns(them); #testing replacement function
         var pawn_push_threats: u64 = funcs.pawns_attacks(safe_pawn_pushes, us) & pos.by_color(them) & ~pos.pawns(them); // TODO: verify
         while (bitloop(&pawn_push_threats)) |sq| {
             const threatened: Piece = pos.board[sq.u];
