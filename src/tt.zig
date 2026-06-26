@@ -39,7 +39,7 @@ pub fn compute_tt_size_in_bytes(megabytes: usize) usize {
 
 pub const Bound = enum(u2) {
     /// No bound. Empty or raw static eval only.
-    none,
+    no_bound,
     /// Upper bound.
     alpha,
     /// Lower bound.
@@ -79,7 +79,7 @@ pub const Entry = struct {
         .raw_static_eval = scoring.null_score,
         .move = .empty,
         .depth = 0,
-        .flags = .{ .bound = .none, .age = 0 },
+        .flags = .{ .bound = .no_bound, .age = 0 },
     };
 
     pub fn is_score_usable_for_depth(self: *const Entry, alpha: i32, beta: i32, depth: i32) bool {
@@ -87,7 +87,7 @@ pub const Entry = struct {
             return false;
         }
         return switch (self.flags.bound) {
-            .none  => false,
+            .no_bound  => false,
             .alpha => self.score <= alpha,
             .beta  => self.score >= beta,
             .exact => true,
@@ -104,9 +104,9 @@ pub const Entry = struct {
             return false;
         }
         return switch (self.flags.bound) {
-            .none  => false,
+            .no_bound => false,
             .alpha => self.score <= static_eval,
-            .beta  => self.score >= static_eval,
+            .beta => self.score >= static_eval,
             .exact => true,
         };
     }
@@ -176,7 +176,7 @@ pub const TranspositionTable = struct {
 
     /// Only store the raw static eval.
     pub fn store_raw_static_eval(self: *TranspositionTable, key: u64, raw_static_eval: i32) void {
-        self.store(0, key, scoring.null_score, raw_static_eval, Move.empty, 0, Bound.none);
+        self.store(0, key, scoring.null_score, raw_static_eval, Move.empty, 0, .no_bound);
     }
 
     /// Store the search score and the raw static eval.
@@ -234,7 +234,7 @@ pub const TranspositionTable = struct {
         entry.move = move;
         entry.depth = @intCast(depth);
         entry.flags.bound = bound;
-        entry.flags.age = if (bound != .none) self.age else 0; // Static eval only.
+        entry.flags.age = if (bound != .no_bound) self.age else 0; // Static eval only.
     }
 
     pub fn probe(self: *TranspositionTable, key: u64, ply: u16) Entry {

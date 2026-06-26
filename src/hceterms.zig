@@ -7,7 +7,8 @@ const types = @import("types.zig");
 const ScorePair = types.ScorePair;
 const pair = types.pair;
 
-pub const Terms = struct {
+/// Extern to guarantee field order during turning.
+pub const Terms = extern struct {
     piece_value_table: [6]ScorePair,
     king_passed_pawn_distance_table: [8]ScorePair,
     enemy_king_passed_pawn_distance_table: [8]ScorePair,
@@ -41,9 +42,13 @@ pub const Terms = struct {
     piece_square_table: [6][64]ScorePair,
 };
 
-pub const terms: *const Terms = &default_terms;
+//pub const terms: *const Terms = &default_terms;
 
-pub const default_terms: Terms = .{
+pub const terms = if (lib.is_tuning) &tunable_terms else &default_terms;
+
+var tunable_terms: Terms = default_terms;
+
+const default_terms: Terms = .{
     .piece_value_table = .{
         pair(75, 141), pair(301, 321), pair(331, 356), pair(439, 612), pair(874, 1080), pair(0, 0),
     },
@@ -202,8 +207,8 @@ pub const default_terms: Terms = .{
     },
 
     .pawn_push_threat_table = .{
-        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // w_pawn...w_king
-        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // b_pawn...b_king
+        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // white_pawn...white_king
+        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // black_pawn...black_king
         pair(0, 0),
     },
 

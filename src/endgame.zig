@@ -30,7 +30,7 @@ pub fn scale(pos: *const Position, eval: i32) f32 {
         return 1.0;
     }
 
-    const winner: Color = if (eval > 0) Color.white else Color.black;
+    const winner: Color = if (eval > 0) .white else .black;
     const loser: Color = winner.opp();
     const winner_pawn_count: i32 = pos.pawn_count(winner);
 
@@ -89,9 +89,9 @@ fn is_opposite_colored_bishops_only_endgame(pos: *const Position) bool {
     const ocb: bool =
         pos.phase_by_color[0] == types.ph_minor and
         pos.phase_by_color[1] == types.ph_minor and
-        pos.bishop_count(Color.white) == 1 and
-        pos.bishop_count(Color.black) == 1 and
-        pos.bishop_square(Color.white).color().e != pos.bishop_square(Color.black).color().e;
+        pos.bishop_count(.white) == 1 and
+        pos.bishop_count(.black) == 1 and
+        pos.bishop_square(.white).color().e != pos.bishop_square(.black).color().e;
     return ocb;
 }
 
@@ -181,7 +181,7 @@ const def_mating = struct {
 
 const kbn_mating = struct {
     /// 'Distances' for white squares.
-    const white_squares: [64]u8 = .{
+    const white_squares: [Square.count]u8 = .{
         7, 7, 7, 7, 6, 4, 2, 0,
         7, 8, 8, 8, 7, 5, 3, 2,
         7, 8, 9, 9, 8, 6, 5, 4,
@@ -193,7 +193,7 @@ const kbn_mating = struct {
     };
 
     /// 'Distances' for white squares.
-    const black_squares: [64]u8 = .{
+    const black_squares: [Square.count]u8 = .{
         0, 2, 4, 6, 7, 7, 7, 7,
         2, 3, 5, 7, 8, 8, 8, 7,
         4, 5, 6, 8, 9, 9, 8, 7,

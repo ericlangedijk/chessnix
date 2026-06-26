@@ -24,11 +24,9 @@ const wtf = lib.wtf;
 
 var engine: *Engine = undefined;
 
-pub fn run() void {
+pub fn run() !void {
     const is_tty: bool = lib.is_tty();
-    uci_loop(is_tty) catch |err| {
-        lib.wtf("fatal error in uci loop: {s}" , .{ @errorName(err) });
-    };
+    try uci_loop(is_tty);
 }
 
 fn uci_loop(is_tty: bool) !void {
@@ -73,7 +71,6 @@ fn uci_loop(is_tty: bool) !void {
         else if (eql(cmd, "position")) {
             try UCI.set_position(&tokenizer);
         }
-
         // Terminal only commands.
         else if (is_tty) {
             if (eql(cmd, "d")) {
@@ -81,7 +78,7 @@ fn uci_loop(is_tty: bool) !void {
             }
             else if (eql(cmd, "q")) {
                 try UCI.quit();
-                return; // stop the program.
+                return;
             }
             else if (eql(cmd, "cls")) {
                 TTY.cls();
@@ -106,6 +103,9 @@ fn uci_loop(is_tty: bool) !void {
             }
             else if (eql(cmd, "state")) {
                 TTY.print_state();
+            }
+            else {
+                io.print("unknown command: {s}\n", .{ cmd }); // #testing
             }
         }
     }
@@ -302,6 +302,7 @@ const TTY = struct {
         io.print("cpu: {t}\n", .{ builtin.cpu.arch });
         io.print("engine busy: {}\n", .{ engine.is_busy()});
         io.print("tt: {} MB, buckets: {}, entries per bucket: {} bucketsize: {}, entry size: {}\n", .{ engine.options.hash_size, engine.transpositiontable.hash.data.len, tt.EPB, tt.Bucket.STRUCTSIZE, tt.Entry.STRUCTSIZE });
+        io.print("engine struct size: {}, searcher structsize {}\n", .{ @sizeOf(Engine), @sizeOf(search.Searcher) });
     }
 };
 

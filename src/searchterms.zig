@@ -93,8 +93,10 @@ pub const Tuned = struct {
     rfp_cutnode_margin_delta: i32 = 10,
 
     /// Search: the list size of quiet moves that did not beat alpha.
+    /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
     search_quiet_list_size: u8 = 16,
     /// Search: the list size of capture moves that did not beat alpha.
+    /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
     search_capture_list_size: u8 = 8,
 
     /// SEE pruning: Maximum depth for applying.

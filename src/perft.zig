@@ -23,8 +23,8 @@ pub fn run(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
     const nodes: u64 = switch (pos.stm.e) {
-        .white => do_run(true, true, Color.white, depth, pos),
-        .black => do_run(true, true, Color.black, depth, pos),
+        .white => do_run(true, true, .white, depth, pos),
+        .black => do_run(true, true, .black, depth, pos),
     };
     const time = t.lap();
     io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
@@ -35,8 +35,8 @@ pub fn qrun(pos: *const Position, depth: u8) void
 {
     var t = utils.Timer.start();
     const nodes: u64 = switch (pos.stm.e) {
-        .white => do_run(false, true, Color.white, depth, pos),
-        .black => do_run(false, true, Color.black, depth, pos),
+        .white => do_run(false, true, .white, depth, pos),
+        .black => do_run(false, true, .black, depth, pos),
     };
     const time = t.lap();
     io.print("perft {}: nodes: {}, time {D}, nps {}\n", .{depth, nodes, time, funcs.nps(nodes, time)});
@@ -45,8 +45,8 @@ pub fn qrun(pos: *const Position, depth: u8) void
 /// No output. Just return node count.
 pub fn run_quick(pos: *const Position, depth: u8) u64 {
     switch (pos.stm.e) {
-        .white => return do_run(false, true, Color.white, depth, pos),
-        .black => return do_run(false, true, Color.black, depth, pos),
+        .white => return do_run(false, true, .white, depth, pos),
+        .black => return do_run(false, true, .black, depth, pos),
     }
 }
 
@@ -89,6 +89,7 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     return nodes;
 }
 
+
 /// Doing 4 positions, measuring speed.
 pub fn bench() !void {
     const Test = struct {
@@ -111,9 +112,9 @@ pub fn bench() !void {
 
     var pos: Position = .empty;
 
-    main_loop: for (&testruns) |*testrun| {
+    main_loop: inline for (&testruns) |*testrun| {
         for (1..testrun.end_depth + 1) |depth| {
-            try pos.set(testrun.fen, false);
+            try pos.setup(testrun.fen, false);
             var timer = utils.Timer.start();
             const nodes: u64 = run_quick(&pos, @truncate(depth));
             const time = timer.read();
@@ -135,3 +136,56 @@ pub fn bench() !void {
 
     io.print("Total nodes: {} {D} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
 }
+
+// pub fn bench_find_move() !void {
+
+//     // var totalnodes: u64 = 0;
+//     var fast_time: u64 = 0;
+//     var slow_time: u64 = 0;
+//     var cnt: u64 = 0;
+
+//     var pos: Position = .empty;
+
+//     inline for (&testruns) |*testrun| {
+
+//         try pos.setup(testrun.fen, false);
+//         var movestorage = position.MoveStorage.init();
+//         pos.lazy_generate_all_moves(&movestorage);
+//         for (0..10000) |_| {
+//             for (movestorage.slice()) |ex|{
+//                 const str: []const u8 = ex.move.to_string(false).slice();
+//                 var slow_timer = utils.Timer.start();
+//                 const slow_find_move: types.ExtMove = try pos.parse_move(str);
+//                 slow_time += slow_timer.read();
+//                 var fast_timer = utils.Timer.start();
+//                 const fast_find_move: types.ExtMove = try pos.lazy_find_move(ex.move.from, ex.move.to, ex.move.prom_safe());
+//                 fast_time += fast_timer.read();
+//                 if (slow_find_move != fast_find_move) {
+//                     io.print("ERROR\n", .{});
+//                     return;
+//                 }
+//                 cnt += 1;
+//             }
+//         }
+
+//         //     var timer = utils.Timer.start();
+//         //     const nodes: u64 = run_quick(&pos, @truncate(depth));
+//         //     const time = timer.read();
+//         //     io.print("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
+
+//         //     if (depth == testrun.end_depth) {
+//         //         totalnodes += nodes;
+//         //         totaltime += time;
+//         //         if (nodes == testrun.end_depth_nodes) {
+//         //             io.print("OK\n\n", .{});
+//         //         }
+//         //         else {
+//         //             io.print("ERROR\n\n", .{});
+//         //             break :main_loop;
+//         //         }
+//         //     }
+//         // }
+//     }
+
+//     io.print("count {}, Slow time: {D} Fast time {D}\n", .{ cnt, slow_time, fast_time });
+// }

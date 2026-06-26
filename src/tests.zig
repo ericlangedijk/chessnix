@@ -28,11 +28,8 @@ pub fn run_silent_debugmode_tests() !void {
     var timer = utils.Timer.start();
     const perfts: usize = try run_perfts(3);
     const perfts_960: usize = try run_perfts_960(3);
-    const flips: usize = 0;//try test_flip();
     const time = timer.read();
-    lib.io.debugprint("silent debug tests ok. perfts: {}, perfts 960: {}, flips: {}, (time {D})\n", .{ perfts, perfts_960, flips, time });
-    //_ = try test_flipped_eval();
-    // _ = try test_flipped_eval();
+    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, (time {D})\n", .{ perfts, perfts_960, time });
 }
 
 pub const Error = error {
@@ -59,7 +56,7 @@ fn run_perfts(max_depth: usize) !usize {
     var done: usize = 0;
 
     for (testpositions, 0..) |str, index| {
-        try pos.set(str, false);
+        try pos.setup(str, false);
 
         // TEMP EVAL OUTPUT for later test
         // var ev: hce.Evaluator = .init();
@@ -86,6 +83,7 @@ fn run_perfts(max_depth: usize) !usize {
         }
         done += 1;
     }
+    lib.io.debugprint("layout_map entries after classic: {}\n", .{ position.layout_map_entries() });
     return done;
 }
 
@@ -99,7 +97,7 @@ fn run_perfts_960(max_depth: usize) !usize {
     var done: usize = 0;
 
     for (testpositions_960, 0..) |str, index| {
-        try pos.set(str, true);
+        try pos.setup(str, true);
         //std.debug.print("{s}\n", .{ str });
         //std.debug.print("nr of layout entries {}\n", .{ position.alternative_layout_map.count() });
         const depths: FenDepths = try decode_depths(str);
@@ -122,57 +120,7 @@ fn run_perfts_960(max_depth: usize) !usize {
         }
         done += 1;
     }
-    return done;
-}
-
-/// Test if flip position is 100% correct.
-fn test_flip() !usize {
-    lib.not_in_release();
-
-    var pos: Position = .empty;
-    var mirrored: Position = .empty;
-    var done: usize = 0;
-
-    for (testpositions, 0..) |str, index| {
-        try pos.set(str, false);
-        //lib.io.debugprint("{f}\n", .{pos});
-        // pos.draw();
-        // funcs.print_bitboard(pos.pins_diagonal);
-        mirrored = pos;
-        mirrored.flip();
-        mirrored.flip();
-        if (!mirrored.equals(&pos)) {
-            return catch_error (
-                Error.FlipError,
-                \\testposition {}
-                \\fen: {s}"
-                \\
-                , .{ index, str }
-            );
-        }
-        done += 1;
-        //break;
-    }
-
-    return done;
-}
-
-fn test_flipped_eval() !usize {
-    lib.not_in_release();
-
-    var pos: Position = .empty;
-    var flipped_pos: Position = .empty;
-
-    var done: usize = 0;
-    for (testpositions) |str| {
-        try pos.set(str, false);
-        var ev: hce.Evaluator = .init();
-        const eval1: i32 = ev.evaluate(&pos);
-        flipped_pos = pos.flipped();
-        const eval2: i32 = ev.evaluate(&flipped_pos);
-        io.debugprint("{} ==? {}\n", .{ eval1, eval2 });
-        done += 1;
-    }
+    lib.io.debugprint("layout_map entries after 960: {}\n", .{ position.layout_map_entries() });
     return done;
 }
 
@@ -184,7 +132,7 @@ fn test_see() !usize {
     for (see_positions, 0..) |str, index| {
         var tokenizer = std.mem.tokenizeScalar(u8, str, ';');
         const fen: []const u8 = tokenizer.next() orelse @panic("invalid see fen");
-        try pos.set(fen, false);
+        try pos.setup(fen, false);
         const move: []const u8 = tokenizer.next() orelse @panic("invalid see move");
         const m: types.Move = try pos.parse_move(std.mem.trimEnd(u8, move, &.{' '}));
         const s1 = hce.see_score(&pos, m);

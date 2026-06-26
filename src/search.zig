@@ -2,7 +2,7 @@
 
 //! Engine + Search.
 
-//! This chessnix 1.3 version contains borrowed stuff, adjusted to engine's needs.
+//! This chessnix 1.5 version contains borrowed stuff, adjusted to engine's needs.
 //! Most alphabeta engines share a plethora of established ideas, but I want to mention these:
 //! Evaluation (which I adjusted and enhanced) from Integral v3 to get me going. Starting with chessnix 2.0 other data will be used.
 //! Time management ideas from Alexandria.
@@ -67,6 +67,9 @@ const PV = utils.BoundedArray(Move, max_search_depth + 2);
 pub const Engine = struct {
     /// Shared tt for all threads.
     transpositiontable: tt.TranspositionTable,
+
+    // repetition_hash: RepetitionHash, // #testing
+
     /// Threading.
     busy: std.atomic.Value(bool),
     /// The number of threads we use. Currently single threaded only.
@@ -96,7 +99,9 @@ pub const Engine = struct {
         const tt_size: usize = tt.compute_tt_size_in_bytes(Options.default_hash_size);
         var engine: *Engine = try ctx.galloc.create(Engine);
         engine.transpositiontable = try .init(tt_size);
-        engine.busy = std.atomic.Value(bool).init(false);
+        //engine.repetition_hash = .init();
+        //engine.busy = std.atomic.Value(bool).init(false);
+        engine.busy = .init(false);
         engine.num_threads = 1;
         engine.controller_thread = null;
         engine.search_thread = null;
@@ -114,6 +119,7 @@ pub const Engine = struct {
 
     pub fn destroy(self: *Engine) void {
         self.transpositiontable.deinit();
+        //self.repetition_hash.deinit();
         ctx.galloc.destroy(self);
     }
 
@@ -142,7 +148,7 @@ pub const Engine = struct {
         if (self.is_busy()) {
             return;
         }
-        try self.pos.set(fen, self.options.is_960);
+        try self.pos.setup(fen, self.options.is_960);
         self.repetition_table[0] = self.pos.key;
         if (moves) |m| {
             self.parse_moves(m);
@@ -292,7 +298,7 @@ pub const Searcher = struct {
             .nodes = create_nodes(),
             .nodes_spent = @splat(0),
             .hist = .init(),
-            .chessnix = Color.white,
+            .chessnix = .white,
             .stopped = false,
             .stats = .empty,
         };
@@ -332,8 +338,8 @@ pub const Searcher = struct {
         self.nodes_spent = @splat(0);
 
         switch (pos.stm.e) {
-            .white => self.iterate(Color.white, &pos),
-            .black => self.iterate(Color.black, &pos),
+            .white => self.iterate(.white, &pos),
+            .black => self.iterate(.black, &pos),
         }
     }
 
@@ -684,6 +690,7 @@ pub const Searcher = struct {
                 node.static_eval >= beta + 170 - depth * 24 and
                 pos.minor_major_count(us) != 0
             ) {
+                //self.prefetch_tt(us, pos, .empty);
                 const eval_reduction: i32 = @min(2, @divTrunc(node.eval - beta, 202));
                 const r: i32 = clamp(@divTrunc(depth, 4) + 3 + eval_reduction, 0, depth);
                 const next_pos: Position = self.do_nullmove(pos, us);
@@ -719,7 +726,7 @@ pub const Searcher = struct {
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
-            self.prefetch(us, pos, ex);
+            //self.prefetch_tt(us, pos, ex);
 
             // Skip this move if we are inside singular extensions.
             if (ex.move == node.excluded_tt_move) {
@@ -783,7 +790,7 @@ pub const Searcher = struct {
 
                     // No move beats the tt_move, so extend its search.
                     if (s_score < s_beta) {
-                        // Double extend if the tt move is singular by some margin
+                        // Double extend if the tt move is singular by some margin.
                         if (!is_pvs and s_score < s_beta - 28 and node.double_extensions <= 8) {
                             extension = 2;
                             node.double_extensions += 1;
@@ -808,7 +815,7 @@ pub const Searcher = struct {
                 extension += 1;
             }
 
-            // Do move
+            // Do move.
             const next_pos: Position = self.do_move(pos, us, ex);
             defer node.clear(.undo);
             const gives_check: bool = next_pos.checkmask != 0;
@@ -916,6 +923,7 @@ pub const Searcher = struct {
                         self.hist.record_beta_cutoff(depth, ply, ex, &self.nodes, quiet_list.slice());
                         break :moveloop;
                     }
+
                     // Alpha Raise Reduction.
                     if (depth >= tuned.lmr_min_depth) {
                         alpha_raises += 1;
@@ -1053,7 +1061,7 @@ pub const Searcher = struct {
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
-            self.prefetch(them, pos, ex);
+            // self.prefetch_tt(them, pos, ex);
 
             // Skip bad noisies if we have seen a move already.
             if (moves_seen > 0 and ex.is_bad_capture) {
@@ -1103,13 +1111,15 @@ pub const Searcher = struct {
         return best_score;
     }
 
-    /// Pull the TT entry of the position into the cpu cache. Memory access speedup.
-    /// Assumes the move is not yet done on the board.
-    /// For a null move pass an empty move.
-    /// Apparently - and amazingly - this is best done early in the move-loop.
-    fn prefetch(self: *const Searcher, comptime us: Color, pos: *const Position, ex: ExtMove) void {
+    // #NOTE: abandoned. not yet
+    // Pull the TT entry of the position into the cpu cache. Memory access speedup.
+    // Assumes the move is not yet done on the board.
+    // For a null move pass an empty move.
+    // Apparently - and amazingly - this is best done early in the move-loop.
+    fn prefetch_tt(self: *const Searcher, comptime us: Color, pos: *const Position, ex: ExtMove) void {
         const k: u64 = pos.predict_key(us, ex);
-        @prefetch(self.transpositiontable.hash.get(k), .{});
+        const address: *const tt.Bucket = self.transpositiontable.hash.get(k);
+        @prefetch(address, .{});
     }
 
     /// Only call evaluate when not in check (or the max search depth has been reached).
@@ -1137,6 +1147,7 @@ pub const Searcher = struct {
     }
 
     fn do_move(self: *Searcher, pos: *const Position, comptime us: Color, ex: ExtMove) Position {
+        self.prefetch_tt(us, pos, ex);
         var next_pos: Position = pos.*;
         next_pos.do_move(us, ex);
         self.repetition_table[next_pos.ply_from_root] = next_pos.key;
@@ -1144,6 +1155,7 @@ pub const Searcher = struct {
     }
 
     fn do_nullmove(self: *Searcher, pos: *const Position, comptime us: Color) Position {
+        self.prefetch_tt(us, pos, .empty);
         var next_pos: Position = pos.*;
         next_pos.do_nullmove(us);
         self.repetition_table[next_pos.ply_from_root] = next_pos.key;

@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const uci = @import("uci.zig");
 
 pub fn main() !void {
     comptime @setFloatMode(.optimized);
@@ -10,20 +9,22 @@ pub fn main() !void {
     try lib.initialize();
     defer lib.finalize();
 
-    // Debug tests.
-    if (comptime lib.is_debug and lib.program == .uci_engine) {
-        try @import("tests.zig").run_silent_debugmode_tests();
-    }
-
     switch (lib.program) {
-        .uci_engine => {
-            uci.run();
+        .uci => {
+            if (lib.is_debug) {
+                try @import("tests.zig").run_silent_debugmode_tests();
+            }
+            try @import("uci.zig").run();
         },
-        .lichess_tool => {
-            try @import("tools/lichess.zig").convert_lichess_dataset();
+        .lichess_dataset_conversion => {
+            //
         },
-        .tuner => {
-            // try @import("tuner.zig").run();
+        .hcetuner => {
+            try @import("hcetuner.zig").run();
         }
     }
+}
+
+fn misc() void {
+    //
 }

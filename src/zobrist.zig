@@ -37,9 +37,10 @@ pub fn piece_square(pc: Piece, sq: Square) u64 {
     return all_randoms[idx];
 }
 
-pub fn piece_from_to(pc: Piece, from: Square, to: Square) u64 {
-    const offset: usize = @as(usize, pc.u) * 64;
-    return all_randoms[offset + from.u] ^ all_randoms[offset + to.u];
+/// Micro optimization.
+pub fn piece_square_from_to(pc: Piece, from: Square, to: Square) u64 {
+    const idx: usize = @as(usize, pc.u) * 64;
+    return all_randoms[idx + from.u] ^ all_randoms[idx + to.u];
 }
 
 pub fn enpassant(sq: Square) u64 {
@@ -47,8 +48,8 @@ pub fn enpassant(sq: Square) u64 {
     return all_randoms[idx];
 }
 
-pub fn castling(castling_rights: u4) u64 {
-    const idx: usize = offset_castling + castling_rights;
+pub fn castling(castlingrights: u4) u64 {
+    const idx: usize = offset_castling + castlingrights;
     return all_randoms[idx];
 }
 
