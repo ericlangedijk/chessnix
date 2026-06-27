@@ -120,12 +120,15 @@ To be continued...
 - cls -> clear the terminal.
 
 ## Thanks
-Aron Petkovski. I used most of the tuned evaluation of an old version of Integral (3) to get me started (from chessnix 2.0 onwards I will do my own tuning).
-Jonathan, Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.<br>
+Janez and Colin on Discord. The people of TalkChess, Zig Forum, CCRL.<br>
 The authors of the engines I used for testing: Bbc, Cadie, Cheese, Chessplusplus, Colossus, Cwtch, Infrared, Integral, Lambergar, Linx, Lishex, Mess, Monty, OpenCritter, PlentyChess, Pounce, Priessnitz, Seawall, Seredina, Shallow, Shallowguess, Simbelmine, Stash, Supernova, Teki, Yakka.<br>
 Some extra thanks to these people who made their engine support chess960.<br>
 I also learned a lot from the source code of all these engines.<br>
 Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Alexandria, Cwtch, Integral, PlentyChess, Pawnocchio, Sirius, Stockfish).
+
+## Special Thanks
+- Aron Petkovski for the tuned evaluation of an old version of Integral (3) to get me started.
+- [Jonathan Hallström](https://github.com/JonathanHallstrom/) for support, advise, brainstorming, viriformat, io.
 
 ## The name
 I spent many years on Lemmix, the DOS Lemmings clone. So in my feeling the name had to end with "ix" as well.
