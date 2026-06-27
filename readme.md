@@ -127,7 +127,7 @@ I also learned a lot from the source code of all these engines.<br>
 Chessnix contains, besides my own inventions, a wild mix of ideas from the chess programming wiki as well as several other chess engines (Alexandria, Cwtch, Integral, PlentyChess, Pawnocchio, Sirius, Stockfish).
 
 ## Special Thanks
-- Aron Petkovski for the tuned evaluation of an old version of Integral (3) to get me started.
+- [Aron Petkovski](https://github.com/aronpetko/) for the tuned evaluation of an old version of [Integral v3](https://github.com/aronpetko/integral/releases/) to get me started.
 - [Jonathan Hallström](https://github.com/JonathanHallstrom/) for support, advise, brainstorming, viriformat, io.
 
 ## The name
