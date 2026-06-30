@@ -147,7 +147,6 @@ pub const ViriPosition = extern struct {
                     break :blk Piece.init(.rook, color);
                 },
                 else => {
-                    lib.set_last_error("invalid_piece_code {} at square {t}", .{code & 0b1111, sq.e});
                     return Error.invalid_piece_code;
                 },
             };

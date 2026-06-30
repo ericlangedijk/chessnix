@@ -74,10 +74,10 @@ pub fn run() !void {
     var file_nr: usize = 0;
     var filename: []u8 = compute_viri_filename(file_nr);
     const src = "C:/Data/chess/viri/pawnocchio/mix_1.vf";
-    var viri_reader: viri.ViriFileReader = try .init(src, gpa);
+    var viri_reader: viri.ViriFileReader = try .init(src, 4096);
     defer(viri_reader).deinit();
     var game: viri.ViriGame = .init();
-    defer game.deinit(gpa);
+    defer game.deinit();
 
     var pos: Position = .empty;
     var evaluator: Evaluator = .init();
