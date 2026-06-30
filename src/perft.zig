@@ -7,6 +7,7 @@ const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
+const movegen = @import("movegen.zig");
 
 const wtf = lib.wtf;
 const io = lib.io;
@@ -15,8 +16,6 @@ const Color = types.Color;
 const Square = types.Square;
 const Move = types.Move;
 const Position = position.Position;
-const Storage = position.MoveStorage;
-const JustCount = position.JustCount;
 
 /// With output.
 pub fn run(pos: *const Position, depth: u8) void
@@ -56,8 +55,8 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     var count: usize = 0;
     var nodes: usize = 0;
 
-    var storage: position.MoveStorage = .init();
-    pos.generate_all_moves(us, &storage);
+    var storage: movegen.MoveStorage = .init();
+    movegen.generate_all_moves(pos, us, &storage);
     const moves = storage.slice();
 
     for (moves) |ex| {
@@ -69,9 +68,9 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
             var next_pos: Position = pos.*;
             next_pos.do_move(us, ex);
             if (is_leaf) {
-                var counter: JustCount = .init();
-                next_pos.generate_all_moves(them, &counter); // just count
-                count = counter.counted;
+                var just_count: movegen.JustCount = .init();
+                movegen.generate_all_moves(&next_pos, them, &just_count); // just count
+                count = just_count.counted;
                 nodes += count;
             }
             else {

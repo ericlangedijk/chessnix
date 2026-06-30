@@ -9,7 +9,7 @@ const pair = types.pair;
 
 /// Extern to guarantee field order during turning.
 pub const Terms = extern struct {
-    piece_value_table: [6]ScorePair,
+    material_table: [6]ScorePair,
     king_passed_pawn_distance_table: [8]ScorePair,
     enemy_king_passed_pawn_distance_table: [8]ScorePair,
     pawn_phalanx_bonus: [8]ScorePair,
@@ -42,14 +42,13 @@ pub const Terms = extern struct {
     piece_square_table: [6][64]ScorePair,
 };
 
-//pub const terms: *const Terms = &default_terms;
-
+/// When tuning mutable otherwise const.
 pub const terms = if (lib.is_tuning) &tunable_terms else &default_terms;
 
 var tunable_terms: Terms = default_terms;
 
 const default_terms: Terms = .{
-    .piece_value_table = .{
+    .material_table = .{
         pair(75, 141), pair(301, 321), pair(331, 356), pair(439, 612), pair(874, 1080), pair(0, 0),
     },
 

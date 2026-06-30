@@ -77,7 +77,7 @@ fn compute_sliding_attackmasks() [8][64]u8 {
 fn compute_file_magics() [64]MagicEntry {
     @setEvalBranchQuota(8000);
     const bb = @import("bitboards.zig");
-    var fm: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
+    var fm: [64]MagicEntry = @splat(.{.mask = 0, .magic = 0});
     for (Square.all) |sq| {
         fm[sq.u].mask = sq.rays_bitboard(&.{.north, .south}) & ~(bb.bb_rank_1 | bb.bb_rank_8);
         fm[sq.u].magic = PrecomputedMagics.file_magics[sq.coord.file];
@@ -441,8 +441,8 @@ pub fn get_king_attacks(sq: Square) u64 {
     return king_attacks[sq.u];
 }
 
-pub fn get_piece_attacks(sq: Square, occ: u64, pc: PieceType, comptime us: Color) u64 {
-    return switch (pc.e) {
+pub fn get_piece_attacks(sq: Square, comptime pt: PieceType, comptime us: Color, occ: u64) u64 {
+    return switch (pt.e) {
         .pawn => get_pawn_attacks(sq, us),
         .knight => get_knight_attacks(sq),
         .bishop => get_bishop_attacks(sq, occ),

@@ -110,6 +110,13 @@ pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u6
     }
 }
 
+pub fn pawns_attacks(pawns: u64, comptime us: Color) u64 {
+    return switch(us.e) {
+        .white => (pawns & ~bitboards.bb_file_a) << 7 | (pawns & ~bitboards.bb_file_h) << 9,
+        .black => (pawns & ~bitboards.bb_file_h) >> 7 | (pawns & ~bitboards.bb_file_a) >> 9,
+    };
+}
+
 /// Returns the from square of a moved pawn.
 pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Square {
     switch (us.e) {
@@ -253,7 +260,7 @@ pub fn movenumber_to_ply(movenr: u16, stm: Color) u16 {
 }
 
 pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
-    return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1;
+    return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1; // TODO: bugged?
 }
 
 /// Convert "mate in X moves" to an absolute "distance to mate".
@@ -313,6 +320,13 @@ pub fn percent(max: usize, count: usize) usize {
     return @intFromFloat((c * 100) / m);
 }
 
+pub fn fpercent(max: u64, count: u64) f64 {
+    if (max == 0) return 0;
+    const c: f64 = @floatFromInt(count);
+    const m: f64 = @floatFromInt(max);
+    return (c * 100) / m;
+}
+
 pub fn permille(max: usize, count: usize) usize {
     if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
@@ -323,6 +337,13 @@ pub fn permille(max: usize, count: usize) usize {
 /// multiply any int with float.
 pub fn fmul(i: anytype, f: f32) @TypeOf(i) {
     return @intFromFloat(float32(i) * f);
+}
+
+pub fn get_str(comptime fmt: []const u8, args: anytype) utils.BoundedArray(u8, 256) {
+    var buf: utils.BoundedArray(u8, 256) = .empty;
+    buf.print_assume_capacity(fmt, args);
+    //_ = std.fmt.bufPrint(&buf.buffer, fmt, args) catch lib.wtf("get_str", .{});
+    return buf;
 }
 
 /// Debug only
@@ -348,7 +369,7 @@ pub fn print_bitboard(bb: u64) void {
 pub fn print_bits(u: u8) void {
     const x: std.bit_set.IntegerBitSet(8) = .{.mask = u};
     for (0..8) |bit| {
-        if (x.isSet(bit)) lib.io.debugprint("1", .{}) else std.debug.print(".", .{});
+        if (x.isSet(bit)) lib.io.debugprint("1", .{}) else lib.io.debugprint(".", .{});
     }
     lib.io.debugprint("\n", .{});
 }

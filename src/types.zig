@@ -14,6 +14,30 @@ const io = lib.io;
 
 const Castling = position.Castling;
 
+/// Win Draw Loss
+pub const WDL = packed union {
+    e: E,
+    u: u8,
+
+    pub const E = enum(u8) {
+        loss = 0,
+        draw = 1,
+        win = 2,
+    };
+
+    pub const loss: WDL = .{ .e = .loss };
+    pub const draw: WDL = .{ .e = .draw };
+    pub const win: WDL = .{ .e = .win };
+
+    pub fn from_int(u: usize) WDL {
+        return .{ .u = @intCast(u)};
+    }
+
+    pub fn flipped(self: WDL) WDL {
+        return .{ .u = 2 - self.u };
+    }
+};
+
 pub const Axis = enum(u2) {
     no_axis = 0,
     orth = 1,
@@ -137,6 +161,10 @@ pub const PieceType = packed union {
         pawn, knight, bishop, rook, queen, king
     };
 
+    pub fn from_int(u: usize) PieceType {
+        return .{ .u = @intCast(u)};
+    }
+
     pub fn idx(self: PieceType) usize {
         return self.u;
     }
@@ -151,6 +179,18 @@ pub const PieceType = packed union {
 
     pub fn to_promotion_char(self: PieceType) u8 {
         return "?nbrq??"[self.u];
+    }
+
+    /// TODO: move this function to Move?
+    pub fn to_promotion_move_flag(self: PieceType) u4 {
+        return switch (self.e) {
+            .knight => Move.knight_promotion,
+            .bishop => Move.bishop_promotion,
+            .rook => Move.rook_promotion,
+            .queen => Move.queen_promotion,
+            else => unreachable,
+        };
+        //return "?nbrq??"[self.u];
     }
 
     pub fn to_char(self: PieceType) u8 {
@@ -195,7 +235,7 @@ pub const Piece = packed union {
 
 
     /// All valid pieces.
-    pub const all: [12]Piece = .{
+    pub const all: [count]Piece = .{
         white_pawn, white_knight, white_bishop, white_rook, white_queen, white_king,
         black_pawn, black_knight, black_bishop, black_rook, black_queen, black_king,
     };
@@ -359,6 +399,9 @@ pub const Piece = packed union {
     }
 };
 
+pub const File = u3;
+pub const Rank = u3;
+
 pub const Coord = packed struct(u6) {
     // file = x. square % 8 or square & 7 (0b000111)
     // rank = y. square / 8 or square >> 3  (0b111000)
@@ -384,72 +427,16 @@ pub const Square = packed union {
         a8, b8, c8, d8, e8, f8, g8, h8,
     };
 
-    pub const zero: Square = a1;
+    pub const a1 = sq(0);  pub const b1 = sq(1);  pub const c1 = sq(2);  pub const d1 = sq(3);  pub const e1 = sq(4);  pub const f1 = sq(5);  pub const g1 = sq(6);  pub const h1 = sq(7);
+    pub const a2 = sq(8);  pub const b2 = sq(9);  pub const c2 = sq(10); pub const d2 = sq(11); pub const e2 = sq(12); pub const f2 = sq(13); pub const g2 = sq(14); pub const h2 = sq(15);
+    pub const a3 = sq(16); pub const b3 = sq(17); pub const c3 = sq(18); pub const d3 = sq(19); pub const e3 = sq(20); pub const f3 = sq(21); pub const g3 = sq(22); pub const h3 = sq(23);
+    pub const a4 = sq(24); pub const b4 = sq(25); pub const c4 = sq(26); pub const d4 = sq(27); pub const e4 = sq(28); pub const f4 = sq(29); pub const g4 = sq(30); pub const h4 = sq(31);
+    pub const a5 = sq(32); pub const b5 = sq(33); pub const c5 = sq(34); pub const d5 = sq(35); pub const e5 = sq(36); pub const f5 = sq(37); pub const g5 = sq(38); pub const h5 = sq(39);
+    pub const a6 = sq(40); pub const b6 = sq(41); pub const c6 = sq(42); pub const d6 = sq(43); pub const e6 = sq(44); pub const f6 = sq(45); pub const g6 = sq(46); pub const h6 = sq(47);
+    pub const a7 = sq(48); pub const b7 = sq(49); pub const c7 = sq(50); pub const d7 = sq(51); pub const e7 = sq(52); pub const f7 = sq(53); pub const g7 = sq(54); pub const h7 = sq(55);
+    pub const a8 = sq(56); pub const b8 = sq(57); pub const c8 = sq(58); pub const d8 = sq(59); pub const e8 = sq(60); pub const f8 = sq(61); pub const g8 = sq(62); pub const h8 = sq(63);
 
-    pub const a1: Square = .{ .u =  0 };
-    pub const b1: Square = .{ .u =  1 };
-    pub const c1: Square = .{ .u =  2 };
-    pub const d1: Square = .{ .u =  3 };
-    pub const e1: Square = .{ .u =  4 };
-    pub const f1: Square = .{ .u =  5 };
-    pub const g1: Square = .{ .u =  6 };
-    pub const h1: Square = .{ .u =  7 };
-    pub const a2: Square = .{ .u =  8 };
-    pub const b2: Square = .{ .u =  9 };
-    pub const c2: Square = .{ .u = 10 };
-    pub const d2: Square = .{ .u = 11 };
-    pub const e2: Square = .{ .u = 12 };
-    pub const f2: Square = .{ .u = 13 };
-    pub const g2: Square = .{ .u = 14 };
-    pub const h2: Square = .{ .u = 15 };
-    pub const a3: Square = .{ .u = 16 };
-    pub const b3: Square = .{ .u = 17 };
-    pub const c3: Square = .{ .u = 18 };
-    pub const d3: Square = .{ .u = 19 };
-    pub const e3: Square = .{ .u = 20 };
-    pub const f3: Square = .{ .u = 21 };
-    pub const g3: Square = .{ .u = 22 };
-    pub const h3: Square = .{ .u = 23 };
-    pub const a4: Square = .{ .u = 24 };
-    pub const b4: Square = .{ .u = 25 };
-    pub const c4: Square = .{ .u = 26 };
-    pub const d4: Square = .{ .u = 27 };
-    pub const e4: Square = .{ .u = 28 };
-    pub const f4: Square = .{ .u = 29 };
-    pub const g4: Square = .{ .u = 30 };
-    pub const h4: Square = .{ .u = 31 };
-    pub const a5: Square = .{ .u = 32 };
-    pub const b5: Square = .{ .u = 33 };
-    pub const c5: Square = .{ .u = 34 };
-    pub const d5: Square = .{ .u = 35 };
-    pub const e5: Square = .{ .u = 36 };
-    pub const f5: Square = .{ .u = 37 };
-    pub const g5: Square = .{ .u = 38 };
-    pub const h5: Square = .{ .u = 39 };
-    pub const a6: Square = .{ .u = 40 };
-    pub const b6: Square = .{ .u = 41 };
-    pub const c6: Square = .{ .u = 42 };
-    pub const d6: Square = .{ .u = 43 };
-    pub const e6: Square = .{ .u = 44 };
-    pub const f6: Square = .{ .u = 45 };
-    pub const g6: Square = .{ .u = 46 };
-    pub const h6: Square = .{ .u = 47 };
-    pub const a7: Square = .{ .u = 48 };
-    pub const b7: Square = .{ .u = 49 };
-    pub const c7: Square = .{ .u = 50 };
-    pub const d7: Square = .{ .u = 51 };
-    pub const e7: Square = .{ .u = 52 };
-    pub const f7: Square = .{ .u = 53 };
-    pub const g7: Square = .{ .u = 54 };
-    pub const h7: Square = .{ .u = 55 };
-    pub const a8: Square = .{ .u = 56 };
-    pub const b8: Square = .{ .u = 57 };
-    pub const c8: Square = .{ .u = 58 };
-    pub const d8: Square = .{ .u = 59 };
-    pub const e8: Square = .{ .u = 60 };
-    pub const f8: Square = .{ .u = 61 };
-    pub const g8: Square = .{ .u = 62 };
-    pub const h8: Square = .{ .u = 63 };
+    pub const zero: Square = a1;
 
     pub const all: [Square.count]Square = .{
         a1, b1, c1, d1, e1, f1, g1, h1,
@@ -496,15 +483,20 @@ pub const Square = packed union {
         0, 1, 2, 3, 3, 2, 1, 0
     };
 
+    /// Comptime only.
+    inline fn sq(u: u6) Square {
+        return .from(u);
+    }
+
     pub fn from(index: u6) Square {
         return .{ .u = index };
     }
 
-    pub fn from_usize(index: usize) Square {
+    pub fn from_int(u: usize) Square {
         if (comptime lib.is_paranoid) {
-            assert(index < 64);
+            assert(u < 64);
         }
-        return .{ .u = @truncate(index) };
+        return .{ .u = @intCast(u) };
     }
 
     pub fn idx(self: Square) usize {
@@ -518,14 +510,6 @@ pub const Square = packed union {
     pub fn from_rank_file(r: u3, f: u3) Square {
         return .{ .coord = .{.file = f, .rank = r} };
     }
-
-    // pub fn file(self: Square) u3 {
-    //     return self.coord.file;
-    // }
-
-    // pub fn rank(self: Square) u3 {
-    //     return self.coord.rank;
-    // }
 
     pub fn color(self: Square) Color {
         const c: u1 = @intCast(((self.u ^ (self.coord.rank)) & 1) ^ 1); // #testing
@@ -544,6 +528,11 @@ pub const Square = packed union {
 
     pub fn to_bitboard(self: Square) u64 {
         return @as(u64, 1) << self.u;
+    }
+
+    pub fn from_bitboard(bitboard: u64) Square {
+        return funcs.first_square(bitboard);
+        //return @as(u64, 1) << self.u;
     }
 
     pub fn add(self: Square, d: u6) Square {
@@ -651,6 +640,11 @@ pub const Square = packed union {
     pub fn char_of_file(self: Square) u8 {
         return @as(u8, 'a') + self.coord.file;
     }
+
+    // pub fn format(self: Square, writer: *std.io.Writer) std.io.Writer.Error!void {
+    //     try writer.print("{t}", .{ self.e });
+    // }
+
 };
 
 pub const Move = packed struct(u16) {
@@ -679,12 +673,30 @@ pub const Move = packed struct(u16) {
 
     pub const empty: Move = .{};
 
+    /// Sometimes we need something simple.
+    pub const SimpleKind = enum(u2) {
+        default,
+        ep,
+        castle,
+        promotion,
+    };
+
     pub fn init(from: Square, to: Square, kind: u4) Move {
         return .{ .from = from, .to = to, .kind = kind };
     }
 
+    pub fn init_promotion(from: Square, to: Square, pt: PieceType, is_capt: bool) Move {
+        const capt_flag = if (is_capt) capture else 0;
+        const prom_flag = pt.to_promotion_move_flag();
+        return .{ .from = from, .to = to, .kind = prom_flag | capt_flag };
+    }
+
     pub fn bitcast(self: Move) u16 {
         return @bitCast(self);
+    }
+
+    pub fn castle(comptime ct: Castle) u4 {
+        return if (ct.e == .short) castle_short else castle_long;
     }
 
     pub fn is_empty(self: Move) bool {
@@ -733,6 +745,7 @@ pub const Move = packed struct(u16) {
         return .{ .u = (self.kind & 0b0111) - 3 };
     }
 
+    /// Returns promotion piece if this is a promotion move otherwise no_piece.
     pub fn prom_safe(self: Move) PieceType {
         if (!self.is_promotion()) {
             return .no_piecetype;
@@ -743,6 +756,31 @@ pub const Move = packed struct(u16) {
     /// Returns a 12 bit indexer for the from / to squares.
     pub fn from_to(self: Move) u12 {
         return @truncate(bitcast(self));
+    }
+
+    pub fn simple_kind(self: Move) SimpleKind {
+        return switch (self.kind) {
+            silent, double_push, capture => .default,
+            castle_short, castle_long => .castle,
+            ep => .ep,
+            else => .promotion,
+        };
+
+    // pub const silent                   : u4 = 0b0000; // 0
+    // pub const double_push              : u4 = 0b0001; // 1
+    // pub const castle_short             : u4 = 0b0010; // 2
+    // pub const castle_long              : u4 = 0b0011; // 3
+
+    //     return switch (self.kind) {
+    //         ep =>
+    //             .ep,
+    //         castle_short, castle_long =>
+    //             .castle,
+    //         knight_promotion, bishop_promotion, rook_promotion, queen_promotion,
+    //         knight_promotion_capture, bishop_promotion_capture, rook_promotion_capture, queen_promotion_capture =>
+    //             .promotion,
+    //         else => .default,
+    //     };
     }
 
     /// Prints uci move to stdout.
@@ -805,13 +843,35 @@ pub const Move = packed struct(u16) {
         return result;
     }
 
-    // non uci quick and dirty format.
     pub fn format(self: Move, writer: *std.io.Writer) std.io.Writer.Error!void {
         try writer.print("{t}{t}", .{ self.from.e, self.to.e });
         if (self.is_promotion()) {
             try writer.print("{u}", .{ self.prom().to_promotion_char() });
         }
     }
+
+    // pub fn format(self: Move, options: bool, writer: *std.io.Writer) std.io.Writer.Error!void {
+    //     try writer.print("{t}{t}", .{ self.from.e, self.to.e });
+    //     if (self.is_promotion()) {
+    //         try writer.print("{u}", .{ self.prom().to_promotion_char() });
+    //     }
+    //     if (options) try writer.print(" with options", .{});
+    // }
+
+    pub fn fmt(self: Move) Formatter {
+        return .{ .move = self };
+    }
+
+    pub const Formatter = struct {
+        move: Move,
+
+        pub fn format(self: Formatter, writer: *std.io.Writer) std.io.Writer.Error!void {
+            try writer.print("{t}{t}", .{ self.move.from.e, self.move.to.e });
+            if (self.move.is_promotion()) {
+                try writer.print("{u}", .{ self.move.prom().to_promotion_char() });
+            }
+        }
+    };
 };
 
 /// Extended move for the engine.
@@ -822,8 +882,8 @@ pub const ExtMove = packed struct(u64) {
     piece: Piece,
     captured: Piece,
     score: i32,
-    is_tt_move: bool,
-    is_bad_capture: bool,
+    is_tt_move: bool, // TODO: i think it is better to deduce this from movepicker state
+    is_bad_capture: bool, // TODO: i think it is better to deduce this from movepicker state
     padding: u6,
 
     pub const empty: ExtMove = .{
@@ -847,12 +907,25 @@ pub const ExtMove = packed struct(u64) {
             .padding = 0,
         };
     }
+
+    pub fn from_move(move: Move, piece: Piece, captured: Piece) ExtMove {
+        return .{
+            .move = move,
+            .piece = piece,
+            .captured = captured,
+            .score = 0,
+            .is_tt_move = false,
+            .is_bad_capture = false,
+            .padding = 0,
+        };
+    }
 };
 
 /// Simple array wrapper.
 pub fn ExtMoveList(max: u8) type {
     return struct {
         const Self = @This();
+        pub const max_capacity: u8 = max;
 
         extmoves: [max]ExtMove,
         count: u8,
@@ -875,6 +948,10 @@ pub fn ExtMoveList(max: u8) type {
         }
 
         pub fn slice(self: *Self) []ExtMove {
+            return self.extmoves[0..self.count];
+        }
+
+        pub fn slice_const(self: *const Self) []const ExtMove {
             return self.extmoves[0..self.count];
         }
     };
@@ -902,13 +979,13 @@ pub const ScorePair = extern struct {
         self.eg -= sp.eg;
     }
 
-    pub fn add(self: ScorePair, other: ScorePair) ScorePair {
-        return .{ .mg = self.mg + other.mg, .eg = self.eg + other.eg };
-    }
+    // pub fn add(self: ScorePair, other: ScorePair) ScorePair {
+    //     return .{ .mg = self.mg + other.mg, .eg = self.eg + other.eg };
+    // }
 
-    pub fn sub(self: ScorePair, other: ScorePair) ScorePair {
-        return .{ .mg = self.mg - other.mg, .eg = self.eg - other.eg };
-    }
+    // pub fn sub(self: ScorePair, other: ScorePair) ScorePair {
+    //     return .{ .mg = self.mg - other.mg, .eg = self.eg - other.eg };
+    // }
 
     pub fn mul(self: ScorePair, m: u8) ScorePair {
         return .{ .mg = self.mg * m, .eg = self.eg * m };
@@ -932,6 +1009,7 @@ pub const ParsingError = error {
 
 // --- Constants ---
 pub const megabyte: usize = 1024 * 1024;
+pub const million: usize = 1000 * 1000;
 
 pub const max_game_length: usize = 1024;
 pub const max_move_count: u8 = 224;

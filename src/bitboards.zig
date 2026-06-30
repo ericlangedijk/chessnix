@@ -15,20 +15,14 @@ const Piece = types.Piece;
 const Square = types.Square;
 
 /// Information about a pair of squares.
+/// - 'ray': the from-to ray bitboard **excluded** the from-square and **included** the to-square.
 pub const SquarePair = struct {
-    /// The from-to ray bitboard **excluded** the from-square and **included** the to-square.
-    ray: u64 = 0,
-    /// The from-to direction.
-    direction: ?Direction = null,
-    /// The from-to or to-from orientation.
-    orientation: ?Orientation = null,
-    /// Diagonal or orthogonal.
-    axis: Axis = .no_axis,
-    /// Distance.
-    dist: u3 = 0,
-    // Manhattan distance.
-    manh: u4 = 0,
-
+    ray: u64 = 0, // The from-to ray bitboard **excluded** the from-square and **included** the to-square.
+    direction: ?Direction = null,       // The from-to direction.
+    orientation: ?Orientation = null,   // The from-to or to-from orientation.
+    axis: Axis = .no_axis,              // Diagonal or orthogonal or nothing.
+    dist: u3 = 0,                       // Distance between the squares.
+    manh: u4 = 0,                       // Manhattan distance between the squares.
     const empty: SquarePair = .{};
 };
 
@@ -350,4 +344,33 @@ pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
 
 pub fn forward_file(comptime us: Color, sq: Square) u64 {
     return if (us.e == .white) bb_north[sq.u] else bb_south[sq.u];
+}
+
+pub const BitboardIterator = struct {
+    state: u64,
+
+    pub fn init(bitboard: u64) BitboardIterator {
+        return .{ .state = bitboard };
+    }
+
+    pub fn next(self: *BitboardIterator) ?Square {
+        if (self.state == 0) {
+            return null;
+        }
+        const res = @ctz(self.state);
+        self.state &= self.state -% 1;
+        return .{ .u = @intCast(res)};
+    }
+
+    pub fn peek(self: *const BitboardIterator) ?Square {
+        if (self.state == 0) {
+            return null;
+        }
+        const res = @ctz(self.state);
+        return .{ .u = @intCast(res)};
+    }
+};
+
+pub fn iterator(bitboard: u64) BitboardIterator {
+    return BitboardIterator.init(bitboard);
 }

@@ -2,12 +2,6 @@
 
 //! Engine + Search.
 
-//! This chessnix 1.5 version contains borrowed stuff, adjusted to engine's needs.
-//! Most alphabeta engines share a plethora of established ideas, but I want to mention these:
-//! Evaluation (which I adjusted and enhanced) from Integral v3 to get me going. Starting with chessnix 2.0 other data will be used.
-//! Time management ideas from Alexandria.
-//! Alpha Raise Reduction idea from Pawnocchio.
-
 const std = @import("std");
 const lib = @import("lib.zig");
 const bitboards = @import("bitboards.zig");
@@ -15,6 +9,7 @@ const types = @import("types.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
+const movegen = @import("movegen.zig");
 const uci = @import("uci.zig");
 const hce = @import("hce.zig");
 const tt = @import("tt.zig");
@@ -67,9 +62,6 @@ const PV = utils.BoundedArray(Move, max_search_depth + 2);
 pub const Engine = struct {
     /// Shared tt for all threads.
     transpositiontable: tt.TranspositionTable,
-
-    // repetition_hash: RepetitionHash, // #testing
-
     /// Threading.
     busy: std.atomic.Value(bool),
     /// The number of threads we use. Currently single threaded only.
@@ -83,7 +75,7 @@ pub const Engine = struct {
     /// Array with hash keys.
     repetition_table: [max_game_length]u64,
     /// The available moves at the root. Filled after both ucinewgame and position.
-    rootmoves: position.MoveStorage,
+    rootmoves: movegen.MoveStorage,
     /// The uci engine options like hashsize etc.
     options: Options,
     /// Time management.
@@ -97,7 +89,7 @@ pub const Engine = struct {
     /// The engine will be ready for a 'go' directly after (1) creation, (2) ucinewgame command and (3) position command.
     pub fn create(mute: bool) !*Engine {
         const tt_size: usize = tt.compute_tt_size_in_bytes(Options.default_hash_size);
-        var engine: *Engine = try ctx.galloc.create(Engine);
+        var engine: *Engine = try ctx.gpa.create(Engine);
         engine.transpositiontable = try .init(tt_size);
         //engine.repetition_hash = .init();
         //engine.busy = std.atomic.Value(bool).init(false);
@@ -109,7 +101,7 @@ pub const Engine = struct {
         engine.pos = .empty;
         engine.pos.set_startpos();
         engine.repetition_table[0] = engine.pos.key;
-        engine.pos.lazy_generate_all_moves(&engine.rootmoves);
+        movegen.lazy_generate_all_moves(&engine.pos, &engine.rootmoves);
         engine.options = Options.default;
         engine.tm = TimeManager.empty;
         engine.searcher = Searcher.init();
@@ -119,8 +111,7 @@ pub const Engine = struct {
 
     pub fn destroy(self: *Engine) void {
         self.transpositiontable.deinit();
-        //self.repetition_hash.deinit();
-        ctx.galloc.destroy(self);
+        ctx.gpa.destroy(self);
     }
 
     /// After the options are determined. Bit of a mess...
@@ -139,7 +130,7 @@ pub const Engine = struct {
         self.pos.set_startpos();
         self.repetition_table[0] = self.pos.key;
         self.transpositiontable.clear();
-        self.pos.lazy_generate_all_moves(&self.rootmoves);
+        movegen.lazy_generate_all_moves(&self.pos, &self.rootmoves);
         self.searcher.new_game();
     }
 
@@ -153,7 +144,7 @@ pub const Engine = struct {
         if (moves) |m| {
             self.parse_moves(m);
         }
-        self.pos.lazy_generate_all_moves(&self.rootmoves);
+        movegen.lazy_generate_all_moves(&self.pos, &self.rootmoves);
     }
 
     /// If we have any moves, make them. We stop if we encounter an illegal move without crashing.
@@ -162,6 +153,7 @@ pub const Engine = struct {
         var idx: usize = 1;
         while (tokenizer.next()) |m| {
             const ex: ExtMove = self.pos.parse_move(m) catch break;
+            //const ex: ExtMove = self.pos.parse_move(m) catch wtf("illegal move {s}", .{ m }); // #testing
             self.pos.lazy_do_move(ex);
             self.repetition_table[idx] = self.pos.key;
             idx += 1;

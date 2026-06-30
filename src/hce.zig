@@ -1,6 +1,7 @@
 // zig fmt: off
 
-//! Hand Crafted Evaluation.
+//! Hand Crafted Evaluation. Evaluation of a position.
+//! When we are tuning keep track of each used term.
 
 const std = @import("std");
 const assert = std.debug.assert;
@@ -34,6 +35,9 @@ const Position = position.Position;
 
 const terms = hceterms.terms;
 
+/// Mutable when tunning otherwise const.
+const ScorePairPtr = if (lib.is_tuning) *ScorePair else *const ScorePair;
+
 const king_areas_white: [Square.count]u64 = compute_king_areas_white();
 const king_areas_black: [Square.count]u64 = compute_king_areas_black();
 const king_pawnstorm_areas_white: [Square.count]u64 = compute_king_pawnstorm_areas_white();
@@ -46,31 +50,31 @@ pub const Evaluator = struct {
     /// Cached pins.
     pins: u64,
     /// A little speedup by caching pawn-availability.
-    has_pawns: [2]bool,
+    has_pawns: [Color.count]bool,
     /// The squares of the kings.
-    king_squares: [2]Square,
+    king_squares: [Color.count]Square,
     /// The 3x4 squares area around and in front of our king.
-    king_areas: [2]u64,
+    king_areas: [Color.count]u64,
     /// The 3x7 squares in front of our king.
-    pawn_storm_areas: [2]u64,
-    /// Accessible squares which are not protected by enemy pawns
-    mobility_areas: [2]u64,
-    /// All pawn attacks (initialized).
-    pawn_attacks: [2]u64,
+    pawn_storm_areas: [Color.count]u64,
+    /// Accessible squares which are not protected by enemy pawns.
+    mobility_areas: [Color.count]u64,
+    /// All pawn attacks.
+    pawn_attacks: [Color.count]u64,
     /// All knight attacks (updated on the fly).
-    knight_attacks: [2]u64,
-    /// All bishop attacks (overlapping, updated on the fly).
-    bishop_attacks: [2]u64,
-    /// All rook attacks (overlapping, updated on the fly).
-    rook_attacks: [2]u64,
-    /// All queen attacks (overlapping, updated on the fly).
-    queen_attacks: [2]u64,
-    /// All king attacks. Initialized.
-    king_attacks: [2]u64,
+    knight_attacks: [Color.count]u64,
+    /// All bishop attacks (updated on the fly).
+    bishop_attacks: [Color.count]u64,
+    /// All rook attacks (updated on the fly).
+    rook_attacks: [Color.count]u64,
+    /// All queen attacks (updated on the fly).
+    queen_attacks: [Color.count]u64,
+    /// All king attacks.
+    king_attacks: [Color.count]u64,
     /// The attacks combined (updated on the fly) **except** king attacks.
-    all_attacks: [2]u64,
+    all_attacks: [Color.count]u64,
     /// All attacks to the enemy king area (updated on the fly).
-    attack_power: [2]ScorePair,
+    attack_power: [Color.count]ScorePair,
 
     pub fn init() Self {
         return .{
@@ -93,15 +97,13 @@ pub const Evaluator = struct {
     }
 
     pub fn evaluate(self: *Self, pos: *const Position) i32 {
-        // Init pos reference.
+        // Init stuff.
         self.pos = pos;
-        var score: ScorePair = get_material_scorepair(pos);
 
         // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner.
-        self.pins = pos.our_pins() & pos.by_color(pos.stm);
+        self.pins = pos.our_pins(pos.stm) & pos.by_color(pos.stm);
         self.has_pawns = .{ pos.pawns(.white) != 0, pos.pawns(.black) != 0};
 
-        // Init stuff.
         self.king_squares = .{ pos.king_square(.white), pos.king_square(.black) };
 
         self.king_areas[0] = king_areas_white[self.king_squares[0].u];
@@ -111,8 +113,8 @@ pub const Evaluator = struct {
         self.pawn_storm_areas[1] = king_pawnstorm_areas_black[self.king_squares[1].u];
 
         self.pawn_attacks = .{
-            funcs.pawns_shift(pos.pawns(.white), .white, .northwest) | funcs.pawns_shift(pos.pawns(.white), .white, .northeast),
-            funcs.pawns_shift(pos.pawns(.black), .black, .northwest) | funcs.pawns_shift(pos.pawns(.black), .black, .northeast),
+            funcs.pawns_attacks(pos.pawns(.white), .white),
+            funcs.pawns_attacks(pos.pawns(.black), .black),
         };
 
         self.all_attacks = self.pawn_attacks;
@@ -133,6 +135,8 @@ pub const Evaluator = struct {
         self.attack_power = @splat(ScorePair.empty);
 
         // And perform eval.
+        var score: ScorePair = eval_material(pos);
+
         score.inc(self.eval_pawns(.white));
         score.dec(self.eval_pawns(.black));
 
@@ -154,39 +158,50 @@ pub const Evaluator = struct {
         score.inc(self.eval_threats(.white));
         score.dec(self.eval_threats(.black));
 
-        // TODO: if tuning do NOT include endgame scaling.
-
         // First add in the tempo bonus. That is what the data was originally tuned for.
         switch (pos.stm.e) {
             .white => score.inc(terms.tempo_bonus),
             .black => score.dec(terms.tempo_bonus),
         }
+        if (lib.is_tuning) register(&terms.tempo_bonus, 1, pos.stm, void);
 
         score.mg = std.math.clamp(score.mg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
         score.eg = std.math.clamp(score.eg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
 
-        // Scale the endresult (this plays stronger than scaling the eg component only).
+        // First interpolate the final score.
         var result: i32 = types.phased_score(pos.phase(), score);
+
+        // Don't scale when tuning. Return absolute result.
+        if (lib.is_tuning) {
+            return result;
+        }
+
+        // Scale the endresult (this plays stronger than scaling the eg component only).
+        // Note that scaling is done on the absolute value (white's perspective).
         const scale: f32 = endgame.scale(pos, result);
         result = funcs.fmul(result, scale);
         result = std.math.clamp(result, -scoring.static_eval_threshold, scoring.static_eval_threshold);
-        if (pos.stm.e == .black) {
-            result = -result;
-        }
-        return result;
+        return if (pos.stm.e == .white) result else -result;
     }
 
-    fn get_material_scorepair(pos: *const Position) ScorePair {
+    fn eval_material(pos: *const Position) ScorePair {
         var sp: ScorePair = .empty;
         // Skip king.
         inline for (0..5) |pt| {
-            const vp: ScorePair = terms.piece_value_table[pt];
+            const vp: ScorePair = terms.material_table[pt];
             const white_count: u8 = pos.material.counts[0][pt];
             const black_count: u8 = pos.material.counts[1][pt];
-            sp.mg += vp.mg * white_count;
-            sp.eg += vp.eg * white_count;
-            sp.mg -= vp.mg * black_count;
-            sp.eg -= vp.eg * black_count;
+            // skip evaluation if equal.
+            if (white_count != black_count) {
+                sp.mg += vp.mg * white_count;
+                sp.eg += vp.eg * white_count;
+                sp.mg -= vp.mg * black_count;
+                sp.eg -= vp.eg * black_count;
+                if (lib.is_tuning) {
+                    register(&terms.material_table[pt], white_count, .white, .{ PieceType.from_int(pt) });
+                    register(&terms.material_table[pt], black_count, .black, .{ PieceType.from_int(pt) });
+                }
+            }
         }
         return sp;
     }
@@ -210,7 +225,7 @@ pub const Evaluator = struct {
         while (bitloop(&phalanx_pawns)) |sq| {
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
             score.inc(terms.pawn_phalanx_bonus[relative_rank]);
-            register(&terms.pawn_phalanx_bonus[relative_rank], 1);
+            if (lib.is_tuning) register(&terms.pawn_phalanx_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, relative_rank });
         }
 
         // Loop through our pawns. Determine passed pawns.
@@ -223,13 +238,13 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.pawn.u][relative_sq.u]);
-            register(&terms.piece_square_table[PieceType.pawn.u][relative_sq.u], 1);
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.pawn.u][relative_sq.u], 1, us, .{ PieceType.pawn.e, sq.e });
 
             // Protected pawn.
             const is_protected: bool = self.pawn_attacks[us.u] & sq_bb != 0;
             if (is_protected) {
                 score.inc(terms.protected_pawn_bonus[relative_rank]);
-                register(&terms.protected_pawn_bonus[relative_rank], 1);
+                if (lib.is_tuning) register(&terms.protected_pawn_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, sq.e });
             }
 
             // Doubled pawn.
@@ -237,7 +252,7 @@ pub const Evaluator = struct {
             const is_doubled: bool = pawns_ahead_on_file != 0;
             if (is_doubled) {
                 score.inc(terms.doubled_pawn_penalty[file]);
-                register(&terms.doubled_pawn_penalty[file], 1);
+                if (lib.is_tuning) register(&terms.doubled_pawn_penalty[file], 1, us, .{ PieceType.pawn.e, sq.e });
             }
 
             // Passed pawn.
@@ -246,7 +261,7 @@ pub const Evaluator = struct {
             if (is_passed) {
                 passed_pawns |= sq_bb; // Update passed pawns.
                 score.inc(terms.passed_pawn_bonus[relative_rank]);
-                register(&terms.passed_pawn_bonus[relative_rank], 1);
+                if (lib.is_tuning) register(&terms.passed_pawn_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, sq.e });
             }
 
             // Isolated pawn.
@@ -254,7 +269,7 @@ pub const Evaluator = struct {
             const is_isolated: bool = pawns_on_adjacent_files == 0;
             if (is_isolated) {
                 score.inc(terms.isolated_pawn_penalty[file]);
-                register(&terms.isolated_pawn_penalty[file], 1);
+                if (lib.is_tuning) register(&terms.isolated_pawn_penalty[file], 1, us, .{ PieceType.pawn.e, sq.e });
             }
         }
 
@@ -266,16 +281,16 @@ pub const Evaluator = struct {
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
             const dist_to_king: u3 = funcs.square_distance(sq, king_sq);
             score.inc(terms.king_passed_pawn_distance_table[dist_to_king]);
-            register(&terms.king_passed_pawn_distance_table[dist_to_king], 1);
+            if (lib.is_tuning) register(&terms.king_passed_pawn_distance_table[dist_to_king], 1, us, .{ PieceType.pawn.e, sq.e });
             const dist_to_enemy_king: u3 = funcs.square_distance(sq, their_king_sq);
             score.inc(terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king]);
-            register(&terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king], 1);
+            if (lib.is_tuning) register(&terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king], 1, us, .{ PieceType.pawn.e, sq.e });
             // Square rule for pawn race.
             const enemy_non_pawn_king_pieces: u64 = pos.by_color(them) & ~pos.kings(them) & ~pos.pawns(them);
             const dist_to_promotion: u3 = (7 - relative_rank);
             if (enemy_non_pawn_king_pieces == 0 and dist_to_promotion < dist_to_enemy_king - their_move) {
                 score.inc(terms.king_cannot_reach_passed_pawn_bonus);
-                register(&terms.king_cannot_reach_passed_pawn_bonus, 1);
+                if (lib.is_tuning) register(&terms.king_cannot_reach_passed_pawn_bonus, 1, us, .{ PieceType.pawn.e, sq.e });
             }
         }
         return score;
@@ -292,14 +307,14 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.knight.u][relative_sq.u]);
-            register(&terms.piece_square_table[PieceType.knight.u][relative_sq.u], 1);
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.knight.u][relative_sq.u], 1, us, .{ PieceType.knight.e, sq.e });
 
             // Mobility.
             const legal_moves: u64 = self.legalize_moves(.knight, us, sq, attacks.get_knight_attacks(sq));
             const mobility: u64 = legal_moves & self.mobility_areas[us.u];
-            const cnt: u7 = popcnt(mobility);
-            score.inc(terms.knight_mobility_table[cnt]);
-            register(&terms.knight_mobility_table[cnt], 1);
+            const mobility_cnt: u7 = popcnt(mobility);
+            score.inc(terms.knight_mobility_table[mobility_cnt]);
+            if (lib.is_tuning) register(&terms.knight_mobility_table[mobility_cnt], 1, us, .{ PieceType.knight.e, sq.e, mobility_cnt });
 
             // Update attacks.
             self.knight_attacks[us.u] |= legal_moves;
@@ -310,18 +325,19 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.knight.u][king_attack_count]);
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.knight.u][king_attack_count], 1, us, .{ PieceType.knight.e, sq.e, king_attack_count });
             }
 
             // Outpost
             if (self.is_outpost(sq, us)) {
                 score.inc(terms.knight_outpost_table[relative_sq.u]);
-                register(&terms.knight_outpost_table[relative_sq.u], 1);
+                if (lib.is_tuning) register(&terms.knight_outpost_table[relative_sq.u], 1, us, .{ PieceType.knight.e, sq.e });
                 // Knight outpost is also blocking an enemy pawn.
                 const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
                 const is_blocking: bool = pos.board[sq_in_front.u].is_pawn_of_color(them);
                 if (is_blocking) {
                     score.inc(terms.knight_outpost_is_blocking_enemy_pawn);
-                    register(&terms.knight_outpost_is_blocking_enemy_pawn, 1);
+                    if (lib.is_tuning) register(&terms.knight_outpost_is_blocking_enemy_pawn, 1, us, .{ PieceType.knight.e, sq.e }); // TODO: make 2-dim terms
                 }
             }
         }
@@ -331,8 +347,7 @@ pub const Evaluator = struct {
     fn eval_bishops(self: *Self, comptime us: Color) ScorePair {
         const them: Color = comptime us.opp();
         const pos: *const Position = self.pos;
-        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
-        // const pawns_on_color_ratio: [2]f32 = self.get_pawns_on_color_ratio(us);
+        const mobility_occ: u64 = pos.all() ^ pos.queens(us) ^ pos.bishops(us);
 
         var score: ScorePair = .empty;
         var our_bishops: u64 = pos.bishops(us);
@@ -341,6 +356,7 @@ pub const Evaluator = struct {
         // Bishop pair.
         if ((our_bishops & bitboards.bb_black_squares != 0) and (our_bishops & bitboards.bb_white_squares != 0)) {
             score.inc(terms.bishop_pair_bonus);
+            if (lib.is_tuning) register(&terms.bishop_pair_bonus, 1, us, .{ PieceType.bishop.e });
         }
 
         while (bitloop(&our_bishops)) |sq| {
@@ -349,16 +365,19 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.bishop.u][relative_sq.u]);
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.bishop.u][relative_sq.u], 1, us, .{ PieceType.bishop.e, sq.e });
 
             // Mobility.
-            const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, occ));
+            const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, mobility_occ));
             const mobility: u64 = moves & self.mobility_areas[us.u];
             const mobility_cnt: u7 = popcnt(mobility);
             score.inc(terms.bishop_mobility_table[mobility_cnt]);
+            if (lib.is_tuning) register(&terms.bishop_mobility_table[mobility_cnt], 1, us, .{ PieceType.bishop.e, sq.e, mobility_cnt });
 
             // Bishop on long diagonal.
             if (popcnt(moves & bitboards.bb_center_4) > 1) {
                 score.inc(terms.bishop_long_diagonal);
+                if (lib.is_tuning) register(&terms.bishop_long_diagonal, 1, us, .{ PieceType.bishop.e, sq.e });
             }
 
             // Update attacks.
@@ -367,15 +386,16 @@ pub const Evaluator = struct {
 
             // King attack.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
-
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.bishop.u][king_attack_count]);
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.bishop.u][king_attack_count], 1, us, .{ PieceType.bishop.e, sq.e, king_attack_count });
             }
 
             // Outpost.
             if (self.is_outpost(sq, us)) {
                 score.inc(terms.bishop_outpost_table[relative_sq.u]);
+                if (lib.is_tuning) register(&terms.bishop_outpost_table[relative_sq.u], 1, us, .{ PieceType.bishop.e, sq.e });
             }
         }
         return score;
@@ -386,7 +406,7 @@ pub const Evaluator = struct {
         const pos: *const Position = self.pos;
         const our_pawns: u64 = pos.pawns(us);
         const their_pawns: u64 = pos.pawns(them);
-        const occ: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
+        const mobility_occ: u64 = pos.all() ^ pos.queens(us) ^ pos.rooks(us);
 
         var score: ScorePair = .empty;
         var our_rooks: u64 = pos.rooks(us);
@@ -396,12 +416,14 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.rook.u][relative_sq.u]);
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.rook.u][relative_sq.u], 1, us, .{ PieceType.rook.e, sq.e });
 
             // Mobility.
-            const legal_moves: u64 = self.legalize_moves(.rook, us, sq, attacks.get_rook_attacks(sq, occ));
+            const legal_moves: u64 = self.legalize_moves(.rook, us, sq, attacks.get_rook_attacks(sq, mobility_occ));
             const mobility: u64 = legal_moves & self.mobility_areas[us.u];
-            const cnt: u7 = popcnt(mobility);
-            score.inc(terms.rook_mobility_table[cnt]);
+            const mobility_cnt: u7 = popcnt(mobility);
+            score.inc(terms.rook_mobility_table[mobility_cnt]);
+            if (lib.is_tuning) register(&terms.rook_mobility_table[mobility_cnt], 1, us, .{ PieceType.rook.e, sq.e, mobility_cnt });
 
             // Update attacks.
             self.rook_attacks[us.u] |= legal_moves;
@@ -412,6 +434,7 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.rook.u][king_attack_count]);
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.rook.u][king_attack_count], 1, us, .{ PieceType.rook.e, sq.e, king_attack_count });
             }
 
             // Open file.
@@ -420,6 +443,7 @@ pub const Evaluator = struct {
                 const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[sq.coord.file];
                 const half_open: u1 = @intFromBool(their_pawns_on_file != 0);
                 score.inc(terms.rook_on_file_bonus[half_open][sq.coord.file]);
+                if (lib.is_tuning) register(&terms.rook_on_file_bonus[half_open][sq.coord.file], 1, us, .{ PieceType.rook.e, sq.e, half_open });
             }
         }
         return score;
@@ -429,8 +453,8 @@ pub const Evaluator = struct {
         var score: ScorePair = .empty;
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
-        //const occupied = pos.all() ^ pos.bishops(us) ^ pos.rooks(us);
-        const occupied = pos.all() & ~pos.bishops(us) & ~pos.rooks(us);
+        //const mobility_occ = pos.all() & ~pos.bishops(us) & ~pos.rooks(us);
+        const mobility_occ = pos.all() ^ pos.bishops(us) ^ pos.rooks(us); // TODO: verify
 
         var our_queens: u64 = pos.queens(us);
         while (bitloop(&our_queens)) |sq| {
@@ -438,12 +462,14 @@ pub const Evaluator = struct {
 
             // Psqt
             score.inc(terms.piece_square_table[PieceType.queen.u][relative_sq.u]);
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.queen.u][relative_sq.u], 1, us, .{ PieceType.queen, sq.e });
 
             // Mobility
-            const moves: u64 = self.legalize_moves(.queen, us, sq, attacks.get_queen_attacks(sq, occupied));
+            const moves: u64 = self.legalize_moves(.queen, us, sq, attacks.get_queen_attacks(sq, mobility_occ));
             const mobility: u64 = moves & self.mobility_areas[us.u];
-            const cnt: u7 = popcnt(mobility);
-            score.inc(terms.queen_mobility_table[cnt]);
+            const mobility_count: u7 = popcnt(mobility);
+            score.inc(terms.queen_mobility_table[mobility_count]);
+            if (lib.is_tuning) register(&terms.queen_mobility_table[mobility_count], 1, us, .{ PieceType.queen, sq.e });
 
             // Update
             self.queen_attacks[us.u] |= moves;
@@ -454,7 +480,7 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.queen.u][king_attack_count]);
-
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.queen.u][king_attack_count], 1, us, .{ PieceType.queen.e, sq.e, king_attack_count });
             }
         }
         return score;
@@ -472,19 +498,22 @@ pub const Evaluator = struct {
         // Psqt
         const relative_sq: Square = our_king_sq.relative(us);
         score.inc(terms.piece_square_table[PieceType.king.u][relative_sq.u]);
+        if (lib.is_tuning) register(&terms.piece_square_table[PieceType.king.u][relative_sq.u], 1, us, .{ PieceType.king.e, our_king_sq.e });
 
         // Pawn protection
         var protecting_pawns: u64 = our_pawns & self.king_areas[us.u];
         while (bitloop(&protecting_pawns)) |sq| {
-            const sp: *const ScorePair = get_pawn_protection_scorepair(us, our_king_sq, sq);
+            const sp: ScorePairPtr = get_pawn_protection_scorepair(us, our_king_sq, sq);
             score.inc(sp.*);
+            if (lib.is_tuning) register(sp, 1, us, .{ PieceType.king.e, our_king_sq.e, sq.e });
         }
 
         // Pawn storm to enemy king.
         var storming_pawns: u64 = our_pawns & self.pawn_storm_areas[them.u];
         while (bitloop(&storming_pawns)) |sq| {
-            const sp: *const ScorePair = get_pawn_storm_scorepair(us, their_king_sq, sq);
+            const sp: ScorePairPtr = get_pawn_storm_scorepair(us, their_king_sq, sq);
             score.inc(sp.*);
+            if (lib.is_tuning) register(sp, 1, us, .{ PieceType.king, our_king_sq.e, sq.e });
         }
 
         // Open files to our king.
@@ -493,6 +522,7 @@ pub const Evaluator = struct {
             const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[our_king_sq.coord.file];
             const half_open: u1 = if (their_pawns_on_file != 0) 1 else 0;
             score.inc(terms.king_on_file_penalty[half_open][our_king_sq.coord.file]);
+            if (lib.is_tuning) register(&terms.king_on_file_penalty[half_open][our_king_sq.coord.file], 1, us, .{ PieceType.king.e, half_open, our_king_sq.coord.file });
         }
 
         // King danger.
@@ -517,6 +547,7 @@ pub const Evaluator = struct {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_pawn_penalty[threatened_piece.u][is_defended]);
+            if (lib.is_tuning) register(&terms.threatened_by_pawn_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.pawn.e, threatened_piece.e, is_defended });
         }
 
         // Their knight threats.
@@ -525,6 +556,7 @@ pub const Evaluator = struct {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_knight_penalty[threatened_piece.u][is_defended]);
+            if (lib.is_tuning) register(&terms.threatened_by_knight_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.knight.e, threatened_piece.e, is_defended });
         }
 
         // Their bishop threats.
@@ -533,6 +565,7 @@ pub const Evaluator = struct {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_bishop_penalty[threatened_piece.u][is_defended]);
+            if (lib.is_tuning) register(&terms.threatened_by_bishop_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.bishop.e, threatened_piece.e, is_defended });
         }
 
         // Their rook threats.
@@ -541,8 +574,10 @@ pub const Evaluator = struct {
             const threatened_piece = pos.board[sq.u].piecetype();
             const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_rook_penalty[threatened_piece.u][is_defended]);
+            if (lib.is_tuning) register(&terms.threatened_by_rook_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.rook.e, threatened_piece.e, is_defended });
         }
 
+        // TODO: also use the double pawn push.
         // Our pawn push threats.
         // Get the squares defended by the enemy, excluding squares that are defended by our pawns and not attacked by their pawns
         const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
@@ -554,6 +589,7 @@ pub const Evaluator = struct {
         while (bitloop(&pawn_push_threats)) |sq| {
             const threatened: Piece = pos.board[sq.u];
             score.inc(terms.pawn_push_threat_table[threatened.u]);
+            if (lib.is_tuning) register(&terms.pawn_push_threat_table[threatened.u], 1, us, .{ PieceType.pawn.e, sq.e, threatened.e });
         }
 
         // Possible checks.
@@ -567,15 +603,25 @@ pub const Evaluator = struct {
         const unsafe: u64 = (their_attacks | self.king_attacks[them.u]);
         const safe: u64 = ~unsafe;
         const not_pawns: u64 = ~pos.pawns(us);
-        // Determine our checks.
+        // Determine our safe checks.
         const knight_checks: u64 = not_pawns & checking_squares_knight & self.knight_attacks[us.u];
         const bishop_checks: u64 = not_pawns & checking_squares_bishop & self.bishop_attacks[us.u];
         const rook_checks  : u64 = not_pawns & checking_squares_rook & self.rook_attacks[us.u];
         const queen_checks : u64 = not_pawns & checking_squares_queen & self.queen_attacks[us.u];
-        score.inc(terms.safe_check_bonus[PieceType.knight.u].mul(popcnt(knight_checks & safe)));
-        score.inc(terms.safe_check_bonus[PieceType.bishop.u].mul(popcnt(bishop_checks & safe)));
-        score.inc(terms.safe_check_bonus[PieceType.rook.u].mul(popcnt(rook_checks & safe)));
-        score.inc(terms.safe_check_bonus[PieceType.queen.u].mul(popcnt(queen_checks & safe)));
+        const n_count: u7 = popcnt(knight_checks & safe);
+        const b_count: u7 = popcnt(bishop_checks & safe);
+        const r_count: u7 = popcnt(rook_checks & safe);
+        const q_count: u7 = popcnt(queen_checks & safe);
+        score.inc(terms.safe_check_bonus[PieceType.knight.u].mul(n_count));
+        score.inc(terms.safe_check_bonus[PieceType.bishop.u].mul(b_count));
+        score.inc(terms.safe_check_bonus[PieceType.rook.u].mul(r_count));
+        score.inc(terms.safe_check_bonus[PieceType.queen.u].mul(q_count));
+        if (lib.is_tuning) {
+            register(&terms.safe_check_bonus[PieceType.knight.u], n_count, us, .{ PieceType.knight.e, n_count });
+            register(&terms.safe_check_bonus[PieceType.bishop.u], b_count, us, .{ PieceType.bishop.e, b_count });
+            register(&terms.safe_check_bonus[PieceType.rook.u], r_count, us, .{ PieceType.rook.e, r_count });
+            register(&terms.safe_check_bonus[PieceType.queen.u], q_count, us, .{ PieceType.queen.e, q_count });
+        }
 
         return score;
     }
@@ -588,11 +634,10 @@ pub const Evaluator = struct {
         return safe and funcs.outpost(us) & sq_bb != 0;
     }
 
-    fn get_pawn_protection_scorepair(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) *const ScorePair {
+    fn get_pawn_protection_scorepair(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) ScorePairPtr {
         if (comptime lib.verifications) {
             verify_king_pawn_protection_area(us, our_king_sq, our_pawn_sq);
         }
-
         const king_index: i32 = 7; // index of king in the 3x4 pawn storm area
         const area_width: i32 = 3;
         const pawn_rank: i32 = our_pawn_sq.coord.rank;
@@ -606,11 +651,10 @@ pub const Evaluator = struct {
         return &terms.pawn_protection_table[i];
     }
 
-    fn get_pawn_storm_scorepair(comptime us: Color, their_king_sq: Square, our_pawn_sq: Square) *const ScorePair {
+    fn get_pawn_storm_scorepair(comptime us: Color, their_king_sq: Square, our_pawn_sq: Square) ScorePairPtr {
         if (comptime lib.verifications) {
             verify_king_pawn_storm_area(us, their_king_sq, our_pawn_sq);
         }
-
         const them: Color = comptime us.opp();
         const king_index: i32 = 19; // index of king in the 3x7 pawn storm area
         const area_width: i32 = 3;
@@ -671,10 +715,9 @@ pub const Evaluator = struct {
         }
     }
 
-    fn register(sp: *ScorePair, times: usize) void {
-        if (lib.is_tuning) {
-            @import("hcetuner.zig").register_scorepair_usage(sp, times);
-        }
+    fn register(sp: *ScorePair, multiply: u8, us: Color, debugargs: anytype) void {
+        lib.only_when_tuning();
+        @import("hcetuner.zig").register_scorepair_usage(sp, multiply, us, debugargs);
     }
 };
 

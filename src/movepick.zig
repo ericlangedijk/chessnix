@@ -7,6 +7,7 @@ const lib = @import("lib.zig");
 const types = @import("types.zig");
 const bitboards = @import("bitboards.zig");
 const position = @import("position.zig");
+const movegen = @import("movegen.zig");
 const search = @import("search.zig");
 const history = @import("history.zig");
 const hce = @import("hce.zig");
@@ -219,8 +220,8 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         fn generate_moves(self: *Self) void {
             switch (gentype) {
-                .search => self.pos.generate_all_moves(us, self),
-                .quiescence => self.pos.generate_quiescence_moves(us, self),
+                .search => movegen.generate_all_moves(self.pos, us, self),
+                .quiescence => movegen.generate_quiescence_moves(self.pos, us, self),
             }
         }
 

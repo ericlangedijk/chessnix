@@ -231,16 +231,11 @@ pub const ContinuationHistory = struct {
 pub const CorrectionHistory = struct {
     const table_size: usize = 16384;
 
-    /// Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
-    pawn_table: [Color.count][table_size]i16,
-    /// Entries for white pieces. Indexing: [color][position.non_pawns_white_key % tablesize]
-    white_table: [Color.count][table_size]i16,
-    /// Entries for black pieces. Indexing: [color][position.non_pawns_black_key % tablesize]
-    black_table: [Color.count][table_size]i16,
-    // Entries for minors. Indexing: [color][position.minorkey-index % tablesize]
-    minor_table: [Color.count][table_size]i16,
-    // Entries for majors. Indexing: [color][position.majorkey-index % tablesize]
-    major_table: [Color.count][table_size]i16,
+    pawn_table: [Color.count][table_size]i16, // Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
+    white_table: [Color.count][table_size]i16, // Entries for white pieces. Indexing: [color][position.non_pawns_white_key % tablesize]
+    black_table: [Color.count][table_size]i16, // Entries for black pieces. Indexing: [color][position.non_pawns_black_key % tablesize]
+    minor_table: [Color.count][table_size]i16, // Entries for minors. Indexing: [color][position.minorkey-index % tablesize]
+    major_table: [Color.count][table_size]i16, // Entries for majors. Indexing: [color][position.majorkey-index % tablesize]
 
     /// Updates the error values: the difference between the search score and the static eval.
     /// The static_eval argument must be the value after correction to prevent explosion.

@@ -279,7 +279,7 @@ const HashTable = struct {
     }
 
     fn deinit(self: *HashTable) void {
-        ctx.galloc.free(self.data);
+        ctx.gpa.free(self.data);
     }
 
     fn clear(self: *HashTable) void {
@@ -288,7 +288,7 @@ const HashTable = struct {
 
     fn resize(self: *HashTable, size_in_bytes: usize) !void {
         const len: usize = size_in_bytes / elementsize;
-        self.data = try ctx.galloc.realloc(self.data, len);
+        self.data = try ctx.gpa.realloc(self.data, len);
         self.clear();
     }
 
@@ -303,7 +303,7 @@ const HashTable = struct {
     }
 
     fn create_data(len: usize) ![]Bucket {
-        const data: []Bucket = try ctx.galloc.alloc(Bucket, len);
+        const data: []Bucket = try ctx.gpa.alloc(Bucket, len);
         clear_data(data);
         return data;
     }

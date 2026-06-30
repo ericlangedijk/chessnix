@@ -7,6 +7,7 @@ const lib = @import("lib.zig");
 
 const ctx = lib.ctx;
 const io = lib.io;
+
 const assert = std.debug.assert;
 const wtf = lib.wtf;
 
@@ -103,89 +104,78 @@ pub const Random = struct {
     }
 };
 
-/// A little sloppy but convenient line reader. Max linesize must be known.
-pub const TextFileReader = struct {
-    allocator: std.mem.Allocator,
-    buffer: []u8,
-    reader: std.fs.File.Reader,
+/// Using the global lib allocator.
+pub const FileReader = struct {
+    buf: []u8,
+    rd: std.fs.File.Reader,
 
-    pub fn init(filename: []const u8, allocator: std.mem.Allocator, linebuffer_size: usize) !TextFileReader {
+    pub fn init(filename: []const u8, buf_size: usize) !FileReader {
         const file = try std.fs.openFileAbsolute(filename, .{});
-        const buf = try allocator.alloc(u8, linebuffer_size);
+        const buf = try ctx.gpa.alloc(u8, buf_size);
         return .{
-            .allocator = allocator,
-            .buffer = buf,
-            .reader = file.reader(buf),
+            .buf = buf,
+            .rd = file.reader(buf),
         };
     }
 
-    pub fn deinit(self: *TextFileReader) void {
-        self.reader.file.close();
-        self.allocator.free(self.buffer);
+    pub fn deinit(self: *FileReader) void {
+        self.rd.file.close();
+        ctx.gpa.free(self.buf);
     }
 
-    pub fn readline(self: *TextFileReader) !?[]const u8 {
-        const line = self.reader.interface.takeDelimiterInclusive('\n') catch |err| {
+    pub fn readline(self: *FileReader) !?[]const u8 {
+        const line = self.rd.interface.takeDelimiterInclusive('\n') catch |err| {
             return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;
         };
         return std.mem.trimEnd(u8, line, "\r\n");
     }
 
-    pub fn reset(self: *TextFileReader) void {
-        self.reader.seekTo(0);
+    pub fn reset(self: *FileReader) void {
+        self.rd.seekTo(0);
     }
 };
 
-/// A little sloppy but convenient line writer.
-pub const TextFileWriter = struct {
-    allocator: std.mem.Allocator,
-    buffer: []u8,
-    writer: std.fs.File.Writer,
+/// Using the global lib allocator.
+pub const FileWriter = struct {
+    buf: []u8,
+    wr: std.fs.File.Writer,
 
-    pub fn init(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
+    pub fn init(filename: []const u8, buffer_size: usize) !FileWriter {
         const file = try std.fs.createFileAbsolute(filename, .{});
-        const buf = try allocator.alloc(u8, buffer_size);
+        const buf = try ctx.gpa.alloc(u8, buffer_size);
         return .{
-            .allocator = allocator,
-            .buffer = buf,
-            .writer = file.writer(buf),
+            .buf = buf,
+            .wr = file.writer(buf),
         };
     }
 
-    pub fn init_cwd(filename: []const u8, allocator: std.mem.Allocator, buffer_size: usize) !TextFileWriter {
-        const file = try std.fs.cwd().createFile(filename, .{ .lock_nonblocking = true });
-        const buf = try allocator.alloc(u8, buffer_size);
-        return .{
-            .allocator = allocator,
-            .buffer = buf,
-            .writer = file.writer(buf),
-        };
+    /// Flushes before freeing.
+    pub fn deinit(self: *FileWriter) void {
+        self.wr.interface.flush() catch {};
+        self.wr.file.close();
+        ctx.gpa.free(self.buf);
     }
 
-    pub fn deinit(self: *TextFileWriter) void {
-        self.writer.interface.flush() catch {};
-        self.writer.file.close();
-        self.allocator.free(self.buffer);
+    pub fn write(self: *FileWriter, comptime fmt: []const u8, args: anytype) !void {
+        try self.wr.interface.print(fmt, args);
     }
 
-    pub fn write(self: *TextFileWriter, comptime fmt: []const u8, args: anytype) !void {
-        try self.writer.interface.print(fmt, args);
+    pub fn writeline(self: *FileWriter, comptime fmt: []const u8, args: anytype) !void {
+        try self.wr.interface.print(fmt, args);
+        try self.wr.interface.writeByte(10);
     }
 
-    pub fn writeline(self: *TextFileWriter, comptime fmt: []const u8, args: anytype) !void {
-        try self.writer.interface.print(fmt, args);
-        try self.writer.interface.writeByte(10);
-    }
-
-    pub fn flush(self: *TextFileWriter) !void {
-        try self.writer.interface.flush();
+    pub fn flush(self: *FileWriter) !void {
+        try self.wr.interface.flush();
     }
 };
 
-/// BoundedArray left the Zig std at 0.15.
+/// BoundedArray left the scene with Zig 0.15.
 pub fn BoundedArray(comptime T: type, comptime buffer_capacity: usize) type {
     return struct {
         const Self = @This();
+
+        pub const max_capacity: usize = buffer_capacity;
 
         buffer: [buffer_capacity]T = undefined,
         len: usize = 0,

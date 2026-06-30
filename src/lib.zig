@@ -1,6 +1,6 @@
 // zig fmt: off
 
-//! Base unit: memory, io, comptime config, error handling.
+//! Basics: memory, io, comptime config, error handling.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -10,6 +10,7 @@ pub fn initialize() !void {
     comptime compilation_check();
     memory_context = .init();
     io_context = .init();
+    try @import("position.zig").initialize();
 }
 
 pub fn finalize() void {
@@ -31,14 +32,16 @@ fn compilation_check() void {
 // --- Globals ---
 pub const Program = enum {
     uci,
-    lichess_dataset_conversion,
     hcetuner,
+    lichess_dataset_conversion,
 };
 
-pub const program: Program = .hcetuner; //.uci;
 //pub const program: Program = .uci;
+//pub const program: Program = .hcetuner;
+pub const program: Program = .lichess_dataset_conversion;
+
 pub const version = "1.5";
-pub const builddate = "2026-06-21";
+pub const builddate = "2026-06-29";
 pub const is_tuning: bool = program == .hcetuner;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
@@ -54,19 +57,19 @@ var io_context: IoContext = undefined;
 
 /// The global memory context of our exe.
 pub const MemoryContext = struct {
-    gpa: if (is_debug) std.heap.DebugAllocator(.{}) else void,
-    galloc: std.mem.Allocator,
+    debug_allocator: if (is_debug) std.heap.DebugAllocator(.{}) else void,
+    gpa: std.mem.Allocator,
 
     fn init() MemoryContext {
         return MemoryContext {
-            .gpa = if (is_debug) std.heap.DebugAllocator(.{}).init else {},
-            .galloc = if (builtin.is_test) std.testing.allocator else if (is_debug) memory_context.gpa.allocator() else std.heap.smp_allocator,
+            .debug_allocator = if (is_debug) std.heap.DebugAllocator(.{}).init else {},
+            .gpa = if (builtin.is_test) std.testing.allocator else if (is_debug) memory_context.debug_allocator.allocator() else std.heap.smp_allocator, // this is wrong design, refering to the global.
         };
     }
 
     fn deinit(self: *MemoryContext) void {
         if (is_debug) {
-            _ = self.gpa.deinit();
+            _ = self.debug_allocator.deinit();
         }
     }
 };
@@ -130,6 +133,10 @@ pub inline fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }
 
+pub inline fn only_when_tuning() void {
+    if (!is_tuning) @compileError("only when tuning!");
+}
+
 pub fn wtf(comptime str: []const u8, args: anytype) noreturn {
     if (is_release_safe) {
         log_wtf(str, args);
@@ -148,7 +155,7 @@ pub fn verify(ok: bool, comptime str: []const u8, args: anytype) void {
 /// Only in ReleaseSafe.
 fn log_wtf(comptime str: []const u8, args: anytype) void {
     not_in_release();
-    var writer = utils.TextFileWriter.init_cwd("chessnix.log", ctx.galloc, 256) catch return;
+    var writer = utils.FileWriter.init_cwd("chessnix.log", 256) catch return;
     defer writer.deinit();
     writer.writeline(str, args) catch return;
 }

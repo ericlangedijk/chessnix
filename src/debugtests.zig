@@ -1,7 +1,6 @@
 // zig fmt: off
 
-//! Don't look here.
-//! Collection of debug tests.
+//! Debug only. collection of tests.
 
 const std = @import("std");
 const lib = @import("lib.zig");
@@ -10,26 +9,49 @@ const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
+const movegen = @import("movegen.zig");
 const hce = @import("hce.zig");
 const perft = @import("perft.zig");
 const tt = @import("tt.zig");
+const viri = @import("viri.zig");
 
-const Square = types.Square;
-const Position = position.Position;
-const Storage = position.MoveStorage;
-
-const search = @import("search.zig");
-
+const assert = std.debug.assert;
 const ctx = lib.ctx;
 const io = lib.io;
 
-pub fn run_silent_debugmode_tests() !void {
+const Square = types.Square;
+const Move = types.Move;
+const ExtMove = types.ExtMove;
+const ExtMoveList = types.ExtMoveList;
+const Position = position.Position;
+//const search = @import("search.zig");
+
+const temp_folder = "C:/Data/Tmp/";
+
+pub fn run() !void {
     lib.not_in_release();
-    var timer = utils.Timer.start();
-    const perfts: usize = try run_perfts(3);
-    const perfts_960: usize = try run_perfts_960(3);
-    const time = timer.read();
-    lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, (time {D})\n", .{ perfts, perfts_960, time });
+
+    lib.io.debugprint("test perfts...", .{});
+    _ = try run_perfts(3, null);
+    lib.io.debugprint("ok\n", .{});
+
+    lib.io.debugprint("test perfts 960...", .{});
+    _ = try run_perfts_960(3);
+    lib.io.debugprint("ok\n", .{});
+
+    lib.io.debugprint("test viri...", .{});
+    try test_viri();
+    lib.io.debugprint("ok\n", .{});
+
+    // var timer = utils.Timer.start();
+    // const perfts: usize = try run_perfts(3, null);
+    // const perfts_960: usize = try run_perfts_960(3);
+    // const time = timer.read();
+    // lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, (time {D})\n", .{ perfts, perfts_960, time });
+    // test_viri() catch |err|{
+    //     lib.io.debugprint("last error: [{s}]\n", .{lib.last_error.slice()});
+    //     return err;
+    // };
 }
 
 pub const Error = error {
@@ -40,22 +62,23 @@ pub const Error = error {
 };
 
 fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error {
-    lib.io.debugprint("catched error: {s}\n", .{ @errorName(err) });
+    lib.io.debugprint("catched error: {s}\n", .{@errorName(err)});
     lib.io.debugprint(str, args);
     lib.io.debugprint("\n", .{});
     return err;
 }
 
 /// Run all testpositions.
-fn run_perfts(max_depth: usize) !usize {
+fn run_perfts(max_depth: usize, max_positions: ?usize) !usize {
     lib.not_in_release();
 
+    const cnt: usize = max_positions orelse 1024;
     const max: u64 = std.math.clamp(max_depth, 1, 6);
     var total: u64 = 0;
     var pos: Position = .empty;
     var done: usize = 0;
 
-    for (testpositions, 0..) |str, index| {
+    for (test_positions, 0..) |str, index| {
         try pos.setup(str, false);
 
         // TEMP EVAL OUTPUT for later test
@@ -82,8 +105,9 @@ fn run_perfts(max_depth: usize) !usize {
             }
         }
         done += 1;
+        if (done == cnt) break;
     }
-    lib.io.debugprint("layout_map entries after classic: {}\n", .{ position.layout_map_entries() });
+    //lib.io.debugprint("layout_map entries after classic: {}\n", .{ position.layout_map.count() });
     return done;
 }
 
@@ -96,10 +120,8 @@ fn run_perfts_960(max_depth: usize) !usize {
     var pos: Position = .empty;
     var done: usize = 0;
 
-    for (testpositions_960, 0..) |str, index| {
+    for (test_positions_960, 0..) |str, index| {
         try pos.setup(str, true);
-        //std.debug.print("{s}\n", .{ str });
-        //std.debug.print("nr of layout entries {}\n", .{ position.alternative_layout_map.count() });
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d| {
@@ -120,7 +142,7 @@ fn run_perfts_960(max_depth: usize) !usize {
         }
         done += 1;
     }
-    lib.io.debugprint("layout_map entries after 960: {}\n", .{ position.layout_map_entries() });
+    //lib.io.debugprint("layout_map entries after 960: {}\n", .{ position.layout_map.count() });
     return done;
 }
 
@@ -145,6 +167,62 @@ fn test_see() !usize {
     }
 
     return done;
+}
+
+pub fn test_viri() !void {
+    const tmp_filename = funcs.get_str("{s}viritest.vf", .{temp_folder});
+    var game: viri.ViriGame = .init();
+    defer game.deinit();
+
+    // Basic position conversion.
+    {
+        var p: Position = .empty;
+        for (test_positions) |str| {
+            try p.setup(str, false);
+            const vp: viri.ViriPosition = .from_position(&p, 0, 0);
+            const s: Position = try vp.to_position();
+            // TODO: only the fullmove number (if not specified in fen) is unequal.
+            if (!s.equals(&p)) {
+                lib.io.debugprint("S: {s}\n", .{str});
+                lib.io.debugprint("A: {f} {}\n", .{p, vp.fullmove_number});
+                lib.io.debugprint("B: {f} {}\n", .{s, vp.fullmove_number});
+                compare_positions(&p, &s);
+                break;
+            }
+        }
+    }
+
+    // Write a viri file with 10 random games.
+    {
+        game.reset();
+        var writer: viri.ViriFileWriter = try .init(tmp_filename.slice(), 4096);
+        defer writer.deinit();
+        for (0..100) |_| {
+            const rnd_game: Game = play_random_game();
+            try game.reset_with_position(&rnd_game.startpos, 0, 0);
+            const slice: []const ExtMove = rnd_game.moves.slice_const();
+            for (slice) |ex| {
+                try game.append_move(ex.move, 0);
+            }
+            try writer.write_game(&game);
+        }
+    }
+
+    // Read the created file.
+    {
+        game.reset();
+        var reader: viri.ViriFileReader = try .init(tmp_filename.slice(), 4096);
+        defer reader.deinit();
+        while (try reader.next(&game)) {
+            var pos: Position = try game.startpos.to_position();
+            for (game.moves.items) |vm| {
+                const m: Move = vm.move.to_move(&pos);
+                assert(movegen.is_legal(m, &pos));
+                pos.lazy_do_raw_move(m);
+
+            }
+        }
+    }
 }
 
 pub const ParseDepthError = error
@@ -203,15 +281,105 @@ fn index_of(slice: []const u8, value:u8) ?usize {
     return std.mem.indexOfScalar(u8, slice, value);
 }
 
-const testpositions: [134][]const u8 = .{
+const Game = struct {
+    startpos: Position,
+    moves: ExtMoveList(128),
+};
 
+fn play_random_game() Game { //struct { start_pos: Position, moves: ExtMoveList(128) } {
+    const startpos: Position = .classic_startpos;
+
+    // var start_pos: Position = .empty;
+    // start_pos.setup(position.classic_startpos_fen, false) catch lib.wtf("jesus...", .{});
+
+
+    var pos: Position = startpos;
+    var moves: ExtMoveList(128) = .init();
+    var storage: movegen.MoveStorage = .init();
+    var rnd: utils.Random = .init_randomized();
+    const nr_of_moves: u64 = rnd.next_max(32) + 5;
+    for (0..nr_of_moves) |_| {
+        movegen.lazy_generate_all_moves(&pos, &storage);
+        // Mate or stalemate.
+        if (storage.count == 0) {
+            break;
+        }
+        const r: u64 = rnd.next_max(storage.count);
+        std.debug.assert(r < storage.count);
+        const ex: ExtMove = storage.moves[r];
+        moves.add(ex);
+        pos.lazy_do_move(ex);
+    }
+    return .{
+        .startpos = startpos,
+        .moves = moves,
+    };
+}
+
+    // pub fn gen(pos: *const Position) MoveStorage{
+    //     var storage: MoveStorage = .init();
+    //     lazy_generate_all_moves(pos, &storage);
+    //     return storage;
+    // }
+
+pub fn print_pos_structure() void {
+    //const offset: usize = index * @sizeOf(ScorePair);
+    var sum: usize = 0;
+    const structinfo = @typeInfo(Position).@"struct";
+    inline for (structinfo.fields) |field| {
+        const field_offset = @offsetOf(Position, field.name);
+        const size = @sizeOf(field.type);
+        sum += size;
+        lib.io.debugprint("sum: {:<5} offset: {:<5} size: {:<5} {s}\n", .{sum, field_offset, size, field.name});
+        //const len: usize = size / @sizeOf(ScorePair);
+        // if (offset >= field_offset and offset < field_offset + size) {
+        //     var result: MetaData.ScorePairInfo = .{};
+        //     result.raw_index = index;
+        //     result.array_len = len;
+        //     result.array_index = (offset - field_offset) / @sizeOf(ScorePair);
+        //     result.name.append_slice_assume_capacity(field.name);
+        //     return result;
+        // }
+    }
+    //lib.io.debugprint("sum {:>5}\n", .{sum, field_offset, field.name});
+}
+
+fn compare_positions(a: *const Position, b: *const Position) void {
+    //if (a.layout != b.layout) lib.io.debugprint("{any} {any}\n", .{ a.layout.*, b.layout.*});
+    if (a.layout != b.layout) lib.io.debugprint("layout {any} {any}\n", .{ a.layout.*, b.layout.* });
+    //const pa: []const u8 = std.mem.asBytes(a.board); const pb: []const u8 = std.mem.asBytes(b.board);
+    //if (!std.mem.eql(u8, pa, pb)) lib.io.debugprint("{any} {any}\n", .{ a.board, b.board });
+    if (!std.meta.eql(a.bitboards_by_type, b.bitboards_by_type)) lib.io.debugprint("bitboards_by_type {any} {any}\n", .{ a.bitboards_by_type, b.bitboards_by_type });
+    if (!std.meta.eql(a.bitboards_by_color, b.bitboards_by_color)) lib.io.debugprint("bitboards_by_color {any} {any}\n", .{ a.bitboards_by_color, b.bitboards_by_color });
+    //if (a.material != b.material) lib.io.debugprint("{any} {any}\n", .{ a.material, b.material });
+    //if (a.phase_by_color != b.phase_by_color) lib.io.debugprint("{any} {any}\n", .{ a.phase_by_color, b.phase_by_color });
+    if (a.stm.e != b.stm.e) lib.io.debugprint("stm {any} {any}\n", .{ a.stm, b.stm });
+    if (a.ply_from_root != b.ply_from_root) lib.io.debugprint("ply_from_root {any} {any}\n", .{ a.ply_from_root, b.ply_from_root });
+    if (a.game_ply != b.game_ply) lib.io.debugprint("game_ply {any} {any}\n", .{ a.game_ply, b.game_ply });
+    if (a.nullmove_state != b.nullmove_state) lib.io.debugprint("nullmove_state {any} {any}\n", .{ a.nullmove_state, b.nullmove_state });
+    if (a.rule50 != b.rule50) lib.io.debugprint("rule50 {any} {any}\n", .{ a.rule50, b.rule50 });
+    if (a.ep_square.e != b.ep_square.e) lib.io.debugprint("ep_square {any} {any}\n", .{ a.ep_square, b.ep_square });
+    if (a.castlingrights != b.castlingrights) lib.io.debugprint("castlingrights {any} {any}\n", .{ a.castlingrights, b.castlingrights });
+    if (a.key != b.key) lib.io.debugprint("key {any} {any}\n", .{ a.key, b.key });
+    if (a.pawnkey != b.pawnkey) lib.io.debugprint("{any} {any}\n", .{ a.pawnkey, b.pawnkey });
+    //if (a.nonpawnkeys != b.nonpawnkeys) lib.io.debugprint("{any} {any}\n", .{ a.nonpawnkeys, b.nonpawnkeys });
+    if (a.minorkey != b.minorkey) lib.io.debugprint("minorkey {any} {any}\n", .{ a.minorkey, b.minorkey });
+    if (a.majorkey != b.majorkey) lib.io.debugprint("majorkey {any} {any}\n", .{ a.majorkey, b.majorkey });
+    //if (a.checkmask != b.checkmask) lib.io.debugprint("{any} {any}\n", .{ a.checkmask, b.checkmask });
+    //if (a.pins_diag != b.pins_diag) lib.io.debugprint("{any} {any}\n", .{ a.pins_diag, b.pins_diag });
+    //if (a.pins_orth != b.pins_orth) lib.io.debugprint("{any} {any}\n", .{ a.pins_orth, b.pins_orth });
+    if (a.is_960 != b.is_960) lib.io.debugprint("is_960 {any} {any}\n", .{ a.is_960, b.is_960 });
+    if (a.state_flags != b.state_flags) lib.io.debugprint("state_flags {any} {any}\n", .{ a.state_flags, b.state_flags });
+}
+
+// r1b2r1k/pp3Rpp/2p5/2q2p2/8/1B6/P3QPPP/1R4K1 w - - 0 1
+
+pub const test_positions: [134][]const u8 = .{
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324", // classical start pos
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 ;D1 48 ;D2 2039 ;D3 97862 ;D4 4085603 ;D5 193690690", // KiwiPete
     "8/1PP5/2k5/8/8/8/4Kpp1/7Q b - - 0 1 ;D1 16", // pinned promotion pawn
     "3b4/2R5/1KQ4r/1RB5/8/8/8/1r2k1q1 w - - 0 1 ;D1 17", // general piece pin check
     "6K1/8/8/1PpP4/8/k7/b7/8 w - c6 0 1 ;D1 7", // ep capture pin check
-
-    // Standard tests.
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324", // classical start pos
-    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1 ;D1 48 ;D2 2039 ;D3 97862 ;D4 4085603 ;D5 193690690", // KiwiPete
     "4k3/8/8/8/8/8/8/4K2R w K - 0 1 ;D1 15 ;D2 66 ;D3 1197 ;D4 7059 ;D5 133987 ;D6 764643",
     "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1 ;D1 16 ;D2 71 ;D3 1287 ;D4 7626 ;D5 145232 ;D6 846648",
     "4k2r/8/8/8/8/8/8/4K3 w k - 0 1 ;D1 5 ;D2 75 ;D3 459 ;D4 8290 ;D5 47635 ;D6 899442",
@@ -260,7 +428,6 @@ const testpositions: [134][]const u8 = .{
     "8/8/1B6/7b/7k/8/2B1b3/7K w - - 0 1 ;D1 21 ;D2 316 ;D3 5744 ;D4 93338 ;D5 1713368 ;D6 28861171",
     "k7/B7/1B6/1B6/8/8/8/K6b w - - 0 1 ;D1 21 ;D2 144 ;D3 3242 ;D4 32955 ;D5 787524 ;D6 7881673",
     "K7/b7/1b6/1b6/8/8/8/k6B w - - 0 1 ;D1 7 ;D2 143 ;D3 1416 ;D4 31787 ;D5 310862 ;D6 7382896",
-    "B6b/8/8/8/2K5/5k2/8/b6B b - - 0 1 ;D1 6 ;D2 106 ;D3 1829 ;D4 31151 ;D5 530585 ;D6 9250746", // Note: impossible doublecheck
     "8/8/1B6/7b/7k/8/2B1b3/7K b - - 0 1 ;D1 17 ;D2 309 ;D3 5133 ;D4 93603 ;D5 1591064 ;D6 29027891",
     "k7/B7/1B6/1B6/8/8/8/K6b b - - 0 1 ;D1 7 ;D2 143 ;D3 1416 ;D4 31787 ;D5 310862 ;D6 7382896",
     "K7/b7/1b6/1b6/8/8/8/k6B b - - 0 1 ;D1 21 ;D2 144 ;D3 3242 ;D4 32955 ;D5 787524 ;D6 7881673",
@@ -338,13 +505,13 @@ const testpositions: [134][]const u8 = .{
     "n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1 ;D1 24 ;D2 496 ;D3 9483 ;D4 182838 ;D5 3605103 ;D6 71179139",
     "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1 ;D1 14 ;D2 191 ;D3 2812 ;D4 43238 ;D5 674624 ;D6 11030083",
     "rnbqkb1r/ppppp1pp/7n/4Pp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3 ;D1 31 ;D2 570 ;D3 17546 ;D4 351806 ;D5 11139762;D6 244063299",
-
-    "1B6/2r1k3/1b6/1p1pp1N1/8/R3NKP1/1p6/7r b - -;42;1200;44895;1202493;43888003;1137469480", // Extra
-    "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 ;D1 44 ;D2 1486 ;D3 62379 ;D4 2103487 ;D5  89941194", // Extra: https://www.chessprogramming.org/Perft_Results
-    "R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1 ;D1 218" // Extra: Theoretical maximum number of moves
+    "B6b/8/8/8/2K5/5k2/8/b6B b - - 0 1 ;D1 6 ;D2 106 ;D3 1829 ;D4 31151 ;D5 530585 ;D6 9250746", // This is an impossible doublecheck.
+    "1B6/2r1k3/1b6/1p1pp1N1/8/R3NKP1/1p6/7r b - - 0 1 ;42;1200;44895;1202493;43888003;1137469480", // Extra.
+    "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 ;D1 44 ;D2 1486 ;D3 62379 ;D4 2103487 ;D5  89941194", // Extra: https://www.chessprogramming.org/Perft_Results.
+    "R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1 ;D1 218" // Extra: Theoretical maximum number of moves.
 };
 
-const testpositions_960: [960][]const u8 = .{
+pub const test_positions_960: [960][]const u8 = .{
     "bqnb1rkr/pp3ppp/3ppn2/2p5/5P2/P2P4/NPP1P1PP/BQ1BNRKR w HFhf - 2 9 ;21 ;528 ;12189 ;326672 ;8146062 ;227689589",
     "2nnrbkr/p1qppppp/8/1ppb4/6PP/3PP3/PPP2P2/BQNNRBKR w HEhe - 1 9 ;21 ;807 ;18002 ;667366 ;16253601 ;590751109",
     "b1q1rrkb/pppppppp/3nn3/8/P7/1PPP4/4PPPP/BQNNRKRB w GE - 1 9 ;20 ;479 ;10471 ;273318 ;6417013 ;177654692",
@@ -1307,7 +1474,7 @@ const testpositions_960: [960][]const u8 = .{
     "bbq1nr1r/pppppk1p/2n2p2/6p1/P4P2/4P1P1/1PPP3P/BBQNNRKR w HF - 1 9 ;23 ;589 ;14744 ;387556 ;10316716 ;280056112",
 };
 
-const see_positions: [71][]const u8 = .{
+pub const see_positions: [71][]const u8 = .{
     "6k1/1pp4p/p1pb4/6q1/3P1pRr/2P4P/PP1Br1P1/5RKN w - - ;f1f4 ;-100 ;P - R + B",
     "5rk1/1pp2q1p/p1pb4/8/3P1NP1/2P5/1P1BQ1P1/5RK1 b - - ;d6f4 ;0 ;-N + B",
     "4R3/2r3p1/5bk1/1p1r3p/p2PR1P1/P1BK1P2/1P6/8 b - - ;h5g4 ;0",

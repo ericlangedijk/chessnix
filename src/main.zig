@@ -9,22 +9,19 @@ pub fn main() !void {
     try lib.initialize();
     defer lib.finalize();
 
+    if (lib.is_debug) {
+        try @import("debugtests.zig").run();
+    }
+
     switch (lib.program) {
         .uci => {
-            if (lib.is_debug) {
-                try @import("tests.zig").run_silent_debugmode_tests();
-            }
             try @import("uci.zig").run();
-        },
-        .lichess_dataset_conversion => {
-            //
         },
         .hcetuner => {
             try @import("hcetuner.zig").run();
-        }
+        },
+        .lichess_dataset_conversion => {
+            try @import("lichess.zig").convert_lichess_dataset_to_viri();
+        },
     }
-}
-
-fn misc() void {
-    //
 }
