@@ -209,7 +209,6 @@ pub fn convert_lichess_dataset_to_viri() !void {
                         continue :read_loop;
                     },
                 }
-
             };
             // Now we have at least one non-capture move.
             const firstmove: ExtMove = pv.extmoves[0];

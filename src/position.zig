@@ -304,6 +304,7 @@ pub const Position = struct {
         }
     }
 
+    // TODO: not complete!
     fn detect_frc(self: *const Position) bool {
         return
             (self.is_castling_allowed(.white, .short) and self.get(.h1).e != .white_rook) or
