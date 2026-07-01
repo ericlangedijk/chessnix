@@ -333,7 +333,7 @@ fn execute_pv(pos: *Position, pv_str: []const u8, stop_if_first_move_is_capture:
     var tokenizer = std.mem.tokenizeScalar(u8, pv_str, ' ');
     var idx: usize = 0;
     while (tokenizer.next()) |m| {
-        const ex: ExtMove = pos.parse_move(m) catch return PvError.illegal;
+        const ex: ExtMove = pos.parse_move(m) catch return PvError.illegal; // TODO: use movegen.find inside parse_move.
         pos.lazy_do_move(ex);
         pv.add(ex);
         if (idx == 0 and stop_if_first_move_is_capture) {

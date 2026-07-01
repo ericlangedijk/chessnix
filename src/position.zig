@@ -304,13 +304,26 @@ pub const Position = struct {
         }
     }
 
-    // TODO: not complete!
-    fn detect_frc(self: *const Position) bool {
+    // TODO: test! and use the bitboards. maybe put the function in LayoutKey.
+    pub fn detect_frc(self: *const Position) bool {
+        const e1: Piece = self.get(.e1);
+        const e8: Piece = self.get(.e8);
+        const h1: Piece = self.get(.h1);
+        const a1: Piece = self.get(.a1);
+        const h8: Piece = self.get(.h8);
+        const a8: Piece = self.get(.a8);
+
         return
-            (self.is_castling_allowed(.white, .short) and self.get(.h1).e != .white_rook) or
-            (self.is_castling_allowed(.white, .long)  and self.get(.a1).e != .white_rook) or
-            (self.is_castling_allowed(.black, .short) and self.get(.h8).e != .black_rook) or
-            (self.is_castling_allowed(.black, .long)  and self.get(.a8).e != .black_rook);
+            (self.is_castling_allowed(.white, .short) and (e1.e != .white_king or h1.e != .white_rook)) or
+            (self.is_castling_allowed(.white, .long)  and (e1.e != .white_king or a1.e != .white_rook)) or
+            (self.is_castling_allowed(.black, .short) and (e8.e != .black_king or h8.e != .black_rook)) or
+            (self.is_castling_allowed(.black, .long)  and (e8.e != .black_king or a8.e != .black_rook));
+
+        // return
+        //     (self.is_castling_allowed(.white, .short) and (self.get(.e1) != .white_king and self.get(.h1).e != .white_rook)) or
+        //     (self.is_castling_allowed(.white, .long)  and (self.get(.e1) != .white_king and self.get(.a1).e != .white_rook)) or
+        //     (self.is_castling_allowed(.black, .short) and (self.get(.e8) != .black_king and self.get(.h8).e != .black_rook)) or
+        //     (self.is_castling_allowed(.black, .long)  and (self.get(.e8) != .black_king and self.get(.a8).e != .black_rook));
     }
 
     pub fn phase(self: *const Position) u8 {
@@ -326,13 +339,11 @@ pub const Position = struct {
         const us = self.stm;
         const from: Square = Square.from_string(str[0..2]);
         var to: Square = Square.from_string(str[2..4]);
-        var prom_flag: u4 = 0;
+        var promo: PieceType = .no_piecetype;
 
-        // No promotion.
         if (str.len == 4) {
             // TODO: code this better.
             // TODO: catch "g1g1" types of castling moves. the last one i do not catch.
-
             // Repair malformed castling moves in chess960 positions (not encoding 'king takes rook').
             if ((from.e == .e1 or from.e == .e8) and self.get(from).is_king_of_color(us)) {
                 if (to.e == .g1 or to.e == .g8) {
@@ -349,28 +360,16 @@ pub const Position = struct {
                 }
             }
         }
-        // Promotion.
         else if (str.len == 5) {
-            prom_flag = switch (str[4]) {
-                'n' => Move.knight_promotion,
-                'b' => Move.bishop_promotion,
-                'r' => Move.rook_promotion,
-                'q' => Move.queen_promotion,
+            promo = switch (str[4]) {
+                'n' => .knight,
+                'b' => .bishop,
+                'r' => .rook,
+                'q' => .queen,
                 else => return types.ParsingError.InvalidPromotionChar,
             };
         }
-
-        // TODO: use movegen.lazy_find.
-
-        var finder: movegen.MoveFinder = .init(from, to, prom_flag);
-        movegen.lazy_generate_all_moves(self, &finder);
-
-        if (finder.found()) {
-            // const ex = movegen.lazy_find(self, from, to, finder.extmove.move.prom_safe()) catch wtf("extmove find", .{});
-            // assert(finder.extmove == ex);
-            return finder.extmove; // return the exact move found.
-        }
-        return types.ParsingError.IllegalMove;
+        return movegen.lazy_find_move(self, from, to, promo);
     }
 
     /// A convenient way to set the startposition without the need for a fen string.
@@ -571,9 +570,14 @@ pub const Position = struct {
         return self.material.counts[us.u][pt.u];
     }
 
-    /// Returns a bitboard of our pins. Remember these are rays.
+    /// Returns a bitboard of our pin rays.
     pub fn our_pins(self: *const Position, us: Color) u64 {
         return self.pins_diag[us.u] | self.pins_orth[us.u];
+    }
+
+    /// Returns a bitboard of all pin rays.
+    pub fn all_pins(self: *const Position) u64 {
+        return self.pins_diag[0] | self.pins_orth[0] | self.pins_diag[1] | self.pins_orth[1];
     }
 
     pub fn is_draw_by_insufficient_material(self: *const Position) bool {
@@ -1119,6 +1123,65 @@ pub const Position = struct {
         return key;
     }
 
+    // pub fn predict_check(self: *const Position, comptime us: Color, m: Move) bool {
+    //     const them: Color = comptime us.opp();
+    //     const king_sq: Square = self.king_square(them);
+    //     const king_bb: u64 = king_sq.to_bitboard();
+    //     const from: Square = m.from;
+    //     const to: Square = m.to;
+    //     const from_bb: u64 = from.to_bitboard();
+    //     const to_bb: u64 = to.to_bitboard();
+    //     var occ: u64 = self.all();
+
+    //     switch (m.kind) {
+    //         .default => {
+    //             const pt: PieceType = self.board[from.u].piecetype();
+    //             occ &= ~from_bb;
+    //             occ |= to_bb;
+    //             const delta: u64 = from_bb | to_bb;
+    //             const qr: u64 = if (pt.e == .queen or pt.e == .rook) self.queens_rooks(us) ^ delta else self.queens_rooks(us);
+    //             const qb: u64 = if (pt.e == .queen or pt.e == .bishop) self.queens_bishops(us) ^ delta else self.queens_bishops(us);
+    //             return
+    //                 (attacks.get_piece_attacks(to, us, pt, occ) & king_bb) |
+    //                 (attacks.get_rook_attacks(king_sq, occ) & qr) |
+    //                 (attacks.get_bishop_attacks(king_sq, occ) & qb) != 0;
+    //         },
+    //         .ep => {
+    //             const capt_sq: Square = if (us.e == .white) to.sub(8) else to.add(8);
+    //             occ &= ~from_bb;
+    //             occ |= to_bb;
+    //             occ &= ~capt_sq.to_bitboard();
+    //             const qr: u64 = self.queens_rooks(us);
+    //             const qb: u64 = self.queens_bishops(us);
+    //             return
+    //                 (attacks.get_pawn_attacks(to, us) & king_bb) |
+    //                 (attacks.get_rook_attacks(king_sq, occ) & qr) |
+    //                 (attacks.get_bishop_attacks(king_sq, occ) & qb) != 0;
+    //         },
+    //         .castle => {
+    //             const ct: CastleType = if (to.u > from.u) CastleType.short else CastleType.long;
+    //             const rook_dest: Square = Castling.rook_dest[us.u][ct.u];
+    //             occ &= ~from_bb;
+    //             occ |= Castling.king_dest[us.u][ct.u].to_bitboard();
+    //             occ &= ~Castling.rook_start[us.u][ct.u].to_bitboard();
+    //             occ |= rook_dest.to_bitboard();
+    //             return attacks.get_rook_attacks(rook_dest, occ) & king_bb != 0;
+    //         },
+    //         .promotion => {
+    //             const pt: PieceType = m.promo();
+    //             occ &= ~from_bb;
+    //             occ |= to_bb;
+    //             const qr: u64 = if (pt.e == .queen or pt.e == .rook) self.queens_rooks(us) | to_bb else self.queens_rooks(us);
+    //             const qb: u64 = if (pt.e == .queen or pt.e == .bishop) self.queens_bishops(us) | to_bb else self.queens_bishops(us);
+    //             return
+    //                 (attacks.get_piece_attacks(to, us, pt, occ) & king_bb) |
+    //                 (attacks.get_rook_attacks(king_sq, occ) & qr) |
+    //                 (attacks.get_bishop_attacks(king_sq, occ) & qb) != 0;
+    //         },
+    //     }
+    //     return false;
+    // }
+
     pub fn lazy_do_nullmove(self: *Position) void {
         switch (self.stm.e) {
             .white => self.do_nullmove(.white),
@@ -1513,7 +1576,8 @@ pub const Position = struct {
     pub fn draw(self: *const Position) void {
         // Pieces.
         io.print_buffered("\n", .{});
-        for (Square.all_for_printing) |square| {
+        for (Square.all) |sq| {
+            const square = sq.flipped();
             if (square.coord.file == 0) io.print_buffered("{u}   ", .{square.char_of_rank()});
             const pc: Piece = self.get(square);
             const ch: u8 = if (pc.is_empty()) '.' else pc.to_print_char();
@@ -1524,8 +1588,6 @@ pub const Position = struct {
 
         // Info.
         io.print_buffered("fen: {f}\n", .{ self });
-        io.print_buffered("key: 0x{x:0>16} pawnkey: 0x{x:0>16} white_nonpawnkey: {x:0>16} black nonpawnkey: {x:0>16} minorkey: {x:0>16} majorkey: {x:0>16}\n", .{ self.key, self.pawnkey, self.nonpawnkeys[0], self.nonpawnkeys[1], self.minorkey, self.majorkey });
-        io.print_buffered("rule50: {}\n", .{ self.rule50 });
         io.print_buffered("checkers: ", .{});
         if (self.checkmask != 0) {
             var bb: u64 = self.checkmask & self.by_color(self.stm.opp());
@@ -1534,14 +1596,6 @@ pub const Position = struct {
             }
         }
         io.print_buffered("\n", .{});
-
-        // if (comptime lib.is_debug) {
-        //     io.print_buffered("phases: {} {}\n", .{ self.phase_by_color[0], self.phase_by_color[1] });
-        //     io.print_buffered("white material code: {x:0>12}\n", .{ self.material.decode_side(.white) });
-        //     io.print_buffered("black material code: {x:0>12}\n", .{ self.material.decode_side(.black) });
-        //     io.print_buffered("black material cast: {x:0>24}\n", .{ self.material.decode() });
-        // }
-
         io.flush();
     }
 

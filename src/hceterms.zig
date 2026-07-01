@@ -1,13 +1,13 @@
 // zig fmt: off
 
-const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
 
+const PieceType = types.PieceType;
 const ScorePair = types.ScorePair;
 const pair = types.pair;
 
-/// Extern to guarantee field order during turning.
+/// Extern to guarantee field order during tuning.
 pub const Terms = extern struct {
     material_table: [6]ScorePair,
     king_passed_pawn_distance_table: [8]ScorePair,
@@ -25,10 +25,11 @@ pub const Terms = extern struct {
     rook_mobility_table: [15]ScorePair,
     queen_mobility_table: [28]ScorePair,
     attack_power: [6][8]ScorePair,
-    knight_outpost_table: [64]ScorePair,
-    knight_outpost_is_blocking_enemy_pawn: ScorePair,
+    // knight_outpost_table: [64]ScorePair,
+    // knight_outpost_is_blocking_enemy_pawn: ScorePair,
+    knight_outpost_table: [2][64]ScorePair,
     bishop_outpost_table: [64]ScorePair,
-    bishop_long_diagonal: ScorePair,
+    bishop_on_long_diagonal: ScorePair,
     rook_on_file_bonus: [2][8]ScorePair,
     pawn_protection_table: [12]ScorePair,
     pawn_storm_table: [21]ScorePair,
@@ -37,7 +38,7 @@ pub const Terms = extern struct {
     threatened_by_knight_penalty: [6][2]ScorePair,
     threatened_by_bishop_penalty: [6][2]ScorePair,
     threatened_by_rook_penalty: [6][2]ScorePair,
-    pawn_push_threat_table: [13]ScorePair,
+    pawn_push_threat_table: [6]ScorePair,
     safe_check_bonus: [6]ScorePair,
     piece_square_table: [6][64]ScorePair,
 };
@@ -108,29 +109,52 @@ const default_terms: Terms = .{
     },
 
     .attack_power = .{
-        .{ pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) }, // pawn
-        .{ pair(0, 0), pair(12, 0), pair(27, -10), pair(63, -30), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) }, // knight
-        .{ pair(0, 0), pair(13, 1), pair(29, -2), pair(61, -11), pair(68, -40), pair(0, 0), pair(0, 0), pair(0, 0) }, // bishop
-        .{ pair(0, 0), pair(21, -21), pair(36, -22), pair(54, -16), pair(81, -19), pair(90, -29), pair(0, 0), pair(0, 0) }, // rook
-        .{ pair(0, 0), pair(2, 12), pair(12, 23), pair(31, 28), pair(75, 11), pair(110, 6), pair(169, -15), pair(229, -62) }, // queen
-        .{ pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) } // king
+        .{ pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) },
+        .{ pair(0, 0), pair(12, 0), pair(27, -10), pair(63, -30), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) },
+        .{ pair(0, 0), pair(13, 1), pair(29, -2), pair(61, -11), pair(68, -40), pair(0, 0), pair(0, 0), pair(0, 0) },
+        .{ pair(0, 0), pair(21, -21), pair(36, -22), pair(54, -16), pair(81, -19), pair(90, -29), pair(0, 0), pair(0, 0) },
+        .{ pair(0, 0), pair(2, 12), pair(12, 23), pair(31, 28), pair(75, 11), pair(110, 6), pair(169, -15), pair(229, -62) },
+        .{ pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) }
     },
+
+    // .knight_outpost_table = .{
+    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+    //     pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
+    //     pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
+    //     pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
+    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+    // },
+
+    // .knight_outpost_is_blocking_enemy_pawn = pair(4, 4),
 
     .knight_outpost_table = .{
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 1
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-        pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
-        pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
-        pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        .{
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
+            pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
+            pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        },
+        .{
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(13, 14), pair(10, 7), pair(6, 20), pair(12, 22), pair(11, 25), pair(-3, 23), pair(6, 13), pair(5, 13),
+            pair(5, 18), pair(17, 20), pair(21, 24), pair(13, 38), pair(17, 27), pair(15, 23), pair(18, 18), pair(0, 28),
+            pair(22, 27), pair(20, 17), pair(40, 25), pair(47, 26), pair(51, 32), pair(35, 47), pair(47, 21), pair(1, 43),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
+        },
     },
 
-    .knight_outpost_is_blocking_enemy_pawn = pair(4, 4),
-
     .bishop_outpost_table = .{
-        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 1
+        pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
         pair(-23, 31), pair(10, 6), pair(3, 20), pair(18, 14), pair(23, 24), pair(2, 10), pair(14, 0), pair(-47, 10),
@@ -140,7 +164,7 @@ const default_terms: Terms = .{
         pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
     },
 
-    .bishop_long_diagonal = pair(8, 4),
+    .bishop_on_long_diagonal = pair(8, 4),
 
     .rook_on_file_bonus = .{
         .{ pair(22, 5), pair(19, 3), pair(17, 9), pair(18, 8), pair(19, 13), pair(31, 3), pair(39, 3), pair(66, -1) },
@@ -148,25 +172,25 @@ const default_terms: Terms = .{
     },
 
     .pawn_protection_table = .{
-        pair(13, -6), pair(17, -6), pair(9, -3), // king rank + 2
-        pair(21, -11), pair(18, -11), pair(20, -11), // king rank + 1
-        pair(31, -4), pair(0, 0), pair(28, -3), // king rank + 0
-        pair(-8, 5), pair(-5, 0), pair(-7, 7), // king rank - 1
+        pair(13, -6), pair(17, -6), pair(9, -3),
+        pair(21, -11), pair(18, -11), pair(20, -11),
+        pair(31, -4), pair(0, 0), pair(28, -3),
+        pair(-8, 5), pair(-5, 0), pair(-7, 7),
     },
 
     .pawn_storm_table = .{
-        pair(-6, 1), pair(-13, 3), pair(-7, 3), // king rank + 6
-        pair(-5, 0), pair(-14, 5), pair(-8, 3), // king rank + 5
-        pair(1, -7), pair(-11, 0), pair(0, -5), // king rank + 4
-        pair(14, -9), pair(-2, -5), pair(12, -6), // king rank + 3
-        pair(23, -9), pair(24, 0), pair(16, -9), // king rank + 2
-        pair(0, 0), pair(15, -31), pair(0, 0), // king rank + 1
-        pair(56, -49), pair(0, 0), pair(51, -47), // king rank + 0
+        pair(-6, 1), pair(-13, 3), pair(-7, 3),
+        pair(-5, 0), pair(-14, 5), pair(-8, 3),
+        pair(1, -7), pair(-11, 0), pair(0, -5),
+        pair(14, -9), pair(-2, -5), pair(12, -6),
+        pair(23, -9), pair(24, 0), pair(16, -9),
+        pair(0, 0), pair(15, -31), pair(0, 0),
+        pair(56, -49), pair(0, 0), pair(51, -47),
     },
 
     .king_on_file_penalty = .{
-        .{ pair(-55, -13), pair(-67, -7), pair(-37, -9), pair(-24, -9), pair(-20, -2), pair(-36, 0), pair(-49, 3), pair(-34, 5) }, // open
-        .{ pair(-3, 45), pair(-31, 19), pair(-17, 12), pair(3, -5), pair(-2, -7), pair(-3, 3), pair(-27, 23), pair(-15, 34) }, // half open
+        .{ pair(-55, -13), pair(-67, -7), pair(-37, -9), pair(-24, -9), pair(-20, -2), pair(-36, 0), pair(-49, 3), pair(-34, 5) },
+        .{ pair(-3, 45), pair(-31, 19), pair(-17, 12), pair(3, -5), pair(-2, -7), pair(-3, 3), pair(-27, 23), pair(-15, 34) },
     },
 
     .threatened_by_pawn_penalty = .{
@@ -206,9 +230,7 @@ const default_terms: Terms = .{
     },
 
     .pawn_push_threat_table = .{
-        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // white_pawn...white_king
-        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6), // black_pawn...black_king
-        pair(0, 0),
+        pair(0, 0), pair(16, 30), pair(21, 18), pair(27, 10), pair(23, -6), pair(55, -6),
     },
 
     .safe_check_bonus = .{
@@ -216,8 +238,8 @@ const default_terms: Terms = .{
     },
 
     .piece_square_table = .{
-        .{ // pawn
-            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), // rank 1
+        .{
+            pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
             pair(-25, -25), pair(-29, -8), pair(-18, -28), pair(-21, -32), pair(-12, -25), pair(1, -33), pair(-4, -23), pair(-17, -41),
             pair(-34, -29), pair(-39, -13), pair(-26, -35), pair(-21, -34), pair(-14, -35), pair(-19, -38), pair(-19, -25), pair(-18, -43),
             pair(-24, -26), pair(-32, -5), pair(-15, -34), pair(-5, -41), pair(-2, -42), pair(-1, -41), pair(-20, -16), pair(-13, -39),
@@ -226,8 +248,8 @@ const default_terms: Terms = .{
             pair(44, 67), pair(25, 70), pair(14, 71), pair(53, 28), pair(47, 30), pair(41, 43), pair(-32, 86), pair(-27, 83),
             pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
         },
-        .{ // knight
-            pair(-61, 13), pair(-23, 8), pair(-20, 12), pair(-8, 17), pair(0, 15), pair(2, 4), pair(-20, 14), pair(-26, 5), // rank 1
+        .{
+            pair(-61, 13), pair(-23, 8), pair(-20, 12), pair(-8, 17), pair(0, 15), pair(2, 4), pair(-20, 14), pair(-26, 5),
             pair(-31, 8), pair(-18, 16), pair(-7, 16), pair(7, 16), pair(9, 15), pair(4, 13), pair(3, 5), pair(-3, 18),
             pair(-22, 7), pair(-1, 15), pair(10, 20), pair(19, 31), pair(31, 29), pair(18, 14), pair(18, 10), pair(0, 12),
             pair(-7, 20), pair(15, 19), pair(25, 31), pair(31, 28), pair(30, 34), pair(42, 16), pair(32, 15), pair(8, 15),
@@ -236,8 +258,8 @@ const default_terms: Terms = .{
             pair(-28, 4), pair(-12, 16), pair(-1, 11), pair(9, 9), pair(7, -2), pair(39, -6), pair(1, 7), pair(-6, -14),
             pair(-131, -47), pair(-101, -6), pair(-69, 10), pair(-26, -8), pair(-8, -3), pair(-39, -28), pair(-106, -4), pair(-99, -66),
         },
-        .{ // bishop
-            pair(-9, -4), pair(8, 15), pair(-9, 11), pair(-10, 10), pair(2, 5), pair(-11, 16), pair(4, 1), pair(17, -22), // rank 1
+        .{
+            pair(-9, -4), pair(8, 15), pair(-9, 11), pair(-10, 10), pair(2, 5), pair(-11, 16), pair(4, 1), pair(17, -22),
             pair(-3, 9), pair(0, -5), pair(8, -1), pair(-7, 10), pair(4, 9), pair(11, 3), pair(22, 0), pair(11, -9),
             pair(-18, 8), pair(6, 13), pair(2, 13), pair(-1, 17), pair(2, 22), pair(6, 13), pair(10, 7), pair(3, 0),
             pair(-14, 7), pair(-24, 17), pair(-6, 12), pair(1, 12), pair(2, 6), pair(-6, 11), pair(-14, 15), pair(-3, 1),
@@ -246,8 +268,8 @@ const default_terms: Terms = .{
             pair(-21, 0), pair(-15, 10), pair(-14, 6), pair(-28, 10), pair(-29, 5), pair(-19, 4), pair(-46, 17), pair(-33, 1),
             pair(-29, 16), pair(-52, 17), pair(-53, 10), pair(-87, 16), pair(-84, 15), pair(-73, 5), pair(-38, 8), pair(-62, 5),
         },
-        .{ // rook
-            pair(-26, 27), pair(-22, 25), pair(-18, 28), pair(-12, 22), pair(-7, 14), pair(-12, 21), pair(-17, 18), pair(-26, 13), // rank 1
+        .{
+            pair(-26, 27), pair(-22, 25), pair(-18, 28), pair(-12, 22), pair(-7, 14), pair(-12, 21), pair(-17, 18), pair(-26, 13),
             pair(-37, 24), pair(-29, 30), pair(-17, 28), pair(-18, 27), pair(-11, 17), pair(-15, 20), pair(-2, 9), pair(-36, 10),
             pair(-36, 30), pair(-28, 34), pair(-23, 29), pair(-24, 33), pair(-15, 24), pair(-18, 25), pair(7, 8), pair(-18, 6),
             pair(-32, 36), pair(-27, 44), pair(-20, 38), pair(-14, 37), pair(-14, 30), pair(-29, 39), pair(-6, 27), pair(-29, 24),
@@ -256,8 +278,8 @@ const default_terms: Terms = .{
             pair(-18, 41), pair(-12, 51), pair(-3, 49), pair(13, 37), pair(-3, 36), pair(12, 39), pair(16, 35), pair(-8, 35),
             pair(-19, 45), pair(-22, 53), pair(-23, 56), pair(-28, 54), pair(-18, 43), pair(-2, 47), pair(-10, 49), pair(-27, 46),
         },
-        .{ // queen
-            pair(-18, 55), pair(-15, 50), pair(-11, 56), pair(-9, 58), pair(-4, 45), pair(-13, 37), pair(-10, 32), pair(-1, 27), // rank 1
+        .{
+            pair(-18, 55), pair(-15, 50), pair(-11, 56), pair(-9, 58), pair(-4, 45), pair(-13, 37), pair(-10, 32), pair(-1, 27),
             pair(-8, 48), pair(-5, 51), pair(-3, 55), pair(-1, 66), pair(0, 65), pair(6, 38), pair(15, 17), pair(16, 4),
             pair(-9, 52), pair(-7, 75), pair(-9, 89), pair(-13, 92), pair(-9, 93), pair(-1, 80), pair(13, 62), pair(6, 52),
             pair(-11, 65), pair(-17, 96), pair(-12, 95), pair(-10, 110), pair(-4, 99), pair(-9, 91), pair(7, 76), pair(3, 72),
@@ -266,8 +288,8 @@ const default_terms: Terms = .{
             pair(-9, 57), pair(-20, 76), pair(-22, 107), pair(-34, 119), pair(-50, 142), pair(-11, 104), pair(-8, 85), pair(30, 72),
             pair(-39, 68), pair(-35, 66), pair(-28, 88), pair(1, 75), pair(-14, 84), pair(-5, 81), pair(36, 28), pair(-13, 65),
         },
-        .{ // king
-            pair(12, -67), pair(35, -40), pair(26, -24), pair(-37, -1), pair(5, -24), pair(-23, -11), pair(18, -36), pair(20, -75), // rank 1
+        .{
+            pair(12, -67), pair(35, -40), pair(26, -24), pair(-37, -1), pair(5, -24), pair(-23, -11), pair(18, -36), pair(20, -75),
             pair(27, -42), pair(2, -10), pair(-3, 0), pair(-24, 11), pair(-29, 12), pair(-18, 1), pair(0, -17), pair(12, -42),
             pair(-26, -30), pair(23, -14), pair(-23, 9), pair(-40, 24), pair(-36, 19), pair(-32, 7), pair(-10, -13), pair(-48, -25),
             pair(-43, -27), pair(7, -7), pair(-39, 18), pair(-81, 38), pair(-78, 32), pair(-41, 13), pair(-39, -3), pair(-119, -10),

@@ -22,11 +22,11 @@ const assert = std.debug.assert;
 const wtf = lib.wtf;
 
 /// Enum for shifting pawn moves.
-pub const PawnShift = enum(u2) { up, northwest, northeast };
-
-// fn abs_diff(a: usize, b: usize) usize {
-//     return @max(a, b) - @min(a, b);
-// }
+pub const PawnShift = enum(u2) {
+    up,
+    northwest,
+    northeast
+};
 
 /// Note that these are stored in SquarePair
 pub inline fn square_distance(a: Square, b: Square) u3 {

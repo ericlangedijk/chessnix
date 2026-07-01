@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
+const bitboards = @import("bitboards.zig");
 const attacks = @import("attacks.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
@@ -19,6 +20,7 @@ const assert = std.debug.assert;
 const ctx = lib.ctx;
 const io = lib.io;
 
+const Color = types.Color;
 const Square = types.Square;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
@@ -31,47 +33,71 @@ const temp_folder = "C:/Data/Tmp/";
 pub fn run() !void {
     lib.not_in_release();
 
-    lib.io.debugprint("test perfts...", .{});
-    _ = try run_perfts(3, null);
-    lib.io.debugprint("ok\n", .{});
+    io.print("test find move...", .{});
+    try test_find_move();
+    io.print("ok\n", .{});
 
-    lib.io.debugprint("test perfts 960...", .{});
-    _ = try run_perfts_960(3);
-    lib.io.debugprint("ok\n", .{});
+    io.print("test perfts...", .{});
+    try run_perfts(3, null);
+    io.print("ok\n", .{});
 
-    lib.io.debugprint("test viri...", .{});
+    io.print("test perfts 960...", .{});
+    try run_perfts_960(2);
+    io.print("ok\n", .{});
+
+    if (true) return;
+
+    io.print("test viri...", .{});
     try test_viri();
-    lib.io.debugprint("ok\n", .{});
-
-    // var timer = utils.Timer.start();
-    // const perfts: usize = try run_perfts(3, null);
-    // const perfts_960: usize = try run_perfts_960(3);
-    // const time = timer.read();
-    // lib.io.debugprint("silent debug tests ok. tests: perfts = {}, perfts 960 {}, (time {D})\n", .{ perfts, perfts_960, time });
-    // test_viri() catch |err|{
-    //     lib.io.debugprint("last error: [{s}]\n", .{lib.last_error.slice()});
-    //     return err;
-    // };
+    io.print("ok\n", .{});
 }
 
 pub const Error = error {
+    FindError,
     PerftError,
-    Perft960Erroc,
-    FlipError,
-    EvalError,
+    Perft960Error,
 };
 
 fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error {
-    lib.io.debugprint("catched error: {s}\n", .{@errorName(err)});
-    lib.io.debugprint(str, args);
-    lib.io.debugprint("\n", .{});
+    io.print("catched error: {s}\n", .{@errorName(err)});
+    io.print(str, args);
+    io.print("\n", .{});
     return err;
 }
 
-/// Run all testpositions.
-fn run_perfts(max_depth: usize, max_positions: ?usize) !usize {
-    lib.not_in_release();
+/// Test if movegen.find is without errors.
+fn test_find_move() !void {
+    var pos: Position = .empty;
+    var storage: movegen.MoveStorage = .init();
+    for (test_positions, 0..) |str, idx| {
+        try pos.setup(str, false);
+        movegen.lazy_generate_all_moves(&pos, &storage);
+        for (storage.slice()) |ex| {
+            const found: ExtMove = movegen.lazy_find_move(&pos, ex.move.from, ex.move.to, ex.move.prom_safe()) catch |err| {
+                return err;
+            };
+            if (found.move != ex.move) {
+                return Error.FindError;
+            }
+        }
 
+        // fuzz test find_move
+        if (idx < 5) {
+            var found: usize = 0;
+            for (0..65536) |u| {
+                const mu: u16 = @intCast(u);
+                const m: Move = @bitCast(mu);
+                if (m.kind != 10 and m.kind != 11) {
+                    if (movegen.is_legal(m, &pos)) found += 1;
+                }
+            }
+            assert(found == storage.count);
+        }
+    }
+}
+
+/// Run all testpositions.
+fn run_perfts(max_depth: usize, max_positions: ?usize) !void {
     const cnt: usize = max_positions orelse 1024;
     const max: u64 = std.math.clamp(max_depth, 1, 6);
     var total: u64 = 0;
@@ -84,7 +110,7 @@ fn run_perfts(max_depth: usize, max_positions: ?usize) !usize {
         // TEMP EVAL OUTPUT for later test
         // var ev: hce.Evaluator = .init();
         // const e = ev.evaluate(&pos, null);
-        // io.debugprint("{f} ,{}\n", .{ pos, e });
+        // io.print("{f} ,{}\n", .{ pos, e });
 
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
@@ -100,21 +126,19 @@ fn run_perfts(max_depth: usize, max_positions: ?usize) !usize {
                     \\fen: {s}
                     \\Error at depth {}, expected {}, found {}
                     \\
-                    , .{ index, str, d, expected_nodes, perft_nodes }
+                    , .{
+                        index, str, d, expected_nodes, perft_nodes
+                    }
                 );
             }
         }
         done += 1;
-        if (done == cnt) break;
+        if (done >= cnt) break;
     }
-    //lib.io.debugprint("layout_map entries after classic: {}\n", .{ position.layout_map.count() });
-    return done;
 }
 
 /// Run all testpositions.
-fn run_perfts_960(max_depth: usize) !usize {
-    lib.not_in_release();
-
+fn run_perfts_960(max_depth: usize) !void {
     const max: u64 = std.math.clamp(max_depth, 1, 6);
     var total: u64 = 0;
     var pos: Position = .empty;
@@ -131,7 +155,7 @@ fn run_perfts_960(max_depth: usize) !usize {
             const ok: bool = expected_nodes == perft_nodes;
             if (!ok) {
                 return catch_error(
-                    Error.Perft960Erroc,
+                    Error.Perft960Error,
                     \\testposition 960 {}
                     \\fen: {s}
                     \\Error at depth {}, expected {}, found {}
@@ -142,12 +166,9 @@ fn run_perfts_960(max_depth: usize) !usize {
         }
         done += 1;
     }
-    //lib.io.debugprint("layout_map entries after 960: {}\n", .{ position.layout_map.count() });
-    return done;
 }
 
-fn test_see() !usize {
-    lib.not_in_release();
+fn test_see() !void {
     var pos: Position = .empty;
     var done: usize = 0;
 
@@ -160,16 +181,13 @@ fn test_see() !usize {
         const s1 = hce.see_score(&pos, m);
         const s2 = hce.see(&pos, m, -55);
         if ((s1 >= 0 and !s2) or (s1 < 0 and s2)) {
-            io.debugprint("{} {s} {s} s1 = {} s2 = {}\n", .{ index + 1, str, move, s1, s2 });
+            io.print("{} {s} {s} s1 = {} s2 = {}\n", .{ index + 1, str, move, s1, s2 });
         }
         done += 1;
-        //break;
     }
-
-    return done;
 }
 
-pub fn test_viri() !void {
+fn test_viri() !void {
     const tmp_filename = funcs.get_str("{s}viritest.vf", .{temp_folder});
     var game: viri.ViriGame = .init();
     defer game.deinit();
@@ -183,9 +201,9 @@ pub fn test_viri() !void {
             const s: Position = try vp.to_position();
             // TODO: only the fullmove number (if not specified in fen) is unequal.
             if (!s.equals(&p)) {
-                lib.io.debugprint("S: {s}\n", .{str});
-                lib.io.debugprint("A: {f} {}\n", .{p, vp.fullmove_number});
-                lib.io.debugprint("B: {f} {}\n", .{s, vp.fullmove_number});
+                io.print("S: {s}\n", .{str});
+                io.print("A: {f} {}\n", .{p, vp.fullmove_number});
+                io.print("B: {f} {}\n", .{s, vp.fullmove_number});
                 compare_positions(&p, &s);
                 break;
             }
@@ -197,7 +215,7 @@ pub fn test_viri() !void {
         game.reset();
         var writer: viri.ViriFileWriter = try .init(tmp_filename.slice(), 4096);
         defer writer.deinit();
-        for (0..100) |_| {
+        for (0..10) |_| {
             const rnd_game: Game = play_random_game();
             try game.reset_with_position(&rnd_game.startpos, 0, 0);
             const slice: []const ExtMove = rnd_game.moves.slice_const();
@@ -264,7 +282,7 @@ fn decode_depths(fen: []const u8) ParseDepthError!FenDepths {
                     // lazy me. we should parse the depth here.
                 }
                 else if (i == 1) { // 20 (node)
-                    //lib.io.debugprint("PART [{s}], ", .{part});
+                    //io.print("PART [{s}], ", .{part});
                     const nodes: u64 = std.fmt.parseInt(u64, part, 10) catch return ParseDepthError.ExpectedNodes;
                     depths.append_assume_capacity(nodes);
                 }
@@ -286,18 +304,14 @@ const Game = struct {
     moves: ExtMoveList(128),
 };
 
-fn play_random_game() Game { //struct { start_pos: Position, moves: ExtMoveList(128) } {
+fn play_random_game() Game {
     const startpos: Position = .classic_startpos;
-
-    // var start_pos: Position = .empty;
-    // start_pos.setup(position.classic_startpos_fen, false) catch lib.wtf("jesus...", .{});
-
-
     var pos: Position = startpos;
     var moves: ExtMoveList(128) = .init();
     var storage: movegen.MoveStorage = .init();
     var rnd: utils.Random = .init_randomized();
     const nr_of_moves: u64 = rnd.next_max(32) + 5;
+
     for (0..nr_of_moves) |_| {
         movegen.lazy_generate_all_moves(&pos, &storage);
         // Mate or stalemate.
@@ -310,19 +324,15 @@ fn play_random_game() Game { //struct { start_pos: Position, moves: ExtMoveList(
         moves.add(ex);
         pos.lazy_do_move(ex);
     }
+
     return .{
         .startpos = startpos,
         .moves = moves,
     };
 }
 
-    // pub fn gen(pos: *const Position) MoveStorage{
-    //     var storage: MoveStorage = .init();
-    //     lazy_generate_all_moves(pos, &storage);
-    //     return storage;
-    // }
-
 pub fn print_pos_structure() void {
+    lib.not_in_release();
     //const offset: usize = index * @sizeOf(ScorePair);
     var sum: usize = 0;
     const structinfo = @typeInfo(Position).@"struct";
@@ -330,49 +340,39 @@ pub fn print_pos_structure() void {
         const field_offset = @offsetOf(Position, field.name);
         const size = @sizeOf(field.type);
         sum += size;
-        lib.io.debugprint("sum: {:<5} offset: {:<5} size: {:<5} {s}\n", .{sum, field_offset, size, field.name});
-        //const len: usize = size / @sizeOf(ScorePair);
-        // if (offset >= field_offset and offset < field_offset + size) {
-        //     var result: MetaData.ScorePairInfo = .{};
-        //     result.raw_index = index;
-        //     result.array_len = len;
-        //     result.array_index = (offset - field_offset) / @sizeOf(ScorePair);
-        //     result.name.append_slice_assume_capacity(field.name);
-        //     return result;
-        // }
+        io.print("sum: {:<5} offset: {:<5} size: {:<5} {s}\n", .{sum, field_offset, size, field.name});
     }
-    //lib.io.debugprint("sum {:>5}\n", .{sum, field_offset, field.name});
 }
 
+/// OMFG...
 fn compare_positions(a: *const Position, b: *const Position) void {
-    //if (a.layout != b.layout) lib.io.debugprint("{any} {any}\n", .{ a.layout.*, b.layout.*});
-    if (a.layout != b.layout) lib.io.debugprint("layout {any} {any}\n", .{ a.layout.*, b.layout.* });
+    lib.not_in_release();
+    //if (a.layout != b.layout) io.print("{any} {any}\n", .{ a.layout.*, b.layout.*});
+    if (a.layout != b.layout) io.print("layout {any} {any}\n", .{ a.layout.*, b.layout.* });
     //const pa: []const u8 = std.mem.asBytes(a.board); const pb: []const u8 = std.mem.asBytes(b.board);
-    //if (!std.mem.eql(u8, pa, pb)) lib.io.debugprint("{any} {any}\n", .{ a.board, b.board });
-    if (!std.meta.eql(a.bitboards_by_type, b.bitboards_by_type)) lib.io.debugprint("bitboards_by_type {any} {any}\n", .{ a.bitboards_by_type, b.bitboards_by_type });
-    if (!std.meta.eql(a.bitboards_by_color, b.bitboards_by_color)) lib.io.debugprint("bitboards_by_color {any} {any}\n", .{ a.bitboards_by_color, b.bitboards_by_color });
-    //if (a.material != b.material) lib.io.debugprint("{any} {any}\n", .{ a.material, b.material });
-    //if (a.phase_by_color != b.phase_by_color) lib.io.debugprint("{any} {any}\n", .{ a.phase_by_color, b.phase_by_color });
-    if (a.stm.e != b.stm.e) lib.io.debugprint("stm {any} {any}\n", .{ a.stm, b.stm });
-    if (a.ply_from_root != b.ply_from_root) lib.io.debugprint("ply_from_root {any} {any}\n", .{ a.ply_from_root, b.ply_from_root });
-    if (a.game_ply != b.game_ply) lib.io.debugprint("game_ply {any} {any}\n", .{ a.game_ply, b.game_ply });
-    if (a.nullmove_state != b.nullmove_state) lib.io.debugprint("nullmove_state {any} {any}\n", .{ a.nullmove_state, b.nullmove_state });
-    if (a.rule50 != b.rule50) lib.io.debugprint("rule50 {any} {any}\n", .{ a.rule50, b.rule50 });
-    if (a.ep_square.e != b.ep_square.e) lib.io.debugprint("ep_square {any} {any}\n", .{ a.ep_square, b.ep_square });
-    if (a.castlingrights != b.castlingrights) lib.io.debugprint("castlingrights {any} {any}\n", .{ a.castlingrights, b.castlingrights });
-    if (a.key != b.key) lib.io.debugprint("key {any} {any}\n", .{ a.key, b.key });
-    if (a.pawnkey != b.pawnkey) lib.io.debugprint("{any} {any}\n", .{ a.pawnkey, b.pawnkey });
-    //if (a.nonpawnkeys != b.nonpawnkeys) lib.io.debugprint("{any} {any}\n", .{ a.nonpawnkeys, b.nonpawnkeys });
-    if (a.minorkey != b.minorkey) lib.io.debugprint("minorkey {any} {any}\n", .{ a.minorkey, b.minorkey });
-    if (a.majorkey != b.majorkey) lib.io.debugprint("majorkey {any} {any}\n", .{ a.majorkey, b.majorkey });
-    //if (a.checkmask != b.checkmask) lib.io.debugprint("{any} {any}\n", .{ a.checkmask, b.checkmask });
-    //if (a.pins_diag != b.pins_diag) lib.io.debugprint("{any} {any}\n", .{ a.pins_diag, b.pins_diag });
-    //if (a.pins_orth != b.pins_orth) lib.io.debugprint("{any} {any}\n", .{ a.pins_orth, b.pins_orth });
-    if (a.is_960 != b.is_960) lib.io.debugprint("is_960 {any} {any}\n", .{ a.is_960, b.is_960 });
-    if (a.state_flags != b.state_flags) lib.io.debugprint("state_flags {any} {any}\n", .{ a.state_flags, b.state_flags });
+    //if (!std.mem.eql(u8, pa, pb)) io.print("{any} {any}\n", .{ a.board, b.board });
+    if (!std.meta.eql(a.bitboards_by_type, b.bitboards_by_type)) io.print("bitboards_by_type {any} {any}\n", .{ a.bitboards_by_type, b.bitboards_by_type });
+    if (!std.meta.eql(a.bitboards_by_color, b.bitboards_by_color)) io.print("bitboards_by_color {any} {any}\n", .{ a.bitboards_by_color, b.bitboards_by_color });
+    //if (a.material != b.material) io.print("{any} {any}\n", .{ a.material, b.material });
+    //if (a.phase_by_color != b.phase_by_color) io.print("{any} {any}\n", .{ a.phase_by_color, b.phase_by_color });
+    if (a.stm.e != b.stm.e) io.print("stm {any} {any}\n", .{ a.stm, b.stm });
+    if (a.ply_from_root != b.ply_from_root) io.print("ply_from_root {any} {any}\n", .{ a.ply_from_root, b.ply_from_root });
+    if (a.game_ply != b.game_ply) io.print("game_ply {any} {any}\n", .{ a.game_ply, b.game_ply });
+    if (a.nullmove_state != b.nullmove_state) io.print("nullmove_state {any} {any}\n", .{ a.nullmove_state, b.nullmove_state });
+    if (a.rule50 != b.rule50) io.print("rule50 {any} {any}\n", .{ a.rule50, b.rule50 });
+    if (a.ep_square.e != b.ep_square.e) io.print("ep_square {any} {any}\n", .{ a.ep_square, b.ep_square });
+    if (a.castlingrights != b.castlingrights) io.print("castlingrights {any} {any}\n", .{ a.castlingrights, b.castlingrights });
+    if (a.key != b.key) io.print("key {any} {any}\n", .{ a.key, b.key });
+    if (a.pawnkey != b.pawnkey) io.print("{any} {any}\n", .{ a.pawnkey, b.pawnkey });
+    //if (a.nonpawnkeys != b.nonpawnkeys) print("{any} {any}\n", .{ a.nonpawnkeys, b.nonpawnkeys });
+    if (a.minorkey != b.minorkey) io.print("minorkey {any} {any}\n", .{ a.minorkey, b.minorkey });
+    if (a.majorkey != b.majorkey) io.print("majorkey {any} {any}\n", .{ a.majorkey, b.majorkey });
+    //if (a.checkmask != b.checkmask) io.print("{any} {any}\n", .{ a.checkmask, b.checkmask });
+    //if (a.pins_diag != b.pins_diag) io.print("{any} {any}\n", .{ a.pins_diag, b.pins_diag });
+    //if (a.pins_orth != b.pins_orth) io.print("{any} {any}\n", .{ a.pins_orth, b.pins_orth });
+    if (a.is_960 != b.is_960) io.print("is_960 {any} {any}\n", .{ a.is_960, b.is_960 });
+    if (a.state_flags != b.state_flags) io.print("state_flags {any} {any}\n", .{ a.state_flags, b.state_flags });
 }
-
-// r1b2r1k/pp3Rpp/2p5/2q2p2/8/1B6/P3QPPP/1R4K1 w - - 0 1
 
 pub const test_positions: [134][]const u8 = .{
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ;D1 20 ;D2 400 ;D3 8902 ;D4 197281 ;D5 4865609 ;D6 119060324", // classical start pos

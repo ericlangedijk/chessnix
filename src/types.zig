@@ -449,18 +449,6 @@ pub const Square = packed union {
         a8, b8, c8, d8, e8, f8, g8, h8,
     };
 
-    /// Top down squares for print.
-    pub const all_for_printing: [Square.count]Square = .{
-        a8, b8, c8, d8, e8, f8, g8, h8,
-        a7, b7, c7, d7, e7, f7, g7, h7,
-        a6, b6, c6, d6, e6, f6, g6, h6,
-        a5, b5, c5, d5, e5, f5, g5, h5,
-        a4, b4, c4, d4, e4, f4, g4, h4,
-        a3, b3, c3, d3, e3, f3, g3, h3,
-        a2, b2, c2, d2, e2, f2, g2, h2,
-        a1, b1, c1, d1, e1, f1, g1, h1,
-    };
-
     const manhattan_distances_to_center: [Square.count]u8 = .{
         6, 5, 4, 3, 3, 4, 5, 6,
         5, 4, 3, 2, 2, 3, 4, 5,
@@ -969,23 +957,23 @@ pub const ScorePair = extern struct {
         return .{ .mg = mg, .eg = eg };
     }
 
-    pub fn inc(self: *ScorePair, sp: ScorePair) void {
-        self.mg += sp.mg;
-        self.eg += sp.eg;
+    pub fn inc(self: *ScorePair, delta: ScorePair) void {
+        self.mg += delta.mg;
+        self.eg += delta.eg;
     }
 
-    pub fn dec(self: *ScorePair, sp: ScorePair) void {
-        self.mg -= sp.mg;
-        self.eg -= sp.eg;
+    pub fn dec(self: *ScorePair, delta: ScorePair) void {
+        self.mg -= delta.mg;
+        self.eg -= delta.eg;
     }
 
-    // pub fn add(self: ScorePair, other: ScorePair) ScorePair {
-    //     return .{ .mg = self.mg + other.mg, .eg = self.eg + other.eg };
-    // }
+    pub fn add(self: ScorePair, delta: ScorePair) ScorePair {
+        return .init(self.mg + delta.mg, self.eg + delta.eg);
+    }
 
-    // pub fn sub(self: ScorePair, other: ScorePair) ScorePair {
-    //     return .{ .mg = self.mg - other.mg, .eg = self.eg - other.eg };
-    // }
+    pub fn sub(self: ScorePair, delta: ScorePair) ScorePair {
+        return .init(self.mg - delta.mg, self.eg - delta.eg);
+    }
 
     pub fn mul(self: ScorePair, m: u8) ScorePair {
         return .{ .mg = self.mg * m, .eg = self.eg * m };
@@ -994,6 +982,11 @@ pub const ScorePair = extern struct {
     pub fn fmul(self: ScorePair, factor: f32) ScorePair {
         return .{ .mg = funcs.fmul(self.mg, factor), .eg = funcs.fmul(self.eg, factor)};
     }
+
+    pub fn format(self: ScorePair, writer: *std.io.Writer) std.io.Writer.Error!void {
+        try writer.print("({}, {})", .{ self.mg, self.eg });
+    }
+
 };
 
 /// Easy initialization function for eval tables.
@@ -1053,7 +1046,12 @@ pub const phase_table: [13]u8 = .{
     0, 1, 1, 2, 4, 0,
     0
 };
+
 pub const max_phase: u8 = 24;
+
+pub fn restrict_phase(phase: u8) u8 {
+    return @min(max_phase, phase);
+}
 
 pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const ph: u8 = @min(max_phase, phase);

@@ -23,6 +23,9 @@ fn compilation_check() void {
     if (!std.mem.eql(u8, builtin.zig_version_string, v)) {
         @compileError("this chessnix version requires zig " ++ v);
     }
+    if (@sizeOf(usize) != @sizeOf(u64)) {
+        @compileError("target must be 64 bits");
+    }
     if (is_release) {
         if (is_paranoid) @compileError("release is_paranoid");
         if (verifications) @compileError("release verifications");
@@ -36,7 +39,7 @@ pub const Program = enum {
     lichess_dataset_conversion,
 };
 
-// pub const program: Program = .uci;
+//pub const program: Program = .uci;
 pub const program: Program = .hcetuner;
 // pub const program: Program = .lichess_dataset_conversion;
 
@@ -135,6 +138,10 @@ pub inline fn not_in_release() void {
 
 pub inline fn only_when_tuning() void {
     if (!is_tuning) @compileError("only when tuning!");
+}
+
+pub inline fn only_in_comptime() void {
+    if (!is_tuning) @compileError("only in comptime!");
 }
 
 pub fn wtf(comptime str: []const u8, args: anytype) noreturn {

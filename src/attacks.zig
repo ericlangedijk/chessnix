@@ -77,9 +77,9 @@ fn compute_sliding_attackmasks() [8][64]u8 {
 fn compute_file_magics() [64]MagicEntry {
     @setEvalBranchQuota(8000);
     const bb = @import("bitboards.zig");
-    var fm: [64]MagicEntry = @splat(.{.mask = 0, .magic = 0});
+    var fm: [64]MagicEntry = @splat(.{ .mask = 0, .magic = 0 });
     for (Square.all) |sq| {
-        fm[sq.u].mask = sq.rays_bitboard(&.{.north, .south}) & ~(bb.bb_rank_1 | bb.bb_rank_8);
+        fm[sq.u].mask = sq.rays_bitboard(&.{ .north, .south }) & ~(bb.bb_rank_1 | bb.bb_rank_8);
         fm[sq.u].magic = PrecomputedMagics.file_magics[sq.coord.file];
     }
     return fm;
@@ -92,7 +92,7 @@ fn compute_diagmain_magics() [64]MagicEntry {
     for (Square.all) |sq| {
         const file: u3 = sq.coord.file;
         const rank: u3 = sq.coord.rank;
-        dm[sq.u].mask = sq.rays_bitboard(&.{.north_west, .south_east}) & ~bb.bb_border;
+        dm[sq.u].mask = sq.rays_bitboard(&.{ .north_west, .south_east }) & ~bb.bb_border;
         dm[sq.u].magic = PrecomputedMagics.diag_main_magics[@as(u8, file) + rank];
     }
     return dm;
@@ -105,7 +105,7 @@ fn compute_diaganti_magics() [64]MagicEntry {
     inline for (Square.all) |sq| {
         const file: u3 = sq.coord.file;
         const rank: u3 = sq.coord.rank;
-        am[sq.u].mask = sq.rays_bitboard(&.{.north_east, .south_west}) & ~bb.bb_border;
+        am[sq.u].mask = sq.rays_bitboard(&.{ .north_east, .south_west }) & ~bb.bb_border;
         am[sq.u].magic = PrecomputedMagics.diag_anti_magics[@as(u8, file) + (7 - rank)];
     }
     return am;
