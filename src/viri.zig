@@ -44,15 +44,6 @@ comptime {
     std.debug.assert(u == @as(u16, @bitCast(e)));
 }
 
-const wp: u4 = 0;
-const wn: u4 = 1;
-const wb: u4 = 2;
-const wr: u4 = 3;
-const wq: u4 = 4;
-const wk: u4 = 5;
-const r_unmoved: u4 = 6;
-const black_bit: u4 = 0b1000;
-
 pub const ViriPosition = extern struct {
     occupancy: u64,
     pieces: [16]u8,
@@ -66,12 +57,10 @@ pub const ViriPosition = extern struct {
     const unmoved_rook: u8 = 6;
     pub const empty: ViriPosition = std.mem.zeroes(ViriPosition);
 
-    /// Position -> ViriPosition. Assumes pos is correct.
+    /// Position -> ViriPosition.
     pub fn from_position(pos: *const Position, eval: i16, wdl: u8) ViriPosition {
         const occ: u64 = pos.all();
         var pieces: [16]u8 = @splat(0);
-
-        // TODO: simplify now the colorbit drama has been resolved.
 
         // Pieceloop.
         var i: usize = 0;
@@ -79,24 +68,20 @@ pub const ViriPosition = extern struct {
         while (iter.next()) |sq| : (i += 1) {
             const piece: Piece = pos.get(sq);
             std.debug.assert(piece.e != .no_piece);
-            const piecetype: PieceType = piece.piecetype(); // this value is the same.
-            const piececode: u8 = piecetype.u;
+            const piecetype: PieceType = piece.piecetype();
             const color: Color = piece.color();
             const colorbit: u8 = if (color.e == .black) 0b1000 else 0;
-            const first_rank: Rank = funcs.relative_rank(color, bitboards.rank_1);
+            var piececode: u8 = piecetype.u;  // Value matches chessnix (except the unmoved rook encoding).
             // Encode castling rook.
-            var is_castling_rook: bool = false;
-            if (piecetype.e == .rook and sq.coord.rank == first_rank) {
+            if (piecetype.e == .rook and sq.coord.rank == funcs.relative_rank(color, bitboards.rank_1)) {
                 if (
                     (pos.is_castling_allowed(color, .short) and sq.u == pos.layout.rook_start(color, .short).u) or
                     (pos.is_castling_allowed(color, .long) and sq.u == pos.layout.rook_start(color, .long).u)
                 ) {
-                    //piececode = unmoved_rook;
-                    is_castling_rook = true;
+                    piececode = unmoved_rook;
                 }
             }
-
-            const val: u8 = if (is_castling_rook) unmoved_rook | colorbit else piececode | colorbit;
+            const val: u8 = piececode | colorbit;
             const shift: u3 = if (i % 2 == 0) 0 else 4;
             pieces[i / 2] |= (val << shift);
         }
@@ -109,7 +94,7 @@ pub const ViriPosition = extern struct {
             .fullmove_number = funcs.ply_to_movenumber(pos.game_ply, pos.stm),
             .eval = eval,
             .wdl = wdl,
-            .extra = 55, // the value with the least amount of occurences i found :-)
+            .extra = 55, // The value with the least amount of occurences i found :-)
         };
     }
 
@@ -129,24 +114,18 @@ pub const ViriPosition = extern struct {
         while (iter.next()) |sq| : (i += 1) {
             const shift: u3 = if (i % 2 == 0) 0 else 4;
             const code: u8 = (self.pieces[i / 2] >> shift) & 0b1111;
-            const ptu: u3 = @intCast(code & 0b111);
-            //const colorbit: u8 = 0b1000;
-            // TODO: simplify now the colorbit drama has been resolved.
-            const piece: Piece = switch (code & 0b1111) {
-                0...5  => Piece.init(PieceType.from_int(ptu), .white),
-                8...13 => Piece.init(PieceType.from_int(ptu), .black),
-                6, 14  => blk: {
-                    // (6 == unmoved_rook) Encode the correct rook!
-                    // (14 == illegal or not?) but if we encounter these we assume a unmoved rook.
-                    const color: Color = switch (sq.coord.rank) {
-                        bitboards.rank_1 => .white,
-                        bitboards.rank_8 => .black,
-                        else => return Error.invalid_castling_rook_square,
-                    };
+            const color: Color = if (code & 0b1000 == 0) .white else .black;
+            const piececode: u3 = @intCast(code & 0b111);
+            const piece: Piece = switch (piececode) {
+                0...5  => |u| Piece.init(PieceType.from_int(u), color),
+                unmoved_rook => blk: {
+                    if (sq.coord.rank != funcs.relative_rank(color, bitboards.rank_1)) {
+                        return Error.invalid_castling_rook_square;
+                    }
                     castling_rooks[color.u] |= sq.to_bitboard();
                     break :blk Piece.init(.rook, color);
                 },
-                else => {
+                7 => {
                     return Error.invalid_piece_code;
                 },
             };
@@ -162,16 +141,12 @@ pub const ViriPosition = extern struct {
 
         // Castling.
         layoutkey.init_kings(pos.king_square(.white), pos.king_square(.black));
-        castling_rooks[Color.white.u] &= bitboards.bb_rank_1;
-        castling_rooks[Color.black.u] &= bitboards.bb_rank_8;
         iter = .init(castling_rooks[Color.white.u]);
         while (iter.next()) |sq| {
-            std.debug.assert(pos.get(sq).e == .white_rook and sq.coord.rank == 0);
             try pos.set_castling_right(&layoutkey, .white, sq.coord.file, false);
         }
         iter = .init(castling_rooks[Color.black.u]);
         while (iter.next()) |sq| {
-            std.debug.assert(pos.get(sq).e == .black_rook and sq.coord.rank == 7);
             try pos.set_castling_right(&layoutkey, .black, sq.coord.file, false);
         }
 
@@ -182,7 +157,7 @@ pub const ViriPosition = extern struct {
         if (pos.ep_square.e != .a1) {
             const proper_rank: Rank = if (pos.stm.e == .white) bitboards.rank_6 else bitboards.rank_3;
             if (pos.ep_square.coord.rank != proper_rank) {
-                return error.InvalidEpSquare;
+                return Error.invalid_ep_square;
             }
         }
 
@@ -456,5 +431,6 @@ pub const Error = error {
     invalid_piece_code,
     kings,
     pawns_on_first_or_last_rank,
+    invalid_ep_square,
     non_aligned_file_pos,
 };

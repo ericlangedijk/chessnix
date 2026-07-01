@@ -45,7 +45,7 @@ pub fn run() !void {
     try run_perfts_960(2);
     io.print("ok\n", .{});
 
-    if (true) return;
+    //if (true) return;
 
     io.print("test viri...", .{});
     try test_viri();
