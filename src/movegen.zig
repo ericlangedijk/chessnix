@@ -214,7 +214,7 @@ fn gen(pos: *const Position, comptime gen_flags: u4, noalias storage: anytype) v
         // Castling.
         if (!check and !noisy) {
             inline for (Castle.all) |ct| {
-                if (is_castling_ok_check_per_square(pos, us, ct, pins_orth)) {
+                if (is_castling_ok_iterative(pos, us, ct, pins_orth)) {
                     const movekind: u4 = comptime if (ct.e == .short) Move.castle_short else Move.castle_long;
                     const to = pos.layout.rook_start(us, ct); // king takes rook.
                     store(king_sq, to, movekind, king_us, .no_piece, storage);
@@ -442,20 +442,20 @@ inline fn is_castling_ok(pos: *const Position, comptime us: Color, comptime ct: 
 }
 
 /// Castling method 2.
-inline fn is_castling_ok_check_per_square(pos: *const Position, comptime us: Color, comptime ct: Castle, pins_orth: u64) bool {
+inline fn is_castling_ok_iterative(pos: *const Position, comptime us: Color, comptime ct: Castle, pins_orth: u64) bool {
     // Frc requires an additional rook pin check. In classic the rooks cannot be pinned.
     return
         pos.is_castling_allowed(us, ct) and
         pos.layout.empty_path(us, ct) & pos.all() == 0 and
         pins_orth & pos.layout.rook_start(us, ct).to_bitboard() == 0 and
-        is_castling_path_safe_check_per_square(pos, us, ct);
+        is_castling_path_safe_iterative(pos, us, ct);
 }
 
 fn is_castling_path_safe(pos: *const Position, comptime us: Color, comptime ct: Castle, bb_unsafe: u64) bool {
     return  pos.layout.attack_path(us, ct) & bb_unsafe == 0;
 }
 
-fn is_castling_path_safe_check_per_square(pos: *const Position, comptime us: Color, comptime ct: Castle) bool {
+fn is_castling_path_safe_iterative(pos: *const Position, comptime us: Color, comptime ct: Castle) bool {
     const them: Color = comptime us.opp();
     var iter = bitboards.iterator(pos.layout.attack_path(us, ct));
     while (iter.next()) |sq| {
