@@ -67,12 +67,12 @@ pub fn relative_rank(us: Color, rank: u3) u3 {
     return if (us.e == .white) rank else 7 - rank;
 }
 
-pub fn is_relative_rank_456(us: Color, rank: u3) bool {
-    return if (us.e == .white)
-        rank >= bitboards.rank_4 and rank <= bitboards.rank_6
-    else
-        rank >= bitboards.rank_3 and rank <= bitboards.rank_5;
-}
+// pub fn is_relative_rank_456(us: Color, rank: u3) bool {
+//     return if (us.e == .white)
+//         rank >= bitboards.rank_4 and rank <= bitboards.rank_6
+//     else
+//         rank >= bitboards.rank_3 and rank <= bitboards.rank_5;
+// }
 
 /// Relative rank 4,5,6
 pub fn outpost(comptime us: Color) u64 {
@@ -201,7 +201,6 @@ pub fn last_square_or_null(bitboard: u64) ?Square {
     return .{ .u = msb };
 }
 
-
 /// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
 pub fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
@@ -272,7 +271,7 @@ pub fn mate_to_dtm(mv: i32, stm: Color) i32 {
     return (if (white_wins) mv * 2 else -mv * 2) - @intFromBool(white_wins == white_to_move);
 }
 
-pub fn eql(input: []const u8, comptime line: []const u8) bool {
+pub fn str_eql(input: []const u8, comptime line: []const u8) bool {
     return std.mem.eql(u8, input, line);
 }
 

@@ -33,19 +33,23 @@ const temp_folder = "C:/Data/Tmp/";
 pub fn run() !void {
     lib.not_in_release();
 
-    io.print("test find move...", .{});
+    io.print("test evals... ", .{});
+    try test_evals();
+    io.print("ok\n", .{});
+
+    io.print("test find move... ", .{});
     try test_find_move();
     io.print("ok\n", .{});
 
-    io.print("test perfts...", .{});
+    io.print("test perfts... ", .{});
     try run_perfts(3, null);
     io.print("ok\n", .{});
 
-    io.print("test perfts 960...", .{});
+    io.print("test perfts 960... ", .{});
     try run_perfts_960(2);
     io.print("ok\n", .{});
 
-    //if (true) return;
+    if (true) return;
 
     io.print("test viri...", .{});
     try test_viri();
@@ -65,7 +69,15 @@ fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error {
     return err;
 }
 
-/// Test if movegen.find is without errors.
+fn test_evals() !void {
+    var pos: Position = .empty;
+    var E = @import("hce.zig").Evaluator.init();
+    for (test_positions, 0..) |str, idx| {
+        try pos.setup(str, false);
+        assert(E.evaluate(&pos) == evals[idx]);
+    }
+}
+
 fn test_find_move() !void {
     var pos: Position = .empty;
     var storage: movegen.MoveStorage = .init();
@@ -104,9 +116,12 @@ fn run_perfts(max_depth: usize, max_positions: ?usize) !void {
     var pos: Position = .empty;
     var done: usize = 0;
 
+    //var E = @import("hce.zig").Evaluator.init();
+
     for (test_positions, 0..) |str, index| {
         try pos.setup(str, false);
 
+        //lib.io.debugprint("{}, ", .{E.evaluate(&pos)});
         // TEMP EVAL OUTPUT for later test
         // var ev: hce.Evaluator = .init();
         // const e = ev.evaluate(&pos, null);
@@ -509,6 +524,14 @@ pub const test_positions: [134][]const u8 = .{
     "1B6/2r1k3/1b6/1p1pp1N1/8/R3NKP1/1p6/7r b - - 0 1 ;42;1200;44895;1202493;43888003;1137469480", // Extra.
     "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8 ;D1 44 ;D2 1486 ;D3 62379 ;D4 2103487 ;D5  89941194", // Extra: https://www.chessprogramming.org/Perft_Results.
     "R6R/3Q4/1Q4Q1/4Q3/2Q4Q/Q4Q2/pp1Q4/kBNN1KB1 w - - 0 1 ;D1 218" // Extra: Theoretical maximum number of moves.
+};
+
+const evals: [134]i32 = .{
+    30, -9, 1246, -62, -242, 693, 710, -640, -656, 1345, -1291, 605, 642, -551, -588, 28, 25, 32, 28, 30, 23, 28, 639, 655, -694, -711, 1290, -1346, 550,
+    587, -606, -643, -28, -31, -24, -28, -26, -33, -28, 8, 46, 27, -393, 527, -47, -8, -91, -448, 472, -9, 78, 864, -829, 23, 809, -884, 28, 25, -28, -31,
+    -1336, 1394, -82, -1298, 1394, 54, 164, 183, -110, -129, 40, 110, 129, -164, -183, -14, 20, -20, 27, 27, 27, 33, 21, 30, -27, -27, -27, -21, -33, -24,
+    8, 26, 30, 25, 24, 29, -263, 34, -46, -28, -24, -29, -30, -25, -317, -20, 24, 19, 30, 35, 25, 29, 29, -30, -35, -24, -19, -29, -25, -25, 18, 25, 230, 43,
+    -36, -30, -222, -12, 56, 149, -19, -392, -60, 10284,
 };
 
 pub const test_positions_960: [960][]const u8 = .{

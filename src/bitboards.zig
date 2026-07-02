@@ -23,6 +23,7 @@ pub const SquarePair = struct {
     axis: Axis = .no_axis,              // Diagonal or orthogonal or nothing.
     dist: u3 = 0,                       // Distance between the squares.
     manh: u4 = 0,                       // Manhattan distance between the squares.
+
     const empty: SquarePair = .{};
 };
 
@@ -282,6 +283,7 @@ fn compute_passed_pawn_masks_black() [Square.count]u64 {
 }
 
 fn compute_adjacent_square_masks() [Square.count]u64 {
+    // TODO: only for ep now. do them all?
     var ep: [Square.count]u64 = @splat(0);
     for (Square.all) |sq| {
         if (sq.coord.rank == rank_4 or sq.coord.rank == rank_5) {

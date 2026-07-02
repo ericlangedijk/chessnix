@@ -21,8 +21,6 @@ const bitloop = funcs.bitloop;
 const Color = types.Color;
 const PieceType = types.PieceType;
 const Piece = types.Piece;
-const Rank = types.Rank;
-const File = types.File;
 const Square = types.Square;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
@@ -179,7 +177,7 @@ pub const Position = struct {
                     for (token) |c| {
                         switch (c) {
                             '1'...'8' => {
-                                const empty_squares: u3 = @truncate(c - '0');
+                                const empty_squares: u3 = @truncate(c - '0'); // '8' -> 0
                                 file +|= empty_squares;
                             },
                             '/' => {
@@ -304,7 +302,7 @@ pub const Position = struct {
         }
     }
 
-    // TODO: test! and use the bitboards. maybe put the function in LayoutKey.
+    // TODO: test! maybe put the function in LayoutKey.
     pub fn detect_frc(self: *const Position) bool {
         const e1: Piece = self.get(.e1);
         const e8: Piece = self.get(.e8);
@@ -318,12 +316,6 @@ pub const Position = struct {
             (self.is_castling_allowed(.white, .long)  and (e1.e != .white_king or a1.e != .white_rook)) or
             (self.is_castling_allowed(.black, .short) and (e8.e != .black_king or h8.e != .black_rook)) or
             (self.is_castling_allowed(.black, .long)  and (e8.e != .black_king or a8.e != .black_rook));
-
-        // return
-        //     (self.is_castling_allowed(.white, .short) and (self.get(.e1) != .white_king and self.get(.h1).e != .white_rook)) or
-        //     (self.is_castling_allowed(.white, .long)  and (self.get(.e1) != .white_king and self.get(.a1).e != .white_rook)) or
-        //     (self.is_castling_allowed(.black, .short) and (self.get(.e8) != .black_king and self.get(.h8).e != .black_rook)) or
-        //     (self.is_castling_allowed(.black, .long)  and (self.get(.e8) != .black_king and self.get(.a8).e != .black_rook));
     }
 
     pub fn phase(self: *const Position) u8 {
@@ -1630,13 +1622,13 @@ pub const LayoutKey = packed struct {
 
     pub fn init_kings(self: *LayoutKey, white_king_sq: Square, black_king_sq: Square) void {
         if (white_king_sq.coord.rank == 0) {
-            const file: File = white_king_sq.coord.file;
+            const file: u3 = white_king_sq.coord.file;
             self.white.king = file;
             self.white.right_rook = file;
             self.white.left_rook = file;
         }
         if (black_king_sq.coord.rank == 7) {
-            const file: File = black_king_sq.coord.file;
+            const file: u3 = black_king_sq.coord.file;
             self.black.king = file;
             self.black.right_rook = file;
             self.black.left_rook = file;

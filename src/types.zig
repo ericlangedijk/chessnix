@@ -399,14 +399,9 @@ pub const Piece = packed union {
     }
 };
 
-pub const File = u3;
-pub const Rank = u3;
-
 pub const Coord = packed struct(u6) {
-    // file = x. square % 8 or square & 7 (0b000111)
-    // rank = y. square / 8 or square >> 3  (0b111000)
-    file: u3,
-    rank: u3,
+    file: u3, // file = x. square % 8 or square & 7 (0b000111)
+    rank: u3, // rank = y. square / 8 or square >> 3  (0b111000)
 };
 
 pub const Square = packed union {

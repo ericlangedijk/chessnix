@@ -1,5 +1,7 @@
 // zig fmt: off
 
+///! Here should come - as a first attempt - a Stochistic Gradient Descent implementation.
+
 const std = @import("std");
 const lib = @import("lib.zig");
 const utils = @import("utils.zig");
@@ -15,6 +17,7 @@ const PieceType = types.PieceType;
 const Square = types.Square;
 const Move = types.Move;
 const ScorePair = types.ScorePair;
+const String = utils.String;
 const Position = position.Position;
 const Evaluator = hce.Evaluator;
 const Terms = hceterms.Terms;
@@ -23,24 +26,17 @@ const src_folder = "C:/Data/chess/lichess/datasets/";
 const scorepair_count: usize = @sizeOf(hceterms.Terms) / @sizeOf(ScorePair);
 const meta: Meta = compute_scorepair_metadata();
 
-// begin tuning
-//      begin read dataset    -> random circular read
-//           begin batch
-//              begin pos
-//              end pos        -> adjust used terms
-//           end batch         -> update active terms
-//      end read dataset
-// end tuning                  -> select best data
-
 /// One learning term.
 const BatchTerm = struct {
     old: ScorePair,
     delta: ScorePair,
 };
 
+
 /// A (mutable) flat view on the hceterms.
 const terms_view: *[scorepair_count]ScorePair = @constCast(@ptrCast(hceterms.terms));
 
+var dataset_files: std.ArrayList(String(16)) = .empty;
 var rnd: utils.Random = .init(1);
 var curr_pos: Position = .empty;
 var curr_best_move: Move = .empty;
@@ -71,7 +67,8 @@ pub fn register_hce_eval_result(hce_result: ScorePair) void {
 /// Read dataset and tune the terms.
 pub fn run() !void {
     lib.only_when_tuning();
-    begin_tuning();
+    try begin_tuning();
+    defer free_resources();
 
     var file_nr: usize = 0; _ = &file_nr;
     var filename = compute_viri_filename(file_nr);
@@ -89,12 +86,12 @@ pub fn run() !void {
         begin_eval();
         curr_pos = try game.startpos.to_position();
         const chessnix_eval: i32 = evaluator.evaluate(&curr_pos);
-        const dataset_eval: i32 = game.moves.items[0].eval; // Note: the lichessdataset has just 1 move. the eval of game.startpos equals the eval of the first move.
-        curr_best_move = game.moves.items[0].move.to_move(&curr_pos);
-        std.debug.assert(dataset_eval == game.startpos.eval);
+        const dataset_eval: i32 = game.startpos.eval;
+        //curr_best_move = game.moves.items[0].move.to_move(&curr_pos);
+        //std.debug.assert(dataset_eval == game.startpos.eval);
         end_eval(chessnix_eval, dataset_eval);
         total_games_processed += 1;
-        if (total_games_processed >= 10) {
+        if (total_games_processed >= 20) {
             break :game_loop;
         }
     }
@@ -116,11 +113,16 @@ pub fn run() !void {
     // }
 }
 
-fn begin_tuning() void {
+fn begin_tuning()! void {
+    try get_dataset_files();
     for (&batch_data, 0..) |*bt, i| {
         bt.old = terms_view[i];
         bt.delta = .empty;
     }
+}
+
+fn free_resources() void {
+    dataset_files.deinit(lib.ctx.gpa);
 }
 
 fn end_tuning() !void {
@@ -213,6 +215,20 @@ fn compute_viri_filename(file_nr: usize) utils.BoundedArray(u8, 256) {
     return funcs.get_str("{s}{:0>4}.vf", .{ src_folder, file_nr });
 }
 
+pub fn get_dataset_files() !void {
+    var dir: std.fs.Dir = try std.fs.openDirAbsolute(src_folder, .{ .access_sub_paths = false, .iterate = true, .no_follow = true });
+    var walker: std.fs.Dir.Walker = try dir.walk(lib.ctx.gpa);
+    defer walker.deinit();
+    while (try walker.next()) |entry| {
+        const ext: []const u8 = std.fs.path.extension(entry.basename);
+        if (funcs.str_eql(ext, ".vf")) {
+            var ba: String(16) = .empty;
+            try ba.append_slice(entry.basename);
+            try dataset_files.append(lib.ctx.gpa, ba);
+        }
+    }
+}
+
 // --- Metadata of terms ---
 
 /// Comptime only.
@@ -258,27 +274,27 @@ fn index_of_scorepair(sp: *const ScorePair) usize {
     lib.wtf("scorepair index", .{});
 }
 
-/// OMGF
+// TODO: find a way or delete...
 const Meta = struct {
     info: [scorepair_count]ScorePairInfo,
 
-    const zig_terms_struct_info = @typeInfo(hceterms.Terms).@"struct";
-    const sizeof_scorepair: usize = @sizeOf(ScorePair);
-    const terms_field_count: usize = zig_terms_struct_info.fields.len;
+    // const zig_terms_struct_info = @typeInfo(hceterms.Terms).@"struct";
+    // const sizeof_scorepair: usize = @sizeOf(ScorePair);
+    // const terms_field_count: usize = zig_terms_struct_info.fields.len;
 
-    const terms_field_names: [terms_field_count]utils.BoundedArray(u8, 48) = blk: {
-        var names: [terms_field_count]utils.BoundedArray(u8, 48) = @splat(.empty);
-        for (zig_terms_struct_info.fields, 0..) |field, i| {
-            names[i].append_slice_assume_capacity(field.name);
-        }
-        break :blk names;
-    };
+    // const terms_field_names: [terms_field_count]utils.BoundedArray(u8, 48) = blk: {
+    //     var names: [terms_field_count]utils.BoundedArray(u8, 48) = @splat(.empty);
+    //     for (zig_terms_struct_info.fields, 0..) |field, i| {
+    //         names[i].append_slice_assume_capacity(field.name);
+    //     }
+    //     break :blk names;
+    // };
 
-    //const arrays: [
+    // //const arrays: [
 
-    const ArrayInfo = struct {
-        dimensions: utils.BoundedArray(u8, u32),
-    };
+    // const ArrayInfo = struct {
+    //     dimensions: utils.BoundedArray(u8, u32),
+    // };
 
     const ScorePairInfo = struct {
         raw_index: usize = 0,
@@ -300,13 +316,8 @@ const Meta = struct {
     // }
 };
 
-// --- Stupid printing ---
-
+// TODO: write code.
 const Printer = struct {
-
-    fn print_terms() !void {
-        try print_single_array(0, terms_view, lib.io.out);
-    }
 
     fn print_single_array(level: u8, array: []const ScorePair, writer: *std.io.Writer) std.io.Writer.Error!void {
         _ = level;

@@ -25,8 +25,6 @@ pub const Terms = extern struct {
     rook_mobility_table: [15]ScorePair,
     queen_mobility_table: [28]ScorePair,
     attack_power: [6][8]ScorePair,
-    // knight_outpost_table: [64]ScorePair,
-    // knight_outpost_is_blocking_enemy_pawn: ScorePair,
     knight_outpost_table: [2][64]ScorePair,
     bishop_outpost_table: [64]ScorePair,
     bishop_on_long_diagonal: ScorePair,
@@ -116,19 +114,6 @@ const default_terms: Terms = .{
         .{ pair(0, 0), pair(2, 12), pair(12, 23), pair(31, 28), pair(75, 11), pair(110, 6), pair(169, -15), pair(229, -62) },
         .{ pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0) }
     },
-
-    // .knight_outpost_table = .{
-    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-    //     pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
-    //     pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
-    //     pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
-    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-    //     pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0), pair(0, 0),
-    // },
-
-    // .knight_outpost_is_blocking_enemy_pawn = pair(4, 4),
 
     .knight_outpost_table = .{
         .{

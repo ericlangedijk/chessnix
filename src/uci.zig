@@ -19,7 +19,7 @@ const Tokenizer = std.mem.TokenIterator(u8, .scalar);
 
 const ctx = lib.ctx;
 const io = lib.io;
-const eql = funcs.eql; // TODO: make ascii case-insensitive.
+const eql = funcs.str_eql; // TODO: make ascii case-insensitive.
 const wtf = lib.wtf;
 
 var engine: *Engine = undefined;

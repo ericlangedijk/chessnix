@@ -19,8 +19,6 @@ const ctx = lib.ctx;
 const Color = types.Color;
 const PieceType = types.PieceType;
 const Piece = types.Piece;
-const File = types.File;
-const Rank = types.Rank;
 const Square = types.Square;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
@@ -67,11 +65,10 @@ pub const ViriPosition = extern struct {
         var iter = bitboards.iterator(occ);
         while (iter.next()) |sq| : (i += 1) {
             const piece: Piece = pos.get(sq);
-            std.debug.assert(piece.e != .no_piece);
             const piecetype: PieceType = piece.piecetype();
             const color: Color = piece.color();
             const colorbit: u8 = if (color.e == .black) 0b1000 else 0;
-            var piececode: u8 = piecetype.u;  // Value matches chessnix (except the unmoved rook encoding).
+            var piececode: u8 = piecetype.u;  // Value matches chessnix.
             // Encode castling rook.
             if (piecetype.e == .rook and sq.coord.rank == funcs.relative_rank(color, bitboards.rank_1)) {
                 if (
@@ -155,7 +152,7 @@ pub const ViriPosition = extern struct {
         pos.ep_square = if (ep_target < 64) Square.from_int(ep_target) else .a1;
         pos.stm = if (self.stm_ep_square & 0b10000000 == 0) .white else .black;
         if (pos.ep_square.e != .a1) {
-            const proper_rank: Rank = if (pos.stm.e == .white) bitboards.rank_6 else bitboards.rank_3;
+            const proper_rank: u3 = if (pos.stm.e == .white) bitboards.rank_6 else bitboards.rank_3;
             if (pos.ep_square.coord.rank != proper_rank) {
                 return Error.invalid_ep_square;
             }

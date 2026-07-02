@@ -11,6 +11,11 @@ const io = lib.io;
 const assert = std.debug.assert;
 const wtf = lib.wtf;
 
+/// An easy fixed buffer short string.
+pub fn String(comptime maxlen: u8) type {
+    return BoundedArray(u8, maxlen);
+}
+
 pub const Timer = struct {
     const Instant = std.time.Instant;
 
