@@ -153,7 +153,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        // TODO: check stage.
         pub fn next(self: *Self) ?ExtMove {
             const st: InternalStage = self.internal_stage;
             sw: switch (st) {

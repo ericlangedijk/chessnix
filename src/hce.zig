@@ -340,7 +340,7 @@ pub const Evaluator = struct {
             if (self.is_outpost(sq, us)) {
                 const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
                 const is_blocking: u1 = @intFromBool(pos.board[sq_in_front.u].is_pawn_of_color(them));
-                score.inc(terms.knight_outpost_table[is_blocking][relative_sq.u]);
+                score.inc(terms.knight_outpost_table[is_blocking][relative_sq.u - 24]);
                 if (lib.is_tuning) register(&terms.knight_outpost_table[is_blocking][relative_sq.u], 1, us, .{PieceType.knight.e, sq.e, is_blocking});
             }
         }
@@ -395,7 +395,7 @@ pub const Evaluator = struct {
 
             // Outpost.
             if (self.is_outpost(sq, us)) {
-                score.inc(terms.bishop_outpost_table[relative_sq.u]);
+                score.inc(terms.bishop_outpost_table[relative_sq.u - 24]);
                 if (lib.is_tuning) register(&terms.bishop_outpost_table[relative_sq.u], 1, us, .{PieceType.bishop.e, sq.e});
             }
         }
@@ -632,7 +632,7 @@ pub const Evaluator = struct {
 
     /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn.
     fn is_outpost(self: *Self, sq: Square, comptime us: Color) bool {
-        const them: Color = comptime us.opp();
+        const them: Color = comptime us.opp(); // TODO: maybe prefilter outpost (ranks 4,5,6) at callsite.
         const sq_bb: u64 = sq.to_bitboard();
         const safe: bool = self.pawn_attacks[us.u] & sq_bb != 0 and self.pawn_attacks[them.u] & sq_bb == 0;
         return safe and funcs.outpost(us) & sq_bb != 0;
