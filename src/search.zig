@@ -682,7 +682,7 @@ pub const Searcher = struct {
                 node.static_eval >= beta + 170 - depth * 24 and
                 pos.minor_major_count(us) != 0
             ) {
-                //self.prefetch_tt(us, pos, .empty);
+                self.prefetch_tt(us, pos, .empty);
                 const eval_reduction: i32 = @min(2, @divTrunc(node.eval - beta, 202));
                 const r: i32 = clamp(@divTrunc(depth, 4) + 3 + eval_reduction, 0, depth);
                 const next_pos: Position = self.do_nullmove(pos, us);
@@ -718,9 +718,15 @@ pub const Searcher = struct {
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
+            self.prefetch_tt(us, pos, ex);
+
             // Skip this move if we are inside singular extensions.
             if (ex.move == node.excluded_tt_move) {
                 continue :moveloop;
+            }
+
+            if (comptime lib.verifications) {
+                verify_movepicker_stage(ex, movepicker.stage);
             }
 
             const is_tt_move: bool = movepicker.stage == .tt;
@@ -1051,7 +1057,7 @@ pub const Searcher = struct {
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
-            // self.prefetch_tt(them, pos, ex);
+            self.prefetch_tt(them, pos, ex);
 
             // Skip bad noisies if we have seen a move already.
             if (moves_seen > 0 and movepicker.stage == .bad_noisy) {
@@ -1137,7 +1143,6 @@ pub const Searcher = struct {
     }
 
     fn do_move(self: *Searcher, pos: *const Position, comptime us: Color, ex: ExtMove) Position {
-        self.prefetch_tt(us, pos, ex);
         var next_pos: Position = pos.*;
         next_pos.do_move(us, ex);
         self.repetition_table[next_pos.ply_from_root] = next_pos.key;
@@ -1145,7 +1150,6 @@ pub const Searcher = struct {
     }
 
     fn do_nullmove(self: *Searcher, pos: *const Position, comptime us: Color) Position {
-        self.prefetch_tt(us, pos, .empty);
         var next_pos: Position = pos.*;
         next_pos.do_nullmove(us);
         self.repetition_table[next_pos.ply_from_root] = next_pos.key;
@@ -1220,6 +1224,26 @@ pub const Searcher = struct {
             },
         }
         return self.stopped;
+    }
+
+    fn verify_movepicker_stage(ex: ExtMove, stage: movepick.Stage) void {
+        lib.not_in_release();
+        switch (stage) {
+            .tt => {
+                //const entry: tt.Entry = self.transpositiontable.probe(pos.key, ply);
+                //lib.verify(entry.move == ex.move, "tt stage error", .{});
+            },
+            .noisy => {
+                lib.verify(ex.move.is_noisy(), "noisy stage error", .{});
+            },
+            .quiet => {
+                lib.verify(ex.move.is_quiet(), "quiet stage error", .{});
+            },
+            .bad_noisy => {
+                lib.verify(ex.move.is_capture() and !ex.move.is_promotion(), "bad_noisy stage error", .{});
+                lib.verify(ex.score <= movepick.Scores.bad_capture_max, "bad_noisy stage error", .{});
+            }
+        }
     }
 };
 

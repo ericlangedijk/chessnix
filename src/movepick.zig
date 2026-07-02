@@ -68,22 +68,10 @@ const ListMode = enum {
 };
 
 pub const Scores = struct {
-    const promotion       : i32 =  2_000_000;
-    const capture         : i32 =  1_000_000;
-    const bad_capture     : i32 = -1_000_000;
-    const bad_capture_max : i32 = -900.000;
-};
-
-/// A tiny shallow move ordering center bias.
-const move_ordering_square_bias: [Square.count]u8 = .{
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,1,1,1,1,0,0,
-    0,0,1,3,3,1,0,0,
-    0,0,1,3,3,1,0,0,
-    0,0,1,1,1,1,0,0,
-    0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,
+    pub const promotion       : i32 =  2_000_000;
+    pub const capture         : i32 =  1_000_000;
+    pub const bad_capture     : i32 = -1_000_000;
+    pub const bad_capture_max : i32 = -900.000;
 };
 
 /// There is no real staged move generation. This is a hybrid solution.
@@ -165,6 +153,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
+        // TODO: check stage.
         pub fn next(self: *Self) ?ExtMove {
             const st: InternalStage = self.internal_stage;
             sw: switch (st) {
@@ -174,9 +163,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     continue :sw .tt;
                 },
                 .tt => {
+                    self.stage = .tt;
                     self.internal_stage = .score_noisy;
                     if (self.tt_move != ExtMove.empty) {
-                        self.stage = .tt;
                         return self.tt_move;
                     }
                     continue :sw .score_noisy;
@@ -188,9 +177,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     continue :sw .noisy;
                 },
                 .noisy => {
+                    self.stage = .noisy;
                     if (self.extract_next(self.internal_move_idx, .noisies)) |ex| {
                         self.internal_move_idx += 1;
-                        self.stage = .noisy;
                         return ex;
                     }
                     self.internal_stage = .score_quiet;
@@ -203,9 +192,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     continue :sw .quiet;
                 },
                 .quiet => {
+                    self.stage = .quiet;
                     if (self.extract_next(self.internal_move_idx, .quiets)) |ex| {
                         self.internal_move_idx += 1;
-                        self.stage = .quiet;
                         return ex;
                     }
                     self.internal_stage = .bad_noisy;
@@ -213,9 +202,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     continue :sw .bad_noisy;
                 },
                 .bad_noisy => {
+                    self.stage = .bad_noisy;
                     if (self.extract_next(self.internal_move_idx, .bad_noisies)) |ex| {
                         self.internal_move_idx += 1;
-                        self.stage = .bad_noisy;
                         return ex;
                     }
                     return null;
@@ -312,7 +301,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             // Score a quiet move.
             else if (listmode == .quiets) {
                 ex.score += hist.get_quiet_score(ex.*, self.node.ply, &self.searcher.nodes);
-                ex.score += move_ordering_square_bias[ex.move.to.u];
                 if (ex.move.is_castle()) {
                     ex.score += 1;
                 }
@@ -342,7 +330,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
 
             // If the best noisy score is a bad capture, we are done and skip to the next stage (quiets).
-            if (listmode == .noisies and extmoves[best_idx].score < Scores.bad_capture_max) {
+            if (listmode == .noisies and extmoves[best_idx].score <= Scores.bad_capture_max) {
                 return null;
             }
 
