@@ -16,7 +16,6 @@ const wtf = lib.wtf;
 const popcnt = funcs.popcnt;
 const pawns_shift = funcs.pawns_shift;
 const pawn_from = funcs.pawn_from;
-const bitloop = funcs.bitloop;
 
 const Color = types.Color;
 const PieceType = types.PieceType;
@@ -376,8 +375,8 @@ pub const Position = struct {
         black_nonpawnkey.* = 0;
         minorkey.* = 0;
         majorkey.* = 0;
-        var occ: u64 = self.all();
-        while (bitloop(&occ)) |sq| {
+        var iter = bitboards.iterator(self.all());
+        while (iter.next()) |sq| {
             const pc = self.get(sq);
             const z_key: u64 = zobrist.piece_square(pc, sq);
             key.* ^= z_key;
@@ -1166,12 +1165,13 @@ pub const Position = struct {
         // us (checks and pins).
         {
             const bb_occ_without_us: u64 = bb_all ^ self.by_color(us);
-            var candidate_slider_attackers: u64 =
+            const candidate_slider_attackers: u64 =
                 (attacks.get_bishop_attacks(our_king_sq, bb_occ_without_us) & self.queens_bishops(them)) |
                 (attacks.get_rook_attacks(our_king_sq, bb_occ_without_us) & self.queens_rooks(them));
 
             // Our pins and their checks.
-            while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
+            var iter = bitboards.iterator(candidate_slider_attackers);
+            while (iter.next()) |attacker_sq| {
                 const pair: *const bitboards.SquarePair = bitboards.get_squarepair(our_king_sq, attacker_sq);
                 const bb_ray: u64 = pair.ray & bb_us;
                 // We have a slider checker when there is nothing in between.
@@ -1194,12 +1194,13 @@ pub const Position = struct {
         // them (pins only).
         // {
         //     const bb_occ_without_them: u64 = bb_all ^ self.by_color(them);
-        //     var candidate_slider_attackers: u64 =
+        //     const candidate_slider_attackers: u64 =
         //         (attacks.get_bishop_attacks(their_king_sq, bb_occ_without_them) & self.queens_bishops(us)) |
         //         (attacks.get_rook_attacks(their_king_sq, bb_occ_without_them) & self.queens_rooks(us));
 
         //     // Our pins and their checks.
-        //     while (bitloop(&candidate_slider_attackers)) |attacker_sq| {
+        //     var iter = bitboards.iterator(candidate_slider_attackers);
+        //     while (iter.next()) |attacker_sq| {
         //         const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
         //         const bb_ray: u64 = pair.ray & bb_them;
         //         // We have a pin when exactly 1 bit is set. There is one piece in between.
@@ -1260,6 +1261,7 @@ pub const Position = struct {
 
     pub fn attacks_by_for_occupation(self: *const Position, comptime attacker: Color, occ: u64) u64 {
         var att: u64 = 0;
+        var iter: bitboards.BitboardIterator = undefined;
 
         // Pawns.
         const their_pawns = self.pawns(attacker);
@@ -1268,20 +1270,20 @@ pub const Position = struct {
         }
 
         // Knights.
-        var their_knights = self.knights(attacker);
-        while (bitloop(&their_knights)) |from|{
+        iter = .init(self.knights(attacker));
+        while (iter.next()) |from| {
             att |= attacks.get_knight_attacks(from);
         }
 
         // Diagonal sliders.
-        var their_diag_sliders = self.queens_bishops(attacker);
-        while (bitloop(&their_diag_sliders)) |from|{
+        iter = .init(self.queens_bishops(attacker));
+        while (iter.next()) |from| {
             att |= attacks.get_bishop_attacks(from, occ);
         }
 
         // Orthogonal sliders.
-        var their_orth_sliders = self.queens_rooks(attacker);
-        while (bitloop(&their_orth_sliders)) |from|{
+        iter = .init(self.queens_rooks(attacker));
+        while (iter.next()) |from| {
             att |= attacks.get_rook_attacks(from, occ);
         }
 
@@ -1517,8 +1519,9 @@ pub const Position = struct {
         io.print_buffered("fen: {f}\n", .{ self });
         io.print_buffered("checkers: ", .{});
         if (self.checkmask != 0) {
-            var bb: u64 = self.checkmask & self.by_color(self.stm.opp());
-            while (bitloop(&bb)) |sq| {
+            const bb = self.checkmask & self.by_color(self.stm.opp());
+            var iter = bitboards.iterator(bb);
+            while (iter.next()) |sq| {
                 io.print_buffered("{t} ", .{sq.e});
             }
         }

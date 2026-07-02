@@ -28,7 +28,6 @@ const LayoutKey = position.LayoutKey;
 const Position = position.Position;
 
 const popcnt = funcs.popcnt;
-const bitloop = funcs.bitloop;
 
 comptime {
     std.debug.assert(@sizeOf(ViriPosition) == 32);
