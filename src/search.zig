@@ -1107,7 +1107,6 @@ pub const Searcher = struct {
         return best_score;
     }
 
-    // #NOTE: abandoned. not yet
     // Pull the TT entry of the position into the cpu cache. Memory access speedup.
     // Assumes the move is not yet done on the board.
     // For a null move pass an empty move.
