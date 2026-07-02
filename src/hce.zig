@@ -20,7 +20,6 @@ const hceterms = @import("hceterms.zig");
 const endgame = @import("endgame.zig");
 
 const io = lib.io;
-
 const popcnt = funcs.popcnt;
 
 const ScorePair = types.ScorePair;
@@ -38,10 +37,10 @@ const terms = hceterms.terms;
 const ScorePairPtr = if (lib.is_tuning) *ScorePair else *const ScorePair;
 const hcetuner = if (lib.is_tuning) @import("hcetuner.zig") else void;
 
-const king_areas_white: [Square.count]u64 = compute_king_areas_white();
-const king_areas_black: [Square.count]u64 = compute_king_areas_black();
-const king_pawnstorm_areas_white: [Square.count]u64 = compute_king_pawnstorm_areas_white();
-const king_pawnstorm_areas_black: [Square.count]u64 = compute_king_pawnstorm_areas_black();
+pub const king_areas_white: [Square.count]u64 = compute_king_areas_white();
+pub const king_areas_black: [Square.count]u64 = compute_king_areas_black();
+pub const king_pawnstorm_areas_white: [Square.count]u64 = compute_king_pawnstorm_areas_white();
+pub const king_pawnstorm_areas_black: [Square.count]u64 = compute_king_pawnstorm_areas_black();
 
 pub const Evaluator = struct {
     const Self = @This();
@@ -71,10 +70,15 @@ pub const Evaluator = struct {
     queen_attacks: [Color.count]u64,
     /// All king attacks.
     king_attacks: [Color.count]u64,
-    /// The attacks combined (updated on the fly) **except** king attacks.
-    all_attacks: [Color.count]u64,
     /// All attacks to the enemy king area (updated on the fly).
     attack_power: [Color.count]ScorePair,
+
+    pub const Mode = enum(u1) {
+        /// For engine we return a score (stm perspective) with endgame scaling applied.
+        scaled = 0,
+        /// For tuning we return an absolute score (white's perspective) without endgame scaling.
+        unscaled = 1,
+    };
 
     pub fn init() Self {
         return .{
@@ -91,33 +95,33 @@ pub const Evaluator = struct {
             .rook_attacks = .{ 0, 0 },
             .queen_attacks = .{ 0, 0 },
             .king_attacks = .{ 0, 0 },
-            .all_attacks = .{ 0, 0},
             .attack_power = .{ .empty, .empty },
         };
     }
 
-    pub fn evaluate(self: *Self, pos: *const Position) i32 {
+    pub fn evaluate(self: *Self, pos: *const Position, comptime mode: Mode) i32 {
         // Init stuff.
         self.pos = pos;
 
-        // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner.
+        // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner. // TODO: this is gonna change.
         self.pins = pos.our_pins(pos.stm) & pos.by_color(pos.stm);
         self.has_pawns = .{ pos.pawns(.white) != 0, pos.pawns(.black) != 0};
 
-        self.king_squares = .{ pos.king_square(.white), pos.king_square(.black) };
+        const wk: Square = pos.king_square(.white);
+        const bk: Square= pos.king_square(.black);
 
-        self.king_areas[0] = king_areas_white[self.king_squares[0].u];
-        self.king_areas[1] = king_areas_black[self.king_squares[1].u];
+        self.king_squares = .{ wk, bk };
 
-        self.pawn_storm_areas[0] = king_pawnstorm_areas_white[self.king_squares[0].u];
-        self.pawn_storm_areas[1] = king_pawnstorm_areas_black[self.king_squares[1].u];
+        self.king_areas[Color.white.u] = king_areas_white[wk.u];
+        self.king_areas[Color.black.u] = king_areas_black[bk.u];
+
+        self.pawn_storm_areas[Color.white.u] = king_pawnstorm_areas_white[wk.u];
+        self.pawn_storm_areas[Color.black.u] = king_pawnstorm_areas_black[bk.u];
 
         self.pawn_attacks = .{
             funcs.pawns_attacks(pos.pawns(.white), .white),
             funcs.pawns_attacks(pos.pawns(.black), .black),
         };
-
-        self.all_attacks = self.pawn_attacks;
 
         self.mobility_areas = .{
             ~(pos.by_color(.white) | self.pawn_attacks[Color.black.u]),
@@ -129,8 +133,8 @@ pub const Evaluator = struct {
         self.rook_attacks = @splat(0);
         self.queen_attacks = @splat(0);
         self.king_attacks = .{
-            attacks.get_king_attacks(self.king_squares[0]),
-            attacks.get_king_attacks(self.king_squares[1]),
+            attacks.get_king_attacks(wk),
+            attacks.get_king_attacks(bk),
         };
         self.attack_power = @splat(ScorePair.empty);
 
@@ -172,8 +176,10 @@ pub const Evaluator = struct {
         var result: i32 = types.phased_score(pos.phase(), score);
 
         // Don't scale when tuning. Return absolute result.
-        if (lib.is_tuning) {
-            hcetuner.register_hce_eval_result(score);
+        if (mode == .unscaled) {
+            if (lib.is_tuning) {
+                hcetuner.register_hce_eval_result(score);
+            }
             return result;
         }
 
@@ -322,7 +328,6 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.knight_attacks[us.u] |= legal_moves;
-            self.all_attacks[us.u] |= legal_moves;
 
             // King attack power.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -379,7 +384,6 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.bishop_attacks[us.u] |= moves;
-            self.all_attacks[us.u] |= moves;
 
             // King attack power.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -424,7 +428,6 @@ pub const Evaluator = struct {
 
             // Update attacks.
             self.rook_attacks[us.u] |= legal_moves;
-            self.all_attacks[us.u] |= legal_moves;
 
             // King attack power.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -469,7 +472,6 @@ pub const Evaluator = struct {
 
             // Update
             self.queen_attacks[us.u] |= moves;
-            self.all_attacks[us.u] |= moves;
 
             // King attack power.
             const enemy_king_attacks: u64 = mobility & self.king_areas[them.u];
@@ -534,8 +536,8 @@ pub const Evaluator = struct {
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
         const our_pieces: u64 = pos.by_color(us);
-        const our_attacks: u64 = self.all_attacks[us.u];
-        const their_attacks: u64 = self.all_attacks[them.u];
+        const our_attacks: u64 = self.pawn_attacks[us.u] | self.knight_attacks[us.u] | self.bishop_attacks[us.u] | self.rook_attacks[us.u] | self.queen_attacks[us.u];
+        const their_attacks: u64 = self.pawn_attacks[them.u] | self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
 
         var score: ScorePair = .empty;
         var iter: bitboards.BitboardIterator = undefined;
@@ -576,7 +578,7 @@ pub const Evaluator = struct {
             if (lib.is_tuning) register(&terms.threatened_by_rook_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.rook.e, threatened_piece.e, is_defended });
         }
 
-        // Our pawn push threats. // TODO: also use the double pawn push.
+        // Our pawn push threats. // TODO: #future also use the double pawn push.
         // Get the squares defended by the enemy, excluding squares that are defended by our pawns and not attacked by their pawns
         const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
         const their_protected_squares: u64 = self.pawn_attacks[them.u] | (their_piece_attacks & ~self.pawn_attacks[us.u]);
@@ -715,7 +717,7 @@ pub const Evaluator = struct {
         const area: u64 = if (attacker.e == .black) king_pawnstorm_areas_white[their_king_sq.u] else king_pawnstorm_areas_black[their_king_sq.u];
         const ok: bool = funcs.contains_square(area, our_pawn_sq);
         if (!ok) {
-            lib.verify(ok, "verify_king_pawn_storm_area", .{});
+            lib.verify(ok, "verify_king_pawn_storm_area (attacker {t}): pawn on {t} is not inside pawnstormarea of {t}", .{ attacker.e, our_pawn_sq.e, their_king_sq.e });
         }
     }
 

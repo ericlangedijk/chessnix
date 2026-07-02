@@ -32,6 +32,10 @@ const BatchTerm = struct {
     delta: ScorePair,
 };
 
+const Status = struct {
+    file_idx: usize,
+    pos_idx: usize,
+};
 
 /// A (mutable) flat view on the hceterms.
 const terms_view: *[scorepair_count]ScorePair = @constCast(@ptrCast(hceterms.terms));
@@ -85,7 +89,7 @@ pub fn run() !void {
         // Evaluate one position.
         begin_eval();
         curr_pos = try game.startpos.to_position();
-        const chessnix_eval: i32 = evaluator.evaluate(&curr_pos);
+        const chessnix_eval: i32 = evaluator.evaluate(&curr_pos, .unscaled);
         const dataset_eval: i32 = game.startpos.eval;
         //curr_best_move = game.moves.items[0].move.to_move(&curr_pos);
         //std.debug.assert(dataset_eval == game.startpos.eval);

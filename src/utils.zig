@@ -128,6 +128,7 @@ pub const FileReader = struct {
         ctx.gpa.free(self.buf);
     }
 
+    // TODO: remove null-return?
     pub fn readline(self: *FileReader) !?[]const u8 {
         const line = self.rd.interface.takeDelimiterInclusive('\n') catch |err| {
             return if (err == std.io.Reader.DelimiterError.EndOfStream) null else err;

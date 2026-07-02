@@ -122,7 +122,7 @@ fn compute_viri_filename(file_nr: usize) []u8 {
 pub fn convert_lichess_dataset_to_viri() !void {
     // In debug mode only generate a small amount.
     const gpa = ctx.gpa;
-    const max: usize = if (lib.is_debug) 10000 else 100_000_000;
+    const max: ?usize = if (lib.is_debug) 10000 else null;//100_000_000;
     const max_lines_per_file: usize = if (lib.is_debug) 1000 else 1_000_000;
 
     var timer: utils.Timer = .start();
@@ -157,7 +157,8 @@ pub fn convert_lichess_dataset_to_viri() !void {
     read_loop: while (true) {
         const line = reader.readline() catch break :read_loop;
         if (line == null) {
-            continue;
+            break :read_loop;
+            //continue; TODO: this hangs on end-of-file.
         }
         stats.positions_processed += 1;
         const line_len: usize = line.?.len;
@@ -232,8 +233,10 @@ pub fn convert_lichess_dataset_to_viri() !void {
             stats.min_eval = @min(stats.min_eval, rec.cp);
             stats.by_stm_count[pos.stm.u] += 1;
             // Ready?
-            if (stats.positions_written >= max) {
-                break;
+            if (max) |m| {
+                if (stats.positions_written >= m) {
+                    break;
+                }
             }
             // Create next file.
             if (file_lines_written >= max_lines_per_file) {
@@ -244,6 +247,7 @@ pub fn convert_lichess_dataset_to_viri() !void {
                 viri_writer = try .init(viri_filename, 4096);
             }
         }
+
         // Some visual feedback of the progress.
         if (timer.elapsed_ms() > 1000) {
             const perc = funcs.percent(stats.source_filesize, sum_line_lengths);

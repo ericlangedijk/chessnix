@@ -283,7 +283,7 @@ const TTY = struct {
 
     fn eval() void {
         var ev: hce.Evaluator = .init();
-        const e = ev.evaluate(&engine.pos);
+        const e = ev.evaluate(&engine.pos, .scaled);
         io.print("eval: {}\n", .{ e });
     }
 

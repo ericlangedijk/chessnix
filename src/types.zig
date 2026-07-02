@@ -14,6 +14,11 @@ const io = lib.io;
 
 const Castling = position.Castling;
 
+comptime {
+    if (@sizeOf(Move) != 2) @compileError("Move size");
+    if (@sizeOf(ExtMove) != 8) @compileError("ExtMove size");
+}
+
 /// Win Draw Loss
 pub const WDL = packed union {
     e: E,
@@ -858,25 +863,21 @@ pub const Move = packed struct(u16) {
 };
 
 /// Extended move for the engine.
-/// - `move`, `piece`, `captured`, `gen_order` are set during move generation.
-/// - `score`, `is_tt_move`, `is_bad_capture` are set during search by the movepicker.
+/// - `move`, `piece`, `captured` are set during move generation.
+/// - `score` is set during search by the movepicker.
 pub const ExtMove = packed struct(u64) {
     move: Move,
     piece: Piece,
     captured: Piece,
+    alignment_padding: u8,
     score: i32,
-    is_tt_move: bool, // TODO: i think it is better to deduce this from movepicker state
-    is_bad_capture: bool, // TODO: i think it is better to deduce this from movepicker state
-    padding: u6,
 
     pub const empty: ExtMove = .{
         .move = .empty,
         .piece = .no_piece,
         .captured = .no_piece,
+        .alignment_padding = 0,
         .score = 0,
-        .is_tt_move = false,
-        .is_bad_capture = false,
-        .padding = 0,
     };
 
     pub fn init(from: Square, to: Square, kind: u4, piece: Piece, captured: Piece) ExtMove {
@@ -884,10 +885,8 @@ pub const ExtMove = packed struct(u64) {
             .move = .{ .from = from, .to = to, .kind = kind },
             .piece = piece,
             .captured = captured,
+            .alignment_padding = 0,
             .score = 0,
-            .is_tt_move = false,
-            .is_bad_capture = false,
-            .padding = 0,
         };
     }
 
@@ -896,10 +895,8 @@ pub const ExtMove = packed struct(u64) {
             .move = move,
             .piece = piece,
             .captured = captured,
+            .alignment_padding = 0,
             .score = 0,
-            .is_tt_move = false,
-            .is_bad_capture = false,
-            .padding = 0,
         };
     }
 };

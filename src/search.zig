@@ -718,13 +718,12 @@ pub const Searcher = struct {
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
-            //self.prefetch_tt(us, pos, ex);
-
             // Skip this move if we are inside singular extensions.
             if (ex.move == node.excluded_tt_move) {
                 continue :moveloop;
             }
 
+            const is_tt_move: bool = movepicker.stage == .tt;
             const is_quiet_move: bool = ex.move.is_quiet();
             const is_capture_move: bool = ex.move.is_capture();
             const quiet_history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else 0;
@@ -768,7 +767,7 @@ pub const Searcher = struct {
             reduction = 0;
 
             // Singular Extensions (se).
-            if (!is_root and !is_singular_extension and depth >= 8 and ex.is_tt_move) {
+            if (!is_root and !is_singular_extension and depth >= 8 and is_tt_move) {
                 const accurate_tt_score: bool = tt_entry.flags.bound != .alpha and tt_entry.depth + 4 >= depth and !is_matescore(tt_entry.score);
                 if (accurate_tt_score) {
                     node.excluded_tt_move = ex.move;
@@ -893,7 +892,6 @@ pub const Searcher = struct {
             // Keep track of how many nodes we spent on this root move. Only in tournament situation.
             if (is_root) {
                 self.nodes_spent[ex.move.from_to()] += self.stats.nodes - nodes_before_search;
-                //self.update_nodes_spent(ex.move, self.stats.nodes - nodes_before_search);
             }
 
             // Better move found.
@@ -1056,7 +1054,7 @@ pub const Searcher = struct {
             // self.prefetch_tt(them, pos, ex);
 
             // Skip bad noisies if we have seen a move already.
-            if (moves_seen > 0 and ex.is_bad_capture) {
+            if (moves_seen > 0 and movepicker.stage == .bad_noisy) {
                 break :moveloop;
             }
 
@@ -1116,7 +1114,7 @@ pub const Searcher = struct {
 
     /// Only call evaluate when not in check (or the max search depth has been reached).
     fn evaluate(self: *Searcher, pos: *const Position) i32 {
-        return self.evaluator.evaluate(pos);
+        return self.evaluator.evaluate(pos, .scaled);
     }
 
     /// Apply correction history.

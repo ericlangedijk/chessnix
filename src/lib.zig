@@ -39,12 +39,12 @@ pub const Program = enum {
     lichess_dataset_conversion,
 };
 
-//pub const program: Program = .uci;
-pub const program: Program = .hcetuner;
-// pub const program: Program = .lichess_dataset_conversion;
+pub const program: Program = .uci;
+//pub const program: Program = .hcetuner;
+//pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";
-pub const builddate = "2026-06-29";
+pub const builddate = "2026-07-02";
 pub const is_tuning: bool = program == .hcetuner;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;

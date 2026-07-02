@@ -34,10 +34,8 @@ pub const GenType = enum {
     quiescence,
 };
 
-// TODO: make packed union
-
-// The current stage of the movepicker.
-pub const Stage = enum {
+// The current internal stage of the movepicker.
+pub const InternalStage = enum {
     /// Generate all moves, putting them in the correct list. (fallthrough).
     generate,
     /// The first move to consider is a tt-move.
@@ -54,6 +52,14 @@ pub const Stage = enum {
     bad_noisy,
 };
 
+/// Only valid after extracting a move.
+pub const Stage = enum {
+    tt,
+    noisy,
+    quiet,
+    bad_noisy,
+};
+
 /// Depending on the stage we have to select a list to pick from.
 const ListMode = enum {
     noisies,
@@ -61,10 +67,11 @@ const ListMode = enum {
     bad_noisies,
 };
 
-const Scores = struct {
-    const promotion    : i32 =  2_000_000;
-    const capture      : i32 =  1_000_000;
-    const bad_capture  : i32 = -1_000_000;
+pub const Scores = struct {
+    const promotion       : i32 =  2_000_000;
+    const capture         : i32 =  1_000_000;
+    const bad_capture     : i32 = -1_000_000;
+    const bad_capture_max : i32 = -900.000;
 };
 
 /// A tiny shallow move ordering center bias.
@@ -79,8 +86,8 @@ const move_ordering_square_bias: [Square.count]u8 = .{
     0,0,0,0,0,0,0,0,
 };
 
-/// There is no staged move generation (which is much slower).
-/// Instead we generate all moves and put them in the correct list during search.
+/// There is no real staged move generation. This is a hybrid solution.
+/// We generate all moves in one go and put them in the correct list.
 /// Bad noisy moves are added during the scoring of noisy moves. Extracting uses some tricky scheme.
 pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
@@ -92,22 +99,24 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         const max_quiets: u8 = if (gentype == .search) 224 else 128;
         const max_noisies = types.max_noisy_count;
 
-        /// The current stage.
+        /// The current private stage. **Not** usable for the caller.
+        internal_stage: InternalStage,
+        /// Only valid when extracting moves. It reflects the type of move we last extracted.
         stage: Stage,
         /// Reference to the position (on the stack during search).
         pos: *const Position,
-        /// A backlink to the searcher to access history and nodes.
+        /// Reference to the searcher to access history and nodes.
         searcher: *const Searcher,
-        /// The current node in the search.
+        /// Reference to the current node in the searcher.
         node: *const Node,
         /// The init parameter.
         input_tt_move: Move,
         /// Filled during move generation.
         tt_move: ExtMove,
-        /// Only valid after the generate stage.
+        /// Only valid after move generation.
         move_count: u8,
-        /// Used for looping through the current move list.
-        move_idx: u8,
+        /// Used for looping through the currently active move list.
+        internal_move_idx: u8,
         /// Noisy move list.
         noisies: ExtMoveList(max_noisies),
         /// Quiet move list.
@@ -117,14 +126,15 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         pub fn init(pos: *const Position, searcher: *const Searcher, node: *const Node, tt_move: Move) Self {
             return .{
-                .stage = .generate,
+                .internal_stage = .generate,
+                .stage = .tt,
                 .pos = pos,
                 .searcher = searcher,
                 .node = node,
                 .input_tt_move = tt_move,
                 .tt_move = .empty,
                 .move_count = 0,
-                .move_idx = 0,
+                .internal_move_idx = 0,
                 .noisies = .init(),
                 .quiets = .init(),
                 .bad_noisies = .init(),
@@ -134,7 +144,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         /// Required function for movegen.
         pub fn reset(self: *Self) void {
             self.move_count = 0;
-            self.move_idx = 0;
+            self.internal_move_idx = 0;
             self.noisies.count = 0;
             self.quiets.count = 0;
             self.bad_noisies.count = 0;
@@ -146,7 +156,6 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             // Copy
             if (extmove.move == self.input_tt_move) {
                 self.tt_move = extmove;
-                self.tt_move.is_tt_move = true;
             }
             else if (extmove.move.is_noisy()) {
                 self.noisies.add(extmove);
@@ -157,52 +166,56 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         }
 
         pub fn next(self: *Self) ?ExtMove {
-            const st: Stage = self.stage;
+            const st: InternalStage = self.internal_stage;
             sw: switch (st) {
                 .generate => {
-                    self.stage = .tt;
+                    self.internal_stage = .tt;
                     self.generate_moves();
                     continue :sw .tt;
                 },
                 .tt => {
-                    self.stage = .score_noisy;
+                    self.internal_stage = .score_noisy;
                     if (self.tt_move != ExtMove.empty) {
+                        self.stage = .tt;
                         return self.tt_move;
                     }
                     continue :sw .score_noisy;
                 },
                 .score_noisy => {
-                    self.stage = .noisy;
-                    self.move_idx = 0;
+                    self.internal_stage = .noisy;
+                    self.internal_move_idx = 0;
                     self.score_moves(.noisies);
                     continue :sw .noisy;
                 },
                 .noisy => {
-                    if (self.extract_next(self.move_idx, .noisies)) |ex| {
-                        self.move_idx += 1;
+                    if (self.extract_next(self.internal_move_idx, .noisies)) |ex| {
+                        self.internal_move_idx += 1;
+                        self.stage = .noisy;
                         return ex;
                     }
-                    self.stage = .score_quiet;
+                    self.internal_stage = .score_quiet;
                     continue :sw .score_quiet;
                 },
                 .score_quiet => {
-                    self.stage = .quiet;
-                    self.move_idx = 0;
+                    self.internal_stage = .quiet;
+                    self.internal_move_idx = 0;
                     self.score_moves(.quiets);
                     continue :sw .quiet;
                 },
                 .quiet => {
-                    if (self.extract_next(self.move_idx, .quiets)) |ex| {
-                        self.move_idx += 1;
+                    if (self.extract_next(self.internal_move_idx, .quiets)) |ex| {
+                        self.internal_move_idx += 1;
+                        self.stage = .quiet;
                         return ex;
                     }
-                    self.stage = .bad_noisy;
-                    self.move_idx = 0;
+                    self.internal_stage = .bad_noisy;
+                    self.internal_move_idx = 0;
                     continue :sw .bad_noisy;
                 },
                 .bad_noisy => {
-                    if (self.extract_next(self.move_idx, .bad_noisies)) |ex| {
-                        self.move_idx += 1;
+                    if (self.extract_next(self.internal_move_idx, .bad_noisies)) |ex| {
+                        self.internal_move_idx += 1;
+                        self.stage = .bad_noisy;
                         return ex;
                     }
                     return null;
@@ -212,9 +225,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         /// Called during search.
         pub fn skip_quiets(self: *Self) void {
-            if (self.stage == .quiet) {
-                self.stage = .bad_noisy;
-                self.move_idx = 0;
+            if (self.internal_stage == .quiet) {
+                self.internal_stage = .bad_noisy;
+                self.internal_move_idx = 0;
             }
         }
 
@@ -235,7 +248,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
         }
 
-        /// Set the score and is_bad_capture flag.
+        /// Set the score.
         fn score_move(self: *Self, ex: *ExtMove, comptime listmode: ListMode) void {
             if (comptime lib.is_paranoid) {
                 assert(listmode != .bad_noisies);
@@ -254,8 +267,8 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
                 switch (ex.move.kind) {
                     Move.capture => {
-                        ex.is_bad_capture = !hce.see(pos, ex.move, 0);
-                        if (ex.is_bad_capture) {
+                        const is_bad_capture: bool = !hce.see(pos, ex.move, 0);
+                        if (is_bad_capture) {
                             ex.score += Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         }
                         else {
@@ -264,7 +277,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         ex.score += hist.get_capture_score(ex.*);
 
                         // Right here, when scoring is complete, we add a bad capture move to the bad noisy moves.
-                        if (ex.is_bad_capture) {
+                        if (is_bad_capture) {
                             self.bad_noisies.add(ex.*);
                         }
                     },
@@ -329,7 +342,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
 
             // If the best noisy score is a bad capture, we are done and skip to the next stage (quiets).
-            if (listmode == .noisies and extmoves[best_idx].is_bad_capture) {
+            if (listmode == .noisies and extmoves[best_idx].score < Scores.bad_capture_max) {
                 return null;
             }
 
