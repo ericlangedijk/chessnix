@@ -67,13 +67,6 @@ pub fn relative_rank(us: Color, rank: u3) u3 {
     return if (us.e == .white) rank else 7 - rank;
 }
 
-// pub fn is_relative_rank_456(us: Color, rank: u3) bool {
-//     return if (us.e == .white)
-//         rank >= bitboards.rank_4 and rank <= bitboards.rank_6
-//     else
-//         rank >= bitboards.rank_3 and rank <= bitboards.rank_5;
-// }
-
 /// Relative rank 4,5,6
 pub fn outpost(comptime us: Color) u64 {
     return if (us.e == .white) bitboards.bb_rank_4 | bitboards.bb_rank_5 | bitboards.bb_rank_6 else bitboards.bb_rank_3 | bitboards.bb_rank_4 | bitboards.bb_rank_5;
@@ -88,7 +81,7 @@ pub fn relative_rank_bb(us: Color, rank: u3) u64 {
 }
 
 pub fn relative_rank_7(us: Color) u3 {
-    return if (us.e == .white) bitboards.rank_7 else bitboards.rank_2;
+    return if (us.e == .white) types.rank_7 else types.rank_2;
 }
 
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64 {

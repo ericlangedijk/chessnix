@@ -166,8 +166,8 @@ pub const Position = struct {
 
         var layout_key: LayoutKey = .empty;
         var parse_state: u8 = state_board;
-        var rank: u3 = bitboards.rank_8;
-        var file: u3 = bitboards.file_a;
+        var rank: u3 = types.rank_8;
+        var file: u3 = types.file_a;
         var tokenizer = std.mem.tokenizeScalar(u8, fen_str, ' ');
 
         outer: while (tokenizer.next()) |token| : (parse_state += 1) {
@@ -181,7 +181,7 @@ pub const Position = struct {
                             },
                             '/' => {
                                 rank -|= 1;
-                                file = bitboards.file_a;
+                                file = types.file_a;
                             },
                             else => {
                                 const pc: Piece = try .from_char(c);
@@ -259,7 +259,7 @@ pub const Position = struct {
             return Error.CastlingLogic;
         }
 
-        if (king_sq.coord.file == bitboards.file_a or king_sq.coord.file == bitboards.file_h) {
+        if (king_sq.coord.file == types.file_a or king_sq.coord.file == types.file_h) {
             return Error.CastlingLogic;
         }
 
@@ -614,12 +614,12 @@ pub const Position = struct {
     /// Only used for initializing a fen.
     fn is_usable_ep_square(self: *const Position, ep: Square) bool {
         const rank: u3 = ep.coord.rank;
-        if (rank == bitboards.rank_3) {
+        if (rank == types.rank_3) {
             const w_pawn_sq = ep.add(8);
             const requirements: bool = self.board[w_pawn_sq.u].e == .white_pawn and self.board[ep.u].e == .no_piece and self.board[ep.u - 8].e == .no_piece;
             return requirements and (bitboards.adjacent_square_masks[w_pawn_sq.u] & self.pawns(.black) != 0);
         }
-        else if (rank == bitboards.rank_6) {
+        else if (rank == types.rank_6) {
             const b_pawn_sq = ep.sub(8);
             const requirements:  bool = self.board[b_pawn_sq.u].e == .black_pawn and self.board[ep.u].e == .no_piece and self.board[ep.u + 8].e == .no_piece;
             return requirements and (bitboards.adjacent_square_masks[b_pawn_sq.u] & self.pawns(.white) != 0);
@@ -1664,18 +1664,18 @@ pub const LayoutKey = packed struct {
         return
             self == classic or
             blk: {
-                // self.white.king == bitboards.file_e and
-                // self.black.king == bitboards.file_e and
+                // self.white.king == types.file_e and
+                // self.black.king == types.file_e and
                 // blk: {
                 const ws: bool = self.is_set(.white, .short);
                 const wl: bool = self.is_set(.white, .long);
                 const bs: bool = self.is_set(.black, .short);
                 const bl: bool = self.is_set(.black, .long);
                 break :blk
-                    (!ws or (ws and self.white.king == bitboards.file_e and self.rook_file(.white, .short) == bitboards.file_h)) and
-                    (!wl or (wl and self.white.king == bitboards.file_e and self.rook_file(.white, .long) == bitboards.file_a)) and
-                    (!bs or (bs and self.black.king == bitboards.file_e and self.rook_file(.black, .short) == bitboards.file_a)) and
-                    (!bl or (bl and self.black.king == bitboards.file_e and self.rook_file(.black, .long) == bitboards.file_h));
+                    (!ws or (ws and self.white.king == types.file_e and self.rook_file(.white, .short) == types.file_h)) and
+                    (!wl or (wl and self.white.king == types.file_e and self.rook_file(.white, .long)  == types.file_a)) and
+                    (!bs or (bs and self.black.king == types.file_e and self.rook_file(.black, .short) == types.file_a)) and
+                    (!bl or (bl and self.black.king == types.file_e and self.rook_file(.black, .long)  == types.file_h));
             };
     }
 

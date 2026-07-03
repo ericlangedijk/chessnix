@@ -404,6 +404,27 @@ pub const Piece = packed union {
     }
 };
 
+pub const rank_1 : u3 = 0;
+pub const rank_2 : u3 = 1;
+pub const rank_3 : u3 = 2;
+pub const rank_4 : u3 = 3;
+pub const rank_5 : u3 = 4;
+pub const rank_6 : u3 = 5;
+pub const rank_7 : u3 = 6;
+pub const rank_8 : u3 = 7;
+
+pub const file_a : u3 = 0;
+pub const file_b : u3 = 1;
+pub const file_c : u3 = 2;
+pub const file_d : u3 = 3;
+pub const file_e : u3 = 4;
+pub const file_f : u3 = 5;
+pub const file_g : u3 = 6;
+pub const file_h : u3 = 7;
+
+pub const all_ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
+pub const all_files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
+
 pub const Coord = packed struct(u6) {
     file: u3, // file = x. square % 8 or square & 7 (0b000111)
     rank: u3, // rank = y. square / 8 or square >> 3  (0b111000)

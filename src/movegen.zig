@@ -98,8 +98,8 @@ fn gen(pos: *const Position, comptime gen_flags: u4, noalias storage: anytype) v
         // Pawns.
         if (our_pawns != 0) {
             const pawn_us: Piece = comptime .init(.pawn, us);
-            const seventh_rank: u64 = comptime funcs.relative_rank_bb(us, bitboards.rank_7);
-            const last_rank: u64 = comptime funcs.relative_rank_bb(us, bitboards.rank_8);
+            const seventh_rank: u64 = comptime funcs.relative_rank_bb(us, types.rank_7);
+            const last_rank: u64 = comptime funcs.relative_rank_bb(us, types.rank_8);
             const enemies: u64 = if (check) checkers else bb_them;
             const dst: PawnDestinations = compute_pawn_destinations(us, our_pawns, ~occ, enemies, target, pins, pins_orth, pins_diag);
             // Pawns normal.
@@ -289,7 +289,7 @@ fn find(pos: *const Position, comptime gen_flags: u4, from_sq: Square, to_sq: Sq
 
     sw: switch (pt.e) {
         .pawn => {
-            const seventh_rank: u64 = comptime funcs.relative_rank_bb(us, bitboards.rank_7);
+            const seventh_rank: u64 = comptime funcs.relative_rank_bb(us, types.rank_7);
             const pawn_us: Piece = comptime .init(.pawn, us);
             const enemies: u64 = if (check) checkers else bb_them;
             const pawn_filter: u64 = if (is_promotion) seventh_rank else ~seventh_rank;
@@ -390,7 +390,7 @@ fn find(pos: *const Position, comptime gen_flags: u4, from_sq: Square, to_sq: Sq
 }
 
 inline fn compute_pawn_destinations(comptime us: Color, pawns: u64, empty_squares: u64, enemies: u64, check_interpolation: u64, pins: u64, pins_orth: u64, pins_diag: u64) PawnDestinations {
-    const third_rank: u64 = comptime funcs.relative_rank_bb(us, bitboards.rank_3);
+    const third_rank: u64 = comptime funcs.relative_rank_bb(us, types.rank_3);
 
     const single: u64 =
         (pawns_shift(pawns & ~pins, us, .up) & empty_squares) |

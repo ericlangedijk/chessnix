@@ -61,28 +61,6 @@ pub const bb_corners: u64 = bb_a1 | bb_h1 | bb_a8 | bb_h8;
 pub const rank_bitboards: [8]u64 = .{ bb_rank_1, bb_rank_2, bb_rank_3, bb_rank_4, bb_rank_5, bb_rank_6, bb_rank_7, bb_rank_8 };
 pub const file_bitboards: [8]u64 = .{ bb_file_a, bb_file_b, bb_file_c, bb_file_d, bb_file_e, bb_file_f, bb_file_g, bb_file_h };
 
-// rank and file indexes
-pub const rank_1 : u3 = 0;
-pub const rank_2 : u3 = 1;
-pub const rank_3 : u3 = 2;
-pub const rank_4 : u3 = 3;
-pub const rank_5 : u3 = 4;
-pub const rank_6 : u3 = 5;
-pub const rank_7 : u3 = 6;
-pub const rank_8 : u3 = 7;
-
-pub const file_a : u3 = 0;
-pub const file_b : u3 = 1;
-pub const file_c : u3 = 2;
-pub const file_d : u3 = 3;
-pub const file_e : u3 = 4;
-pub const file_f : u3 = 5;
-pub const file_g : u3 = 6;
-pub const file_h : u3 = 7;
-
-pub const all_ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
-pub const all_files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
-
 // Bitboards of each square
 pub const bb_a1: u64 = 0x0000000000000001;
 pub const bb_b1: u64 = 0x0000000000000002;
@@ -260,13 +238,13 @@ fn compute_squarepairs() [Square.count * Square.count]SquarePair {
 
 fn compute_passed_pawn_masks_white() [Square.count]u64 {
     var pp: [Square.count]u64 = @splat(0);
-    for (all_ranks) |rank| {
-        for (all_files) |file| {
+    for (types.all_ranks) |rank| {
+        for (types.all_files) |file| {
             var bb: u64 = 0;
             const sq: Square = .from_rank_file(rank, file);
             bb = bb_north[sq.u]; // square file
-            if (file > file_a) bb |= bb_north[sq.sub(1).u]; // file forwards left of square
-            if (file < file_h) bb |= bb_north[sq.add(1).u]; // file forwards right of square
+            if (file > types.file_a) bb |= bb_north[sq.sub(1).u]; // file forwards left of square
+            if (file < types.file_h) bb |= bb_north[sq.add(1).u]; // file forwards right of square
             pp[sq.u] = bb;
         }
     }
@@ -286,7 +264,7 @@ fn compute_adjacent_square_masks() [Square.count]u64 {
     // TODO: only for ep now. do them all?
     var ep: [Square.count]u64 = @splat(0);
     for (Square.all) |sq| {
-        if (sq.coord.rank == rank_4 or sq.coord.rank == rank_5) {
+        if (sq.coord.rank == types.rank_4 or sq.coord.rank == types.rank_5) {
             if (sq.next(.west)) |n| ep[sq.u] |= n.to_bitboard();
             if (sq.next(.east)) |n| ep[sq.u] |= n.to_bitboard();
         }
@@ -298,8 +276,8 @@ fn compute_adjacent_file_masks() [Square.count]u64 {
     var afm: [Square.count]u64 = @splat(0);
     for (Square.all) |sq| {
         const file: u3 = sq.coord.file;
-        if (file > file_a) afm[sq.u] |= file_bitboards[file - 1];
-        if (file < file_h) afm[sq.u] |= file_bitboards[file + 1];
+        if (file > types.file_a) afm[sq.u] |= file_bitboards[file - 1];
+        if (file < types.file_h) afm[sq.u] |= file_bitboards[file + 1];
     }
     return afm;
 }

@@ -69,7 +69,7 @@ pub const ViriPosition = extern struct {
             const colorbit: u8 = if (color.e == .black) 0b1000 else 0;
             var piececode: u8 = piecetype.u;  // Value matches chessnix.
             // Encode castling rook.
-            if (piecetype.e == .rook and sq.coord.rank == funcs.relative_rank(color, bitboards.rank_1)) {
+            if (piecetype.e == .rook and sq.coord.rank == funcs.relative_rank(color, types.rank_1)) {
                 if (
                     (pos.is_castling_allowed(color, .short) and sq.u == pos.layout.rook_start(color, .short).u) or
                     (pos.is_castling_allowed(color, .long) and sq.u == pos.layout.rook_start(color, .long).u)
@@ -115,7 +115,7 @@ pub const ViriPosition = extern struct {
             const piece: Piece = switch (piececode) {
                 0...5  => |u| Piece.init(PieceType.from_int(u), color),
                 unmoved_rook => blk: {
-                    if (sq.coord.rank != funcs.relative_rank(color, bitboards.rank_1)) {
+                    if (sq.coord.rank != funcs.relative_rank(color, types.rank_1)) {
                         return Error.invalid_castling_rook_square;
                     }
                     castling_rooks[color.u] |= sq.to_bitboard();
@@ -151,7 +151,7 @@ pub const ViriPosition = extern struct {
         pos.ep_square = if (ep_target < 64) Square.from_int(ep_target) else .a1;
         pos.stm = if (self.stm_ep_square & 0b10000000 == 0) .white else .black;
         if (pos.ep_square.e != .a1) {
-            const proper_rank: u3 = if (pos.stm.e == .white) bitboards.rank_6 else bitboards.rank_3;
+            const proper_rank: u3 = if (pos.stm.e == .white) types.rank_6 else types.rank_3;
             if (pos.ep_square.coord.rank != proper_rank) {
                 return Error.invalid_ep_square;
             }
