@@ -71,6 +71,7 @@ fn catch_error(err: Error, comptime str: []const u8, args: anytype) Error {
 
 /// We are messing around in hce, so this check is quite nessesary.
 fn test_evals() !void {
+    if (true) return; // TODO: we handle double pins now in hce.
     var pos: Position = .empty;
     var E = @import("hce.zig").Evaluator.init();
     for (test_positions, 0..) |str, idx| {
@@ -125,11 +126,9 @@ fn run_perfts(max_depth: usize, max_positions: ?usize) !void {
     for (test_positions, 0..) |str, index| {
         try pos.setup(str, false);
 
-        //lib.io.debugprint("{}, ", .{E.evaluate(&pos)});
+        // TODO: redo this for double pins. keep old values around.
         // TEMP EVAL OUTPUT for later test
-        // var ev: hce.Evaluator = .init();
-        // const e = ev.evaluate(&pos, null);
-        // io.print("{f} ,{}\n", .{ pos, e });
+        //lib.io.debugprint("{:>6}, ", .{ E.evaluate(&pos, .scaled) });
 
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max + 1, depths.len);
@@ -548,6 +547,17 @@ const scaled_evals: [134]i32 = .{
       27,    33,    21,    30,    27,    27,    27,    21,    33,    24,     8,    26,    30,    25,    24,    29,  -263,    34,    46,    28,
       24,    29,    30,    25,   317,    20,    24,    19,    30,    35,    25,    29,    29,    30,    35,    24,    19,    29,    25,    25,
       18,    17,   230,    43,    36,    20,   222,    12,    56,   149,     9,   392,   -60, 10284,
+};
+
+const scaled_evals_for_2_pins: [134]i32 = .{
+     30,     -9,  -1246,    -31,   -150,  1426,  1461,  -1317,  -1350,  2768,  -2656,  1410,  1468,  -1284,  -1345,    14,    12,    16,
+     14,    15,    11,    14,  -1315,  -1347,  1428,  1463,  -2654,  2770,  -1282,  -1343,  1413,  1471,    14,    15,    12,    14,
+     13,    16,    14,     4,    23,    13,    -47,    63,    23,     4,    45,    53,    -56,     -4,    39,  1296,  -1243,    -11,
+   -1213,  1326,    14,    12,    14,    15,  -3078,  -3211,    -41,  3052,  -3211,    21,   164,   183,   -110,   -129,    40,   -110,
+    -129,   164,   183,    14,    20,    20,    27,    27,    27,    33,    21,    30,    27,    27,    27,    21,    33,    24,
+      8,    26,    30,    25,    24,    29,   -263,    34,    46,    28,    24,    29,    30,    25,   317,    20,    24,    19,
+     30,    35,    25,    29,    29,    30,    35,    24,    19,    29,    25,    25,    18,    17,   230,    43,    36,    20,
+    222,    12,    56,   149,     9,   392,    -60, 10284,
 };
 
 

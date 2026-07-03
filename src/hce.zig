@@ -46,8 +46,8 @@ pub const Evaluator = struct {
     const Self = @This();
     /// Ref to position, only known at evaluation time.
     pos: *const Position,
-    /// Cached pins.
-    pins: u64,
+    /// Cached pinned pieces.
+    pinned: [Color.count]u64,
     /// A little speedup by caching pawn-availability.
     has_pawns: [Color.count]bool,
     /// The squares of the kings.
@@ -83,7 +83,7 @@ pub const Evaluator = struct {
     pub fn init() Self {
         return .{
             .pos = undefined,
-            .pins = 0,
+            .pinned = @splat(0),
             .has_pawns = .{ false, false },
             .king_squares = .{ .a1, .a1 },
             .king_areas = .{ 0, 0 },
@@ -103,9 +103,18 @@ pub const Evaluator = struct {
         // Init stuff.
         self.pos = pos;
 
-        // We can only use pinned pieces of the stm. Remember: pins include the enemy pinner. // TODO: this is gonna change.
-        self.pins = pos.our_pins(pos.stm) & pos.by_color(pos.stm);
-        self.has_pawns = .{ pos.pawns(.white) != 0, pos.pawns(.black) != 0};
+        const us: Color = pos.stm;
+        const them: Color = pos.stm.opp();
+
+        self.pinned = .{
+            pos.pins(us) & pos.by_color(us),
+            pos.pins(them) & pos.by_color(them),
+        };
+
+        self.has_pawns = .{
+            pos.pawns(.white) != 0,
+            pos.pawns(.black) != 0
+        };
 
         const wk: Square = pos.king_square(.white);
         const bk: Square= pos.king_square(.black);
@@ -675,18 +684,12 @@ pub const Evaluator = struct {
         return &terms.pawn_storm_table[i];
     }
 
-    /// This thing makes chessnix playing worse. I keep it around if I find the cause of this little drama.
     fn legalize_moves(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
-        const from_bb: u64 = from.to_bitboard();
-        const pins: u64 = self.pins & from_bb;
-        if (pins == 0) {
-            return bb_moves;
-        }
+        const pinned: u64 = self.pinned[us.u] & from.to_bitboard();
 
-        // We cannot handle these pins, because they are not there.
-        // Remember the position pins include the opponents pieces. That is the tricky part.
-        if (comptime lib.verifications) {
-            lib.verify(us.e == self.pos.stm.e, "Evaluator.legalize_moves", .{});
+        // Piece is not pinned: we regard this legal.
+        if (pinned == 0) {
+            return bb_moves;
         }
 
         // Pinned knight cannot escape a pin.
@@ -696,10 +699,14 @@ pub const Evaluator = struct {
 
         const king_sq: Square = self.king_squares[us.u];
 
-        // Just to be safe we use orelse. But direction should never be null here.
-        const dir: types.Direction = bitboards.get_squarepair(king_sq, from).direction orelse return bb_moves;
-        const bb_same_direction_as_pin: u64 = bitboards.direction_bitboards[@intFromEnum(dir)][king_sq.u];
+        // Direction should never be null here.
+        if (lib.verifications) {
+            const dir: ?types.Direction = bitboards.get_squarepair(king_sq, from).direction;
+            lib.verify(dir != null, "hce pin error", .{});
+        }
 
+        const dir: types.Direction = bitboards.get_squarepair(king_sq, from).direction.?;
+        const bb_same_direction_as_pin: u64 = bitboards.direction_bitboards[@intFromEnum(dir)][king_sq.u];
         return bb_moves & bb_same_direction_as_pin;
     }
 

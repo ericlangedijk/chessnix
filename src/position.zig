@@ -561,14 +561,14 @@ pub const Position = struct {
         return self.material.counts[us.u][pt.u];
     }
 
-    /// Returns a bitboard of our pin rays.
-    pub fn our_pins(self: *const Position, us: Color) u64 {
+    /// Returns a bitboard of pin rays.
+    pub fn pins(self: *const Position, us: Color) u64 {
         return self.pins_diag[us.u] | self.pins_orth[us.u];
     }
 
     /// Returns a bitboard of all pin rays.
     pub fn all_pins(self: *const Position) u64 {
-        return self.pins_diag[0] | self.pins_orth[0] | self.pins_diag[1] | self.pins_orth[1];
+        return self.pins_diag[0] | self.pins_diag[1] | self.pins_orth[0] | self.pins_orth[1];
     }
 
     pub fn is_draw_by_insufficient_material(self: *const Position) bool {
@@ -1150,9 +1150,9 @@ pub const Position = struct {
         const them: Color = comptime us.opp();
         const bb_all: u64 = self.all();
         const bb_us: u64 = self.by_color(us);
-        const bb_them: u64 = self.by_color(them); _ = bb_them;
+        const bb_them: u64 = self.by_color(them);
         const our_king_sq: Square = self.king_square(us);
-        const their_king_sq: Square = self.king_square(us); _ = their_king_sq;
+        const their_king_sq: Square = self.king_square(us);
 
         self.pins_orth = @splat(0);
         self.pins_diag = @splat(0);
@@ -1185,34 +1185,33 @@ pub const Position = struct {
                         .diag => self.pins_diag[us.u] |= pair.ray,
                         else => unreachable,
                     }
-                    self.state_flags |= gf_pins;
+                    self.state_flags |= gf_pins; // only for stm!
                 }
             }
         }
 
-        // TODO: ready to use when needed.
         // them (pins only).
-        // {
-        //     const bb_occ_without_them: u64 = bb_all ^ self.by_color(them);
-        //     const candidate_slider_attackers: u64 =
-        //         (attacks.get_bishop_attacks(their_king_sq, bb_occ_without_them) & self.queens_bishops(us)) |
-        //         (attacks.get_rook_attacks(their_king_sq, bb_occ_without_them) & self.queens_rooks(us));
+        {
+            const bb_occ_without_them: u64 = bb_all ^ self.by_color(them);
+            const candidate_slider_attackers: u64 =
+                (attacks.get_bishop_attacks(their_king_sq, bb_occ_without_them) & self.queens_bishops(us)) |
+                (attacks.get_rook_attacks(their_king_sq, bb_occ_without_them) & self.queens_rooks(us));
 
-        //     // Our pins and their checks.
-        //     var iter = bitboards.iterator(candidate_slider_attackers);
-        //     while (iter.next()) |attacker_sq| {
-        //         const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
-        //         const bb_ray: u64 = pair.ray & bb_them;
-        //         // We have a pin when exactly 1 bit is set. There is one piece in between.
-        //         if (bb_ray != 0 and bb_ray & (bb_ray - 1) == 0) {
-        //             switch (pair.axis) {
-        //                 .orth => self.pins_orth[them.u] |= pair.ray,
-        //                 .diag => self.pins_diag[them.u] |= pair.ray,
-        //                 else => unreachable,
-        //             }
-        //         }
-        //     }
-        // }
+            // Our pins and their checks.
+            var iter = bitboards.iterator(candidate_slider_attackers);
+            while (iter.next()) |attacker_sq| {
+                const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
+                const bb_ray: u64 = pair.ray & bb_them;
+                // We have a pin when exactly 1 bit is set. There is one piece in between.
+                if (bb_ray != 0 and bb_ray & (bb_ray - 1) == 0) {
+                    switch (pair.axis) {
+                        .orth => self.pins_orth[them.u] |= pair.ray,
+                        .diag => self.pins_diag[them.u] |= pair.ray,
+                        else => unreachable,
+                    }
+                }
+            }
+        }
 
         if (self.checkmask != 0) {
             self.state_flags |= gf_check;
@@ -1348,7 +1347,7 @@ pub const Position = struct {
 
         // TODO: rewrite
         // assert((self.state_flags & gf_check == 0 and self.checkmask == 0) or (self.state_flags & gf_check != 0 and self.checkmask != 0));
-        // assert((self.state_flags & gf_pins == 0 and self.our_pins() == 0) or (self.state_flags & gf_pins != 0 and self.our_pins() != 0));
+        // assert((self.state_flags & gf_pins == 0 and self.pins() == 0) or (self.state_flags & gf_pins != 0 and self.pins() != 0));
 
         var key: u64 = undefined;
         var pawnkey: u64 = undefined;
