@@ -1037,7 +1037,7 @@ pub const Position = struct {
                 const king: Piece = comptime Piece.init(.king, us);
                 const rook: Piece = comptime Piece.init(.rook, us);
                 const king_to: Square = comptime Castling.king_dest(us, .short);
-                const rook_to: Square = comptime Castling.rook_dest(us, .short); // king takes roshortok
+                const rook_to: Square = comptime Castling.rook_dest(us, .short); // king takes rook
                 const castle_delta: u64 = zobrist.piece_square_from_to(king, from, king_to) ^ zobrist.piece_square(rook, to) ^ zobrist.piece_square(rook, rook_to);
                 key ^= castle_delta;
             },
