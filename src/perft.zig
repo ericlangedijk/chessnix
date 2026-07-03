@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const lib = @import("lib.zig");
-const attacks = @import("attacks.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
@@ -13,8 +12,6 @@ const wtf = lib.wtf;
 const io = lib.io;
 
 const Color = types.Color;
-const Square = types.Square;
-const Move = types.Move;
 const Position = position.Position;
 
 /// With output.
@@ -135,56 +132,3 @@ pub fn bench() !void {
 
     io.print("Total nodes: {} {D} {d:.4} Mnodes/s ({})\n", .{ totalnodes, totaltime, funcs.mnps(totalnodes, totaltime), funcs.nps(totalnodes, totaltime) });
 }
-
-// pub fn bench_find_move() !void {
-
-//     // var totalnodes: u64 = 0;
-//     var fast_time: u64 = 0;
-//     var slow_time: u64 = 0;
-//     var cnt: u64 = 0;
-
-//     var pos: Position = .empty;
-
-//     inline for (&testruns) |*testrun| {
-
-//         try pos.setup(testrun.fen, false);
-//         var movestorage = position.MoveStorage.init();
-//         pos.lazy_generate_all_moves(&movestorage);
-//         for (0..10000) |_| {
-//             for (movestorage.slice()) |ex|{
-//                 const str: []const u8 = ex.move.to_string(false).slice();
-//                 var slow_timer = utils.Timer.start();
-//                 const slow_find_move: types.ExtMove = try pos.parse_move(str);
-//                 slow_time += slow_timer.read();
-//                 var fast_timer = utils.Timer.start();
-//                 const fast_find_move: types.ExtMove = try pos.lazy_find_move(ex.move.from, ex.move.to, ex.move.prom_safe());
-//                 fast_time += fast_timer.read();
-//                 if (slow_find_move != fast_find_move) {
-//                     io.print("ERROR\n", .{});
-//                     return;
-//                 }
-//                 cnt += 1;
-//             }
-//         }
-
-//         //     var timer = utils.Timer.start();
-//         //     const nodes: u64 = run_quick(&pos, @truncate(depth));
-//         //     const time = timer.read();
-//         //     io.print("Perft {s} {}: {d:<12} {D:<12}  {d:>12.4} Mnodes/s ({})\n", .{ testrun.name, depth, nodes, time, funcs.mnps(nodes, time), funcs.nps(nodes, time) });
-
-//         //     if (depth == testrun.end_depth) {
-//         //         totalnodes += nodes;
-//         //         totaltime += time;
-//         //         if (nodes == testrun.end_depth_nodes) {
-//         //             io.print("OK\n\n", .{});
-//         //         }
-//         //         else {
-//         //             io.print("ERROR\n\n", .{});
-//         //             break :main_loop;
-//         //         }
-//         //     }
-//         // }
-//     }
-
-//     io.print("count {}, Slow time: {D} Fast time {D}\n", .{ cnt, slow_time, fast_time });
-// }
