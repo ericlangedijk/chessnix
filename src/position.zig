@@ -1152,7 +1152,7 @@ pub const Position = struct {
         const bb_us: u64 = self.by_color(us);
         const bb_them: u64 = self.by_color(them);
         const our_king_sq: Square = self.king_square(us);
-        const their_king_sq: Square = self.king_square(us);
+        const their_king_sq: Square = self.king_square(them);
 
         self.pins_orth = @splat(0);
         self.pins_diag = @splat(0);

@@ -103,12 +103,9 @@ pub const Evaluator = struct {
         // Init stuff.
         self.pos = pos;
 
-        const us: Color = pos.stm;
-        const them: Color = pos.stm.opp();
-
         self.pinned = .{
-            pos.pins(us) & pos.by_color(us),
-            pos.pins(them) & pos.by_color(them),
+            pos.pins(.white) & pos.by_color(.white),
+            pos.pins(.black) & pos.by_color(.black),
         };
 
         self.has_pawns = .{
@@ -686,25 +683,19 @@ pub const Evaluator = struct {
 
     fn legalize_moves(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square, bb_moves: u64) u64 {
         const pinned: u64 = self.pinned[us.u] & from.to_bitboard();
-
-        // Piece is not pinned: we regard this legal.
+        // Piece is not pinned: we regard this as legal.
         if (pinned == 0) {
             return bb_moves;
         }
-
-        // Pinned knight cannot escape a pin.
+        // Knights cannot escape pins.
         if (pt.e == .knight) {
             return 0;
         }
-
         const king_sq: Square = self.king_squares[us.u];
-
         // Direction should never be null here.
-        if (lib.verifications) {
-            const dir: ?types.Direction = bitboards.get_squarepair(king_sq, from).direction;
-            lib.verify(dir != null, "hce pin error", .{});
+        if (lib.is_paranoid) {
+            self.verify_non_null_pin_direction(pt, us, from);
         }
-
         const dir: types.Direction = bitboards.get_squarepair(king_sq, from).direction.?;
         const bb_same_direction_as_pin: u64 = bitboards.direction_bitboards[@intFromEnum(dir)][king_sq.u];
         return bb_moves & bb_same_direction_as_pin;
@@ -725,6 +716,19 @@ pub const Evaluator = struct {
         const ok: bool = funcs.contains_square(area, our_pawn_sq);
         if (!ok) {
             lib.verify(ok, "verify_king_pawn_storm_area (attacker {t}): pawn on {t} is not inside pawnstormarea of {t}", .{ attacker.e, our_pawn_sq.e, their_king_sq.e });
+        }
+    }
+
+    /// Direction king -> from should never be null.
+    fn verify_non_null_pin_direction(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square) void {
+        const king_sq: Square = self.pos.king_square(us);
+        const dir: ?types.Direction = bitboards.get_squarepair(king_sq, from).direction;
+        if (dir == null) {
+            lib.io.debugprint("white pins\n", .{});
+            funcs.print_bitboard(self.pos.pins(.white));
+            lib.io.debugprint("black pins\n", .{});
+            funcs.print_bitboard(self.pos.pins(.black));
+            lib.wtf("hce pin error for {t} {t} [{f}] king on {t} piece on {t}", .{ us.e, pt.e, self.pos, king_sq.e, from.e });
         }
     }
 
