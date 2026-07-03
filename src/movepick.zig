@@ -11,7 +11,7 @@ const movegen = @import("movegen.zig");
 const search = @import("search.zig");
 const history = @import("history.zig");
 const hce = @import("hce.zig");
-//const hcetables = @import("hcetables.zig");
+const see = @import("see.zig");
 
 const assert = std.debug.assert;
 
@@ -255,7 +255,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
                 switch (ex.move.kind) {
                     Move.capture => {
-                        const is_bad_capture: bool = !hce.see(pos, ex.move, 0);
+                        const is_bad_capture: bool = !see.evaluate(pos, ex.move, 0, .default);
                         if (is_bad_capture) {
                             ex.score += Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
                         }

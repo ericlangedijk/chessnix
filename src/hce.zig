@@ -9,6 +9,7 @@ const assert = std.debug.assert;
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");
 const bitboards = @import("bitboards.zig");
+const squarepairs = @import("squarepairs.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
@@ -696,7 +697,7 @@ pub const Evaluator = struct {
         if (lib.is_paranoid) {
             self.verify_non_null_pin_direction(pt, us, from);
         }
-        const dir: types.Direction = bitboards.get_squarepair(king_sq, from).direction.?;
+        const dir: types.Direction = squarepairs.get(king_sq, from).direction.?;
         const bb_same_direction_as_pin: u64 = bitboards.direction_bitboards[@intFromEnum(dir)][king_sq.u];
         return bb_moves & bb_same_direction_as_pin;
     }
@@ -722,7 +723,7 @@ pub const Evaluator = struct {
     /// Direction king -> from should never be null.
     fn verify_non_null_pin_direction(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square) void {
         const king_sq: Square = self.pos.king_square(us);
-        const dir: ?types.Direction = bitboards.get_squarepair(king_sq, from).direction;
+        const dir: ?types.Direction = squarepairs.get(king_sq, from).direction;
         if (dir == null) {
             lib.io.debugprint("white pins\n", .{});
             funcs.print_bitboard(self.pos.pins(.white));
@@ -737,104 +738,6 @@ pub const Evaluator = struct {
         hcetuner.register_scorepair_usage(sp, multiply, us, debugargs);
     }
 };
-
-/// Returns true for castle, enpassant and promotions, regardless of the threshold.
-pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
-    if (m.is_castle() or m.is_ep() or m.is_promotion()) {
-        return true;
-    }
-
-    const from: Square = m.from;
-    const to: Square = m.to;
-
-    // Set the score to captured piece minus how much we are allowed to lose.
-    var score: i32 = pos.board[to.u].value() - threshold;
-
-    if (score < 0) {
-        return false;
-    }
-
-    score = pos.board[from.u].value() - score;
-
-    // Equal or winning.
-    if (score <= 0) {
-        return true;
-    }
-
-    const queens_bishops = pos.all_queens_bishops();
-    const queens_rooks = pos.all_queens_rooks();
-
-    // Execute the move on a bitboard.
-    var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
-
-    // Get the initial attacks from both sides to the to-square.
-    var all_attacks: u64 = pos.get_combined_attacks_to_for_occupation(occupied, to);
-    var us: Color = pos.stm;
-    var winner: Color = pos.stm;
-
-    attackloop: while (true) {
-        us = us.opp();
-        all_attacks &= occupied;
-
-        // Get our attackers.
-        const our_attackers: u64 = all_attacks & pos.by_color(us);
-
-        // No attackers left.
-        if (our_attackers == 0) {
-            break :attackloop;
-        }
-        winner = winner.opp();
-        var next_attacker_value: i32 = 0;
-
-        // Get the least valuable next piece.
-        get_next_attacker: inline for (PieceType.all) |piecetype| {
-            const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
-            if (next_attacker != 0) {
-
-                // Clear this attacker.
-                const sq: Square = funcs.first_square(next_attacker);
-                funcs.clear_square(&occupied, sq);
-                // Reveal next x-ray attacker on the attacks bitboard.
-                switch (piecetype.e) {
-                    .pawn => {
-                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    },
-                    .knight => {
-                        // Do nothing: a knight move cannot reveal a new slider.
-                    },
-                    .bishop => {
-                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    },
-                    .rook => {
-                        all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    },
-                    .queen => {
-                        all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                        all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    },
-                    .king => {
-                        // We can exit here: if the king captures and the opponent can capture our king we lose othersize we win.
-                        return if (all_attacks & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
-                    },
-                    else => {
-                        unreachable;
-                    }
-                }
-
-                next_attacker_value = piecetype.value();
-                break :get_next_attacker;
-            }
-        }
-
-        score = -score + 1 + next_attacker_value;
-
-        // Quit if the exchange is lost or equal
-        if (score <= 0) {
-            break :attackloop;
-        }
-    }
-    return pos.stm.u == winner.u;
-}
 
 fn compute_king_areas_white() [Square.count]u64 {
     var ka: [Square.count]u64 = @splat(0);

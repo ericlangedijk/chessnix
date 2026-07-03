@@ -1,6 +1,8 @@
 // zig fmt: off
 
 ///! Here should come - as a first attempt - a Stochistic Gradient Descent implementation.
+///!
+///! Work In Progress... Don't look here.
 
 const std = @import("std");
 const lib = @import("lib.zig");

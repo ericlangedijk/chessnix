@@ -1022,7 +1022,7 @@ pub const max_move_count: u8 = 224;
 pub const max_noisy_count: u8 = 128;
 pub const max_search_depth: u8 = 128;
 
-// Scores for SEE and move ordering.
+// Scores for SEE and move ordering. TODO: move these into searchterms?
 pub const value_pawn: i32 = 98;
 pub const value_knight: i32 = 299;
 pub const value_bishop: i32 = 300;
@@ -1030,7 +1030,7 @@ pub const value_rook: i32 = 533;
 pub const value_queen: i32 = 921;
 pub const value_king: i32 = 0;
 
-const piece_values: [13]i32 = .{
+pub const piece_values: [13]i32 = .{
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
     0,
@@ -1043,7 +1043,7 @@ pub const simple_value_rook: i32 = 500;
 pub const simple_value_queen: i32 = 900;
 pub const simple_value_king: i32 = 0;
 
-const simple_piece_values: [13]i32 = .{
+pub const simple_piece_values: [13]i32 = .{
     simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
     simple_value_pawn, simple_value_knight, simple_value_bishop, simple_value_rook, simple_value_queen, simple_value_king,
     0,

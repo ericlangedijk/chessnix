@@ -14,19 +14,6 @@ const Color = types.Color;
 const Piece = types.Piece;
 const Square = types.Square;
 
-/// Information about a pair of squares.
-/// - 'ray': the from-to ray bitboard **excluded** the from-square and **included** the to-square.
-pub const SquarePair = struct {
-    ray: u64 = 0, // The from-to ray bitboard **excluded** the from-square and **included** the to-square.
-    direction: ?Direction = null,       // The from-to direction.
-    orientation: ?Orientation = null,   // The from-to or to-from orientation.
-    axis: Axis = .no_axis,              // Diagonal or orthogonal or nothing.
-    dist: u3 = 0,                       // Distance between the squares.
-    manh: u4 = 0,                       // Manhattan distance between the squares.
-
-    const empty: SquarePair = .{};
-};
-
 // --- Const stuff ---
 pub const bb_rank_1: u64 = 0x00000000000000ff;
 pub const bb_rank_2: u64 = 0x000000000000ff00;
@@ -147,14 +134,13 @@ pub const bb_bishop: [Square.count]u64 = compute_bishop_bitboards();
 pub const bb_rook: [Square.count]u64 = compute_rook_bitboards();
 pub const bb_queen: [Square.count]u64 = compute_queen_bitboards();
 
-pub const pairs: [Square.count * Square.count]SquarePair = compute_squarepairs();
 pub const adjacent_square_masks: [Square.count]u64 = compute_adjacent_square_masks();
 pub const passed_pawn_masks_white: [Square.count]u64 = compute_passed_pawn_masks_white();
 pub const passed_pawn_masks_black: [Square.count]u64 = compute_passed_pawn_masks_black();
 pub const adjacent_file_masks: [Square.count]u64 = compute_adjacent_file_masks();
 
 /// Using the `Direction` enum order.
-pub const direction_bitboards: [8][*]const u64 = .{
+pub const direction_bitboards: [Direction.count][*]const u64 = .{
     &bb_north, &bb_east, &bb_south, &bb_west, &bb_northwest, &bb_northeast, &bb_southeast, &bb_southwest,
 };
 
@@ -192,48 +178,6 @@ fn compute_queen_bitboards() [Square.count]u64 {
             bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
     }
     return bb;
-}
-
-fn compute_squarepairs() [Square.count * Square.count]SquarePair {
-    @setEvalBranchQuota(128000);
-    var sp: [Square.count * Square.count]SquarePair = @splat(.empty);
-
-    // Set directions.
-    for (Square.all) |from| {
-        inline for (Direction.all) |dir| {
-            const ray = from.ray(dir);
-            for (ray.slice()) |to| {
-                const idx: usize = from.idx() * 64 + to.idx();
-                const ori = dir.to_orientation();
-                sp[idx].direction = dir;
-                sp[idx].orientation = ori;
-                if (ori == .diagmain or ori == .diaganti) sp[idx].axis = .diag;
-                if (ori == .horizontal or ori == .vertical) sp[idx].axis = .orth;
-            }
-        }
-    }
-
-    // Set ray bitboards
-    for (Square.all) |from| {
-        for (Square.all) |to| {
-            const idx: usize = from.idx() * 64 + to.idx();
-            // Distance
-            sp[idx].dist = funcs.square_distance(from, to);
-            sp[idx].manh = funcs.manhattan_distance(from, to);
-            // Ray.
-            if (sp[idx].direction) |dir| {
-                const ray = from.ray(dir);
-                for (ray.slice()) |sq| {
-                    sp[idx].ray |= sq.to_bitboard();
-                    if (sq.u == to.u) break;
-                }
-            }
-            // #deprecated
-            // In between.
-            // sp[idx].in_between = sp[idx].ray & ~to.to_bitboard();
-        }
-    }
-    return sp;
 }
 
 fn compute_passed_pawn_masks_white() [Square.count]u64 {
@@ -298,21 +242,6 @@ fn compute_backward_pawn_masks_black()[Square.count]u64 {
         bpm[sq.u] = bb;
     }
     return bpm;
-}
-
-pub fn get_squarepair(from: Square, to: Square) *const SquarePair {
-    const idx: usize = from.idx() * 64 + to.idx();
-    return &pairs[idx];
-}
-
-/// Convenience function.
-pub fn dist(a: Square, b: Square) u3 {
-    return get_squarepair(a, b).dist;
-}
-
-/// Convenience function.
-pub fn manh(a: Square, b: Square) u4 {
-    return get_squarepair(a, b).manh;
 }
 
 pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {

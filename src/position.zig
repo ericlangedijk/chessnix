@@ -1,9 +1,10 @@
 // zig fmt: off
 
 const std = @import("std");
-const types = @import("types.zig");
 const lib = @import("lib.zig");
+const types = @import("types.zig");
 const bitboards = @import("bitboards.zig");
+const squarepairs = @import("squarepairs.zig");
 const funcs = @import("funcs.zig");
 const zobrist = @import("zobrist.zig");
 const attacks = @import("attacks.zig");
@@ -25,6 +26,7 @@ const Move = types.Move;
 const ExtMove = types.ExtMove;
 const Castle = types.Castle;
 const ScorePair = types.ScorePair;
+const SquarePair = squarepairs.SquarePair;
 
 /// See lib.zig.
 pub fn initialize() !void {
@@ -1172,7 +1174,7 @@ pub const Position = struct {
             // Our pins and their checks.
             var iter = bitboards.iterator(candidate_slider_attackers);
             while (iter.next()) |attacker_sq| {
-                const pair: *const bitboards.SquarePair = bitboards.get_squarepair(our_king_sq, attacker_sq);
+                const pair: *const SquarePair = squarepairs.get(our_king_sq, attacker_sq);
                 const bb_ray: u64 = pair.ray & bb_us;
                 // We have a slider checker when there is nothing in between.
                 if (bb_ray == 0) {
@@ -1200,7 +1202,7 @@ pub const Position = struct {
             // Our pins and their checks.
             var iter = bitboards.iterator(candidate_slider_attackers);
             while (iter.next()) |attacker_sq| {
-                const pair: *const bitboards.SquarePair = bitboards.get_squarepair(their_king_sq, attacker_sq);
+                const pair: *const SquarePair = squarepairs.get(their_king_sq, attacker_sq);
                 const bb_ray: u64 = pair.ray & bb_them;
                 // We have a pin when exactly 1 bit is set. There is one piece in between.
                 if (bb_ray != 0 and bb_ray & (bb_ray - 1) == 0) {
@@ -1243,7 +1245,7 @@ pub const Position = struct {
     }
 
     /// Gives a bitboard of attackers which attack `to` for both colors.
-    pub fn get_combined_attacks_to_for_occupation(self: *const Position, occ: u64, to: Square) u64 {
+    pub fn get_combined_attackers_to_for_occupation(self: *const Position, occ: u64, to: Square) u64 {
         // Uses pawn inversion trick.
         return
             (attacks.get_knight_attacks(to) & self.all_knights()) |
@@ -1727,9 +1729,9 @@ pub const Layout = struct {
                     result.masks[r.u] |= flag;
                     result.rook_start_squares[us.u][ct.u] = r;
                     result.empty_paths[us.u][ct.u] =
-                        bitboards.get_squarepair(r, Castling.rook_dest(us, ct)).ray & ~k.to_bitboard() |
-                        bitboards.get_squarepair(k, Castling.king_dest(us, ct)).ray & ~r.to_bitboard();
-                    result.attack_paths[us.u][ct.u] = bitboards.get_squarepair(k, Castling.king_dest(us, ct)).ray;
+                        squarepairs.get(r, Castling.rook_dest(us, ct)).ray & ~k.to_bitboard() |
+                        squarepairs.get(k, Castling.king_dest(us, ct)).ray & ~r.to_bitboard();
+                    result.attack_paths[us.u][ct.u] = squarepairs.get(k, Castling.king_dest(us, ct)).ray;
                 }
             }
         }

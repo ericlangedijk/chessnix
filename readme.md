@@ -129,7 +129,7 @@ Chessnix contains, besides my own inventions, a wild mix of ideas from the chess
 
 ## Special Thanks
 - [Aron Petkovski](https://github.com/aronpetko/) for the tuned evaluation of an old version of [Integral v3](https://github.com/aronpetko/integral/releases/) to get me started.
-- [Jonathan Hallström](https://github.com/JonathanHallstrom/) for support, advise, brainstorming, io, viriformat, alpha raise reduction.
+- [Jonathan Hallström](https://github.com/JonathanHallstrom/) for support, advise, brainstorming, io, viriformat, alpha raise reduction, SEE comptime mode.
 
 ## The name
 I spent many years on Lemmix, the DOS Lemmings clone. So in my feeling the name had to end with "ix" as well.

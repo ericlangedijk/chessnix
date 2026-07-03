@@ -99,7 +99,9 @@ fn uci_loop(is_tty: bool) !void {
                 try engine.set_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", null);
             }
             else if (eql(cmd, "see")) {
-                TTY.see(&tokenizer);
+                TTY.see(&tokenizer) catch |err| {
+                    io.print("invalid argument, error: {s}\n", .{ @errorName(err) });
+                };
             }
             else if (eql(cmd, "state")) {
                 TTY.print_state();
@@ -288,11 +290,11 @@ const TTY = struct {
     }
 
     /// Input: "see move threshold"
-    fn see(tokenizer: *Tokenizer) void {
-        const move: []const u8 = tokenizer.next() orelse return;
-        const threshold: []const u8 = tokenizer.next() orelse return;
-        const t: i32 = std.fmt.parseInt(i32, threshold, 10) catch return;
-        const result: bool = engine.see(move, t) catch return;
+    fn see(tokenizer: *Tokenizer) !void {
+        const move: []const u8 = tokenizer.next() orelse return error.empty_move_argument;
+        const threshold: []const u8 = tokenizer.next() orelse return error.empty_threshold_argument;
+        const t: i32 = try std.fmt.parseInt(i32, threshold, 10);
+        const result: bool = try engine.evaluate_see(move, t);
         io.print("{}\n", .{result});
     }
 

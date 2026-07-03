@@ -28,7 +28,7 @@ pub const PawnShift = enum(u2) {
     northeast
 };
 
-/// Note that these are stored in SquarePair
+/// Note that these are stored in SquarePair. TODO: remove runtime calls or move to squarepairs
 pub inline fn square_distance(a: Square, b: Square) u3 {
     //lib.comptime_only();
     const ar: i32 = a.coord.rank;
@@ -39,7 +39,7 @@ pub inline fn square_distance(a: Square, b: Square) u3 {
     return @truncate(@abs(d));
 }
 
-/// Note that these are stored in SquarePair
+/// Note that these are stored in SquarePair. TODO: remove runtime calls or move to squarepairs
 pub inline fn manhattan_distance(a: Square, b: Square) u8 {
     //lib.comptime_only();
     const rank1: i32 = a.coord.rank;

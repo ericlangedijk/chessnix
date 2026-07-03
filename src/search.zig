@@ -11,6 +11,7 @@ const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const movegen = @import("movegen.zig");
 const uci = @import("uci.zig");
+const see = @import("see.zig");
 const hce = @import("hce.zig");
 const tt = @import("tt.zig");
 const searchterms = @import("searchterms.zig");
@@ -214,12 +215,13 @@ pub const Engine = struct {
         self.busy.store(false, .release);
     }
 
-    pub fn see(self: *Engine, move: []const u8, threshold: i32) !bool {
+    /// uci command.
+    pub fn evaluate_see(self: *Engine, move: []const u8, threshold: i32) !bool {
         if (self.is_busy()) {
             return false;
         }
         const ex: ExtMove = try self.pos.parse_move(move);
-        return hce.see(&self.pos, ex.move, threshold);
+        return see.evaluate(&self.pos, ex.move, threshold, .testing);
     }
 };
 
@@ -755,7 +757,7 @@ pub const Searcher = struct {
 
                 // SEE pruning.
                 const see_threshold: i32 = if (is_quiet_move) depth * tuned.see_prune_quiet_mult else depth * tuned.see_prune_noisy_mult;
-                if (depth <= tuned.see_prune_max_depth and moves_seen >= 1 and !hce.see(pos, ex.move, -see_threshold)) {
+                if (depth <= tuned.see_prune_max_depth and moves_seen >= 1 and !see.evaluate(pos, ex.move, -see_threshold, .default)) {
                     continue :moveloop;
                 }
 
@@ -1065,7 +1067,7 @@ pub const Searcher = struct {
             }
 
             // Quiescence Futility Pruning (qs_fp). Prune capture moves that do not win material if the static eval is behind alpha by some margin.
-            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !hce.see(pos, ex.move, 1)) {
+            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 1, .default)) {
                 best_score = @max(best_score, qs_futility_score);
                 continue :moveloop;
             }
