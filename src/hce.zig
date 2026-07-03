@@ -348,7 +348,7 @@ pub const Evaluator = struct {
                 const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
                 const is_blocking: u1 = @intFromBool(pos.board[sq_in_front.u].is_pawn_of_color(them));
                 score.inc(terms.knight_outpost_table[is_blocking][relative_sq.u - 24]);
-                if (lib.is_tuning) register(&terms.knight_outpost_table[is_blocking][relative_sq.u], 1, us, .{PieceType.knight.e, sq.e, is_blocking});
+                if (lib.is_tuning) register(&terms.knight_outpost_table[is_blocking][relative_sq.u - 24], 1, us, .{PieceType.knight.e, sq.e, is_blocking});
             }
         }
         return score;
@@ -403,7 +403,7 @@ pub const Evaluator = struct {
             // Outpost.
             if (self.is_outpost(sq, us)) {
                 score.inc(terms.bishop_outpost_table[relative_sq.u - 24]);
-                if (lib.is_tuning) register(&terms.bishop_outpost_table[relative_sq.u], 1, us, .{PieceType.bishop.e, sq.e});
+                if (lib.is_tuning) register(&terms.bishop_outpost_table[relative_sq.u - 24], 1, us, .{PieceType.bishop.e, sq.e});
             }
         }
         return score;
