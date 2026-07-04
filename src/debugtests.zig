@@ -22,6 +22,8 @@ const io = lib.io;
 
 const Color = types.Color;
 const Square = types.Square;
+const PieceType = types.PieceType;
+const Piece = types.Piece;
 const Move = types.Move;
 const ExtMove = types.ExtMove;
 const ExtMoveList = types.ExtMoveList;
@@ -402,6 +404,45 @@ pub fn print_pos_structure() void {
         sum += size;
         io.print("sum: {:<5} offset: {:<5} size: {:<5} {s}\n", .{sum, field_offset, size, field.name});
     }
+}
+
+var table: [25][6][64]u64 = std.mem.zeroes([25][6][64]u64);
+
+pub fn gather_quiets() !void {
+
+
+    for (Square.all) |sq| {
+        io.print("{f} {f}{f}\n", .{ sq, sq.nc.file, sq.nc.rank});
+    }
+
+    if (true) return;
+
+    var timer: utils.Timer = .start();
+    var done: usize = 0;
+    var reader: viri.ViriFileReader = try .init("C:/Data/chess/viri/pawnocchio/mix_1.vf", 4096);
+    defer reader.deinit();
+    var game: viri.ViriGame = .init();
+    defer game.deinit();
+    while (try reader.next(&game)) {
+        var p: Position = try game.startpos.to_position();
+        for (game.moves.items) |vm| {
+            const ex: ExtMove = vm.move.to_ext_move(&p);
+            p.lazy_do_move(ex);
+            const phase = types.restrict_phase(p.phase());
+            const pt: PieceType = ex.piece.piecetype();
+            table[phase][pt.u][ex.move.to.u] += 1;
+            done += 1;
+            if (timer.ticked(1000)) {
+                io.print("{}M,", .{ done / types.million });
+            }
+        }
+    }
+
+    var writer: utils.FileWriter = try .init("C:/Data/Tmp/table.txt", 4096);
+    defer writer.deinit();
+    try writer.wr.interface.print("{any}", .{table});
+    io.print("\nready\n", .{});
+
 }
 
 /// OMFG...

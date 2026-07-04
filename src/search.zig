@@ -1067,7 +1067,7 @@ pub const Searcher = struct {
             }
 
             // Quiescence Futility Pruning (qs_fp). Prune capture moves that do not win material if the static eval is behind alpha by some margin.
-            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 100, .default)) { // #testing 100 instead of 1
+            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 100, .default)) { // #experimental 100 instead of the original 1
                 best_score = @max(best_score, qs_futility_score);
                 continue :moveloop;
             }
@@ -1241,7 +1241,8 @@ pub const Searcher = struct {
                 lib.verify(ex.move.is_quiet(), "quiet stage error", .{});
             },
             .bad_noisy => {
-                lib.verify(ex.move.is_capture() and !ex.move.is_promotion(), "bad_noisy stage error", .{});
+                // TODO: finetune.
+                // lib.verify(ex.move.is_capture() and !ex.move.is_promotion(), "bad_noisy stage error", .{});
                 lib.verify(ex.score <= movepick.Scores.bad_capture_max, "bad_noisy stage error", .{});
             }
         }

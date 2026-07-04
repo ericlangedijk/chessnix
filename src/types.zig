@@ -428,33 +428,9 @@ pub const file_h : u3 = 7;
 pub const all_ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
 pub const all_files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
 
+// #experimental.
 pub const File = packed union {
-    f: E,
-    u: u3,
-
-    pub const count: usize = 8;
-
-    const E = enum(u3) {
-        first, second, third, fourth, fifth, sixth, seventh, eighth,
-    };
-
-    pub const first = make(0); pub const second = make(1);  pub const third  = make(2); pub const fourth = make(3);
-    pub const fifth = make(4); pub const sixth =  make(5); pub const  seventh =make(6); pub const eighth = make(7);
-
-    pub const all: [8]File = .{ first, second, third, fourth, fifth, sixth, seventh, eighth };
-
-    pub fn format(self: File, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("{}", .{ self.u });
-    }
-
-    inline fn make(u: u3) File {
-        lib.only_in_comptime();
-        return .{ .u = u };
-    }
-};
-
-pub const Rank = packed union {
-    r: E,
+    en: E,
     u: u3,
 
     pub const count: usize = 8;
@@ -466,16 +442,43 @@ pub const Rank = packed union {
     pub const a = make(0); pub const b = make(1);  pub const c  = make(2); pub const d = make(3);
     pub const e = make(4); pub const f =  make(5); pub const  g =make(6); pub const h = make(7);
 
-    pub const all: [8]Rank = .{ a, b, c, d, e, f, g, h };
+    pub const all: [File.count]File = .{ a, b, c, d, e, f, g, h };
 
     pub fn format(self: File, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("{t}", .{ self.e });
+        try writer.print("{u}", .{ funcs.int(u8, 'a') + self.u });
+    }
+
+    inline fn make(u: u3) File {
+        lib.only_in_comptime();
+        return .{ .u = u };
+    }
+};
+
+// #experimental.
+pub const Rank = packed union {
+    e: E,
+    u: u3,
+
+    pub const count: usize = 8;
+
+    const E = enum(u3) {
+        first, second, third, fourth, fifth, sixth, seventh, eighth,
+    };
+
+    pub const first = make(0); pub const second = make(1);  pub const third  = make(2); pub const fourth = make(3);
+    pub const fifth = make(4); pub const sixth =  make(5); pub const  seventh =make(6); pub const eighth = make(7);
+
+    pub const all: [Rank.count]Rank = .{ first, second, third, fourth, fifth, sixth, seventh, eighth };
+
+    pub fn format(self: Rank, writer: *std.io.Writer) std.io.Writer.Error!void {
+        try writer.print("{u}", .{ funcs.int(u8, '1') + self.u });
     }
 
     inline fn make(u: u3) Rank {
         lib.only_in_comptime();
         return .{ .u = u };
     }
+
 };
 
 pub const Coord = packed struct(u6) {
@@ -709,9 +712,9 @@ pub const Square = packed union {
         return @as(u8, 'a') + self.coord.file;
     }
 
-    // pub fn format(self: Square, writer: *std.io.Writer) std.io.Writer.Error!void {
-    //     try writer.print("{t}", .{ self.e });
-    // }
+    pub fn format(self: Square, writer: *std.io.Writer) std.io.Writer.Error!void {
+        try writer.print("{t}", .{ self.e });
+    }
 
 };
 

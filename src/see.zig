@@ -1,7 +1,6 @@
 // zig fmt: off
 
 //! Static Exchange Evaluation.
-//! Work In Progress...
 
 const std = @import("std");
 const assert = std.debug.assert;

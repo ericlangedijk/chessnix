@@ -274,12 +274,18 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         ex.score += hist.get_capture_score(ex.*);
                     },
                     Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
+                        const is_bad_noisy: bool = !see.evaluate(pos, ex.move, 0, .default); // #experimental
+                        const base: i32 = if (is_bad_noisy) Scores.bad_capture else Scores.promotion;
+
                         const prom: PieceType = ex.move.prom();
                         switch (prom.e) {
-                            .queen => ex.score += Scores.promotion + 2000,
-                            .knight => ex.score += Scores.promotion + 1000,
-                            .bishop, .rook => ex.score += Scores.promotion,
+                            .queen => ex.score += base + 2000,
+                            .knight => ex.score += base + 1000,
+                            .bishop, .rook => ex.score += base, // maybe add a value here?
                             else => unreachable,
+                        }
+                        if (is_bad_noisy) {
+                            self.bad_noisies.add(ex.*);
                         }
                     },
                     Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
