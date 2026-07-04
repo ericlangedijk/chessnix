@@ -13,8 +13,6 @@ pub fn main() !void {
         try @import("debugtests.zig").run();
     }
 
-    try @import("debugtests.zig").gather_quiets();
-
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();
