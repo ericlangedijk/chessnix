@@ -28,35 +28,47 @@ pub const Mode = enum {
     testing,
 };
 
-// TODO: maybe we can make evaluate comptime colored.
-// TODO: wrap the attackloop in a zig-get-labeled-block.
-// TODO: try live updating pins.
-
-// position fen 8/1kb2R2/3n4/8/8/3R4/8/5K2 w - - 0 1
-// [see d3d6 0] -> TRUE (black cannot recapture)
-
-// more difficult -> live updating the pins?
-// position fen 8/1kbr1R2/3n4/8/8/3R4/3R4/5K2 w - - 0 1
-// [see d3d6 0] should give TRUE
-
-
-/// Returns true for castle, ep and promotion, regardless of the threshold.
+/// Returns the result of a possible piece exchange on the to-square of the move.
 /// - Assumes the move is valid.
 /// - Positive threshold means: are we winning this amount of material or more?
 /// - Negative threshold means: the amount we are allowed to lose.
+/// - Zero means: a neutral exchange.
 pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mode) bool {
-    if (m.is_castle() or m.is_ep() or m.is_promotion()) {
-        return true;
+    const val: *const fn (piece_or_piecetype: u4) i32 = comptime switch (mode) {
+        .default => default_value,
+        .testing => simple_value,
+    };
+
+    // Castling can never win a piece.
+    if (m.is_castle()) {
+        return threshold <= 0;
     }
+    const stm: Color = pos.stm;
+
+    const pawn_value: i32 = comptime value(PieceType.pawn.u, mode);
     const from: Square = m.from;
     const to: Square = m.to;
+    const is_ep: bool = m.is_ep();
+    const is_promo: bool = m.is_promotion();
 
     // Set the score to captured piece minus how much we are allowed to lose.
-    var score: i32 = value(pos.board[to.u].u, mode) - threshold;
+    // When the to-square is empty we capture nothing, so this works for quiet moves too.
+    const gain: i32 = if (is_ep) pawn_value else val(pos.get(to).u);
+    //var score: i32 = value(pos.board[to.u].u, mode) - threshold;
+    var score: i32 = gain - threshold;
+
+    // for a promotion: We gain a piece and lose a pawn.
+    if (is_promo) {
+        score += value(m.prom().u, mode) - pawn_value;
+    }
+
+    // We cannot beat the threshold.
     if (score < 0) {
         return false;
     }
-    score = value(pos.board[from.u].u, mode) - score;
+
+    const lose: i32 = if (is_promo) value(m.prom().u, mode) else val(pos.get(from).u);
+    score = lose - score;
 
     // Equal or winning.
     if (score <= 0) {
@@ -66,69 +78,57 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
     const queens_bishops = pos.all_queens_bishops();
     const queens_rooks = pos.all_queens_rooks();
 
-    // Determine pieces that cannot move.
+    // Determine pieces that can move.
     const white_allowed_to_move: u64 = ~pos.pins(.white) & pos.by_color(.white);
     const black_allowed_to_move: u64 = ~pos.pins(.black) & pos.by_color(.black);
     const allowed_to_move: u64 = white_allowed_to_move | black_allowed_to_move;
 
     // Execute the move on a bitboard.
     var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
+    if (is_ep)  {
+        const sq: Square = if (pos.stm.e == .white) pos.ep_square.sub(8) else pos.ep_square.add(8);
+        occupied ^= sq.to_bitboard();
+    }
 
     // Get the initial attacks from both sides to the to-square.
     var all_attackers: u64 = pos.get_combined_attackers_to_for_occupation(occupied, to);
-    var us: Color = pos.stm;
-    var winner: Color = pos.stm;
+    var us: Color = stm;
+    var winner: Color = stm;
 
     attackloop: while (true) {
         us = us.opp();
-        all_attackers &= occupied & allowed_to_move;
+        all_attackers &= occupied;
 
         // Get our attackers.
-        const our_attackers: u64 = all_attackers & pos.by_color(us);
-
-        // No attackers left.
+        const our_attackers: u64 = all_attackers & pos.by_color(us) & allowed_to_move;
         if (our_attackers == 0) {
             break :attackloop;
         }
         winner = winner.opp();
-        var next_attacker_value: i32 = 0;
 
         // Get the least valuable next piece.
-        get_next_attacker: inline for (PieceType.all) |piecetype| {
-            const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
-            if (next_attacker != 0) {
-                // Clear this attacker.
-                const sq: Square = funcs.first_square(next_attacker);
-                funcs.clear_square(&occupied, sq);
-                // Reveal next x-ray attacker on the attacks bitboard.
-                switch (piecetype.e) {
-                    .pawn => {
-                        all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    },
-                    .knight => {
-                        // Do nothing: a knight move cannot reveal a new slider.
-                    },
-                    .bishop => {
-                        all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-                    },
-                    .rook => {
-                        all_attackers |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    },
-                    .queen => {
-                        all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops) | (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-                    },
-                    .king => {
-                        // We can exit here: if the king captures and the opponent can capture our king we lose othersize we win.
-                        return if (all_attackers & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
-                    },
-                    else => {
-                        unreachable;
+        const next_attacker_value: i32 = blk: {
+            inline for (PieceType.all) |piecetype| {
+                const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
+                if (next_attacker != 0) {
+                    // Clear this attacker.
+                    const sq: Square = funcs.first_square(next_attacker);
+                    funcs.clear_square(&occupied, sq);
+                    // Reveal next x-ray attacker on the attacks bitboard. Knights cannot reveal a new x-ray.
+                    // We can stop if we see a king. If the king captures and the opponent can capture our king we lose othersize we win.
+                    switch (piecetype.e) {
+                        .knight => {},
+                        .pawn, .bishop => all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops),
+                        .rook => all_attackers |= (attacks.get_rook_attacks(to, occupied) & queens_rooks),
+                        .queen => all_attackers |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops) | (attacks.get_rook_attacks(to, occupied) & queens_rooks),
+                        .king => return if (all_attackers & pos.by_color(us.opp()) != 0) stm.u != winner.u else return stm.u == winner.u,
+                        else => unreachable,
                     }
+                    break :blk val(piecetype.u);
                 }
-                next_attacker_value = value(piecetype.u, mode);
-                break :get_next_attacker;
             }
-        }
+            unreachable; // We must find a piece.
+        };
 
         score = -score + 1 + next_attacker_value;
 
@@ -137,114 +137,22 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
             break :attackloop;
         }
     }
-    return pos.stm.u == winner.u;
+    return stm.u == winner.u;
+}
+
+fn default_value(piece_or_piecetype: u4) i32 {
+    return types.simple_piece_values[piece_or_piecetype];
 }
 
 
-fn value(u: u4, comptime mode: Mode)  i32 {
+fn simple_value(piece_or_piecetype: u4) i32 {
+    return types.simple_piece_values[piece_or_piecetype];
+}
+
+pub fn value(piece_or_piecetype: u4, comptime mode: Mode)  i32 {
     return switch (mode) {
-        .default => types.piece_values[u],
-        .testing => types.simple_piece_values[u],
+        .default => types.piece_values[piece_or_piecetype],
+        .testing => types.simple_piece_values[piece_or_piecetype],
     };
 }
 
-
-// --- SEE original chessnix 1.4 ---
-
-// /// Returns true for castle, enpassant and promotions, regardless of the threshold.
-// pub fn see(pos: *const Position, m: Move, threshold: i32) bool {
-//     if (m.is_castle() or m.is_ep() or m.is_promotion()) {
-//         return true;
-//     }
-
-//     const from: Square = m.from;
-//     const to: Square = m.to;
-
-//     // Set the score to captured piece minus how much we are allowed to lose.
-//     var score: i32 = pos.board[to.u].value() - threshold;
-
-//     if (score < 0) {
-//         return false;
-//     }
-
-//     score = pos.board[from.u].value() - score;
-
-//     // Equal or winning.
-//     if (score <= 0) {
-//         return true;
-//     }
-
-//     const queens_bishops = pos.all_queens_bishops();
-//     const queens_rooks = pos.all_queens_rooks();
-
-//     // Execute the move on a bitboard.
-//     var occupied = pos.all() ^ to.to_bitboard() ^ from.to_bitboard();
-
-//     // Get the initial attacks from both sides to the to-square.
-//     var all_attacks: u64 = pos.get_combined_attackers_to_for_occupation(occupied, to);
-//     var us: Color = pos.stm;
-//     var winner: Color = pos.stm;
-
-//     attackloop: while (true) {
-//         us = us.opp();
-//         all_attacks &= occupied;
-
-//         // Get our attackers.
-//         const our_attackers: u64 = all_attacks & pos.by_color(us);
-
-//         // No attackers left.
-//         if (our_attackers == 0) {
-//             break :attackloop;
-//         }
-//         winner = winner.opp();
-//         var next_attacker_value: i32 = 0;
-
-//         // Get the least valuable next piece.
-//         get_next_attacker: inline for (PieceType.all) |piecetype| {
-//             const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
-//             if (next_attacker != 0) {
-
-//                 // Clear this attacker.
-//                 const sq: Square = funcs.first_square(next_attacker);
-//                 funcs.clear_square(&occupied, sq);
-//                 // Reveal next x-ray attacker on the attacks bitboard.
-//                 switch (piecetype.e) {
-//                     .pawn => {
-//                         all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-//                     },
-//                     .knight => {
-//                         // Do nothing: a knight move cannot reveal a new slider.
-//                     },
-//                     .bishop => {
-//                         all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-//                     },
-//                     .rook => {
-//                         all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-//                     },
-//                     .queen => {
-//                         all_attacks |= (attacks.get_bishop_attacks(to, occupied) & queens_bishops);
-//                         all_attacks |= (attacks.get_rook_attacks(to, occupied) & queens_rooks);
-//                     },
-//                     .king => {
-//                         // We can exit here: if the king captures and the opponent can capture our king we lose othersize we win.
-//                         return if (all_attacks & pos.by_color(us.opp()) != 0) pos.stm.u != winner.u else return pos.stm.u == winner.u;
-//                     },
-//                     else => {
-//                         unreachable;
-//                     }
-//                 }
-
-//                 next_attacker_value = piecetype.value();
-//                 break :get_next_attacker;
-//             }
-//         }
-
-//         score = -score + 1 + next_attacker_value;
-
-//         // Quit if the exchange is lost or equal
-//         if (score <= 0) {
-//             break :attackloop;
-//         }
-//     }
-//     return pos.stm.u == winner.u;
-// }

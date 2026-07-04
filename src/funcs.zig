@@ -366,11 +366,19 @@ pub fn print_bits(u: u8) void {
     lib.io.debugprint("\n", .{});
 }
 
-fn int(comptime T: type, x: anytype) T {
+pub fn int(comptime T: type, x: anytype) T {
     return switch (@typeInfo(@TypeOf(x))) {
         .int, .comptime_int => @intCast(x),
-        .float, .comptime_float => @trunc(x),
+        .float, .comptime_float => @intFromFloat(x), // @trunc(x),
         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{ @TypeOf(x) })),
+    };
+}
+
+pub fn float(comptime T: type, x: anytype) T {
+    return switch (@typeInfo(@TypeOf(x))) {
+        .int, .comptime_int => @floatFromInt(x),
+        .float, .comptime_float => @floatCast(x),
+        else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
     };
 }
 

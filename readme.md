@@ -15,8 +15,6 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 
 ## Version 1.5 Work In Progress...
 - Compiler: Zig 0.15.2.
-- Working on HCE tuner. Don't look there.
-- Working on SEE.
 
 ## Version 1.4
 - Compiler: Zig 0.15.2.

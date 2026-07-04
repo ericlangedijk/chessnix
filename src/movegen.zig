@@ -49,16 +49,16 @@ pub fn lazy_generate_quiescence_moves(pos: *const Position, noalias storage: any
 /// Generate all legal moves.
 pub fn generate_all_moves(pos: *const Position, comptime us: Color, noalias storage: anytype) void {
     const color_flag: u4 = comptime if (us.e == .black) gf_black else 0;
-    switch(pos.state_flags) {
-        inline else => |sf| gen(pos, sf | color_flag, storage),
+    switch(pos.gen_flags) {
+        inline else => |gf| gen(pos, gf | color_flag, storage),
     }
 }
 
 /// Generate quiescence moves. When not in check: generate captures and queen only promotions. When in check generate all legal moves and queen only promotions.
 pub fn generate_quiescence_moves(pos: *const Position, comptime us: Color, noalias storage: anytype) void {
     const color_flag: u4 = comptime if (us.e == .black) gf_black else 0;
-    switch(pos.state_flags) {
-        inline else => |sf| gen(pos, sf | color_flag | gf_noisy, storage),
+    switch(pos.gen_flags) {
+        inline else => |gf| gen(pos, gf | color_flag | gf_noisy, storage),
     }
 }
 
@@ -239,13 +239,13 @@ pub fn lazy_find_move(pos: *const Position, from_sq: Square, to_sq: Square, prom
 pub fn find_move(pos: *const Position, comptime us: Color, from_sq: Square, to_sq: Square, prom: PieceType) !ExtMove {
     switch (us.e) {
         .white => {
-            switch(pos.state_flags) {
-                inline else => |sf| return find(pos, sf, from_sq, to_sq, prom)
+            switch(pos.gen_flags) {
+                inline else => |gf| return find(pos, gf, from_sq, to_sq, prom)
             }
         },
         .black => {
-            switch(pos.state_flags) {
-                inline else => |sf| return find(pos, sf | gf_black, from_sq, to_sq, prom)
+            switch(pos.gen_flags) {
+                inline else => |gf| return find(pos, gf | gf_black, from_sq, to_sq, prom)
             }
         },
     }

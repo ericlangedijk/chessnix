@@ -40,7 +40,7 @@ pub const Program = enum {
 };
 
 pub const program: Program = .uci;
-//pub const program: Program = .hcetuner;
+// pub const program: Program = .hcetuner;
 //pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";

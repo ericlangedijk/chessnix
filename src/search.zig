@@ -1067,7 +1067,7 @@ pub const Searcher = struct {
             }
 
             // Quiescence Futility Pruning (qs_fp). Prune capture moves that do not win material if the static eval is behind alpha by some margin.
-            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 1, .default)) {
+            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 100, .default)) { // #testing 100 instead of 1
                 best_score = @max(best_score, qs_futility_score);
                 continue :moveloop;
             }

@@ -61,7 +61,7 @@ pub const Position = struct {
     pins_diag: [Color.count]u64,
     pins_orth: [Color.count]u64,
     is_960: bool,
-    state_flags: u2, // gf_pins for stm only!
+    gen_flags: u2, // gf_pins for stm only!
 
     pub const empty: Position = .init_empty();
     pub const classic_startpos: Position = .init_classic_startpos();
@@ -91,7 +91,7 @@ pub const Position = struct {
             .pins_diag = @splat(0),
             .pins_orth = @splat(0),
             .is_960 = false,
-            .state_flags = 0,
+            .gen_flags = 0,
         };
     }
 
@@ -128,7 +128,7 @@ pub const Position = struct {
         pos.pins_diag = @splat(0);
         pos.pins_orth = @splat(0);
         pos.is_960 = false;
-        pos.state_flags = 0;
+        pos.gen_flags = 0;
         pos.update_hash();
         return pos;
     }
@@ -147,7 +147,7 @@ pub const Position = struct {
     }
 
     /// Shorthand direct setup.
-    pub fn init(fen_str: []const u8, is_960: bool) !Position {
+    pub fn from_fen(fen_str: []const u8, is_960: bool) !Position {
         var pos: Position = undefined;
         try pos.setup(fen_str, is_960);
         return pos;
@@ -243,7 +243,8 @@ pub const Position = struct {
                 }
             }
         }
-        self.is_960 |= self.detect_frc();
+        self.is_960 |= layout_key.detect_frc();
+        //assert(self.detect_frc() == layout_key.detect_frc());
         self.layout = select_layout(layout_key);
         self.lazy_update_state();
     }
@@ -303,21 +304,21 @@ pub const Position = struct {
         }
     }
 
-    // TODO: test! maybe put the function in LayoutKey.
-    pub fn detect_frc(self: *const Position) bool {
-        const e1: Piece = self.get(.e1);
-        const e8: Piece = self.get(.e8);
-        const h1: Piece = self.get(.h1);
-        const a1: Piece = self.get(.a1);
-        const h8: Piece = self.get(.h8);
-        const a8: Piece = self.get(.a8);
+    // // TODO: test! maybe put the function in LayoutKey.
+    // pub fn detect_frc(self: *const Position) bool {
+    //     const e1: Piece = self.get(.e1);
+    //     const e8: Piece = self.get(.e8);
+    //     const h1: Piece = self.get(.h1);
+    //     const a1: Piece = self.get(.a1);
+    //     const h8: Piece = self.get(.h8);
+    //     const a8: Piece = self.get(.a8);
 
-        return
-            (self.is_castling_allowed(.white, .short) and (e1.e != .white_king or h1.e != .white_rook)) or
-            (self.is_castling_allowed(.white, .long)  and (e1.e != .white_king or a1.e != .white_rook)) or
-            (self.is_castling_allowed(.black, .short) and (e8.e != .black_king or h8.e != .black_rook)) or
-            (self.is_castling_allowed(.black, .long)  and (e8.e != .black_king or a8.e != .black_rook));
-    }
+    //     return
+    //         (self.is_castling_allowed(.white, .short) and (e1.e != .white_king or h1.e != .white_rook)) or
+    //         (self.is_castling_allowed(.white, .long)  and (e1.e != .white_king or a1.e != .white_rook)) or
+    //         (self.is_castling_allowed(.black, .short) and (e8.e != .black_king or h8.e != .black_rook)) or
+    //         (self.is_castling_allowed(.black, .long)  and (e8.e != .black_king or a8.e != .black_rook));
+    // }
 
     pub fn phase(self: *const Position) u8 {
         return self.phase_by_color[0] + self.phase_by_color[1];
@@ -1158,7 +1159,7 @@ pub const Position = struct {
 
         self.pins_orth = @splat(0);
         self.pins_diag = @splat(0);
-        self.state_flags = 0;
+        self.gen_flags = 0;
 
         self.checkmask =
             (attacks.get_pawn_attacks(our_king_sq, us) & self.pawns(them)) |
@@ -1187,7 +1188,7 @@ pub const Position = struct {
                         .diag => self.pins_diag[us.u] |= pair.ray,
                         else => unreachable,
                     }
-                    self.state_flags |= gf_pins; // only for stm!
+                    self.gen_flags |= gf_pins; // only for stm!
                 }
             }
         }
@@ -1216,7 +1217,7 @@ pub const Position = struct {
         }
 
         if (self.checkmask != 0) {
-            self.state_flags |= gf_check;
+            self.gen_flags |= gf_check;
         }
     }
 
@@ -1663,22 +1664,28 @@ pub const LayoutKey = packed struct {
 
     // TODO: how to...
     fn can_use_classic_layout(self: LayoutKey) bool {
+        if (self.rights == 0) return false;
         return
             self == classic or
             blk: {
-                // self.white.king == types.file_e and
-                // self.black.king == types.file_e and
-                // blk: {
                 const ws: bool = self.is_set(.white, .short);
                 const wl: bool = self.is_set(.white, .long);
                 const bs: bool = self.is_set(.black, .short);
                 const bl: bool = self.is_set(.black, .long);
                 break :blk
-                    (!ws or (ws and self.white.king == types.file_e and self.rook_file(.white, .short) == types.file_h)) and
-                    (!wl or (wl and self.white.king == types.file_e and self.rook_file(.white, .long)  == types.file_a)) and
-                    (!bs or (bs and self.black.king == types.file_e and self.rook_file(.black, .short) == types.file_a)) and
-                    (!bl or (bl and self.black.king == types.file_e and self.rook_file(.black, .long)  == types.file_h));
+                    (!ws or (ws and self.white.king == classic.white.king and self.rook_file(.white, .short) == classic.white.right_rook)) and
+                    (!wl or (wl and self.white.king == classic.white.king and self.rook_file(.white, .long)  == classic.white.left_rook)) and
+                    (!bs or (bs and self.black.king == classic.black.king and self.rook_file(.black, .short) == classic.black.right_rook)) and
+                    (!bl or (bl and self.black.king == classic.black.king and self.rook_file(.black, .long)  == classic.black.left_rook));
             };
+    }
+
+    pub fn detect_frc(self: LayoutKey) bool {
+        return
+            (self.is_set(.white, .short) and (self.white.king != classic.white.king or self.white.right_rook != classic.white.right_rook)) or
+            (self.is_set(.white, .long)  and (self.white.king != classic.white.king or self.white.left_rook  != classic.white.left_rook)) or
+            (self.is_set(.black, .short) and (self.black.king != classic.black.king or self.black.right_rook != classic.black.right_rook)) or
+            (self.is_set(.black, .long)  and (self.black.king != classic.black.king or self.black.left_rook  !=  classic.black.left_rook));
     }
 
     fn is_set(self: LayoutKey, us: Color, ct: Castle) bool {
@@ -1766,11 +1773,24 @@ pub const Error = error {
 };
 
 pub fn select_layout(key: LayoutKey) *const Layout {
+    // if (!@inComptime()) {
+    //     if (key.can_use_classic_layout()) {
+    //         lib.io.debugprint(
+    //             "{b:0>4} white k {} rr {} lr {} black k {} rr {} lr {}\n",
+    //             .{ key.rights,
+    //                key.white.king, key.white.right_rook, key.white.left_rook,
+    //                key.black.king, key.black.right_rook, key.black.left_rook
+    //             }
+    //         );
+    //     }
+    // }
+
     // Do do not use a hash entry if not nessesary.
     if (key.rights == 0 or key == LayoutKey.empty) {
         return empty_layout;
     }
-    if (key == LayoutKey.classic) { // key.can_use_classic_layout()) {
+    //if (key == LayoutKey.classic) { // key.can_use_classic_layout()) {
+    if (key.can_use_classic_layout()) {
         return classic_startpos_layout;
     }
     // Otherwise store in map.
