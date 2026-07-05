@@ -11,7 +11,6 @@ pub fn initialize() !void {
     memory_context = .init();
     io_context = .init();
     init_console();
-    try @import("position.zig").initialize();
 }
 
 pub fn finalize() void {
@@ -41,11 +40,11 @@ pub const Program = enum {
 };
 
 pub const program: Program = .uci;
- //pub const program: Program = .hcetuner;
-//pub const program: Program = .lichess_dataset_conversion;
+// pub const program: Program = .hcetuner;
+// pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";
-pub const builddate = "2026-07-02";
+pub const builddate = "2026-07-05";
 pub const is_tuning: bool = program == .hcetuner;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
@@ -61,20 +60,22 @@ var io_context: IoContext = undefined;
 
 /// The global memory context of our exe.
 pub const MemoryContext = struct {
-    debug_allocator: if (is_debug) std.heap.DebugAllocator(.{}) else void,
     gpa: std.mem.Allocator,
 
     fn init() MemoryContext {
-        return MemoryContext {
-            .debug_allocator = if (is_debug) std.heap.DebugAllocator(.{}).init else {},
-            .gpa = if (builtin.is_test) std.testing.allocator else if (is_debug) memory_context.debug_allocator.allocator() else std.heap.smp_allocator, // this is wrong design, refering to the global.
-        };
+        if (builtin.is_test) {
+            return .{ .gpa = std.testing.allocator };
+        }
+        else if (is_debug) {
+             return .{ .gpa = std.heap.DebugAllocator(.{}).init.backing_allocator };
+        }
+        else {
+            return .{ .gpa = std.heap.smp_allocator };
+        }
     }
 
     fn deinit(self: *MemoryContext) void {
-        if (is_debug) {
-            _ = self.debug_allocator.deinit();
-        }
+        _ = self;
     }
 };
 
@@ -128,19 +129,8 @@ const IoContext = struct {
 };
 
 fn init_console() void {
-
-    //
-    //const windows = std.os.windows.setconsole//@cImport(@cInclude("windows.h"));
-    //if (IS_WINDOWS) {
-        // if (windows_h.SetConsoleCP(windows_h.CP_UTF8) == 0) {
-        //     return;
-        // }
-        // if (windows_h.SetConsoleOutputCP(windows_h.CP_UTF8) == 0) {
-        //     return;
-        // }
-    //}
-
     if (is_tty()) {
+        // TODO: Utf8 output
         _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
     }
 }
@@ -150,7 +140,6 @@ pub fn is_tty() bool {
     return std.fs.File.stdin().isTty();
 }
 
-/// Call this anywhere where we do not want this in a release version.
 pub inline fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }

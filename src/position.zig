@@ -29,13 +29,9 @@ const ScorePair = types.ScorePair;
 const SquarePair = squarepairs.SquarePair;
 
 /// See lib.zig.
-pub fn initialize() !void {
-    try layout_map.ensureTotalCapacity(ctx.gpa, 16);
-}
-
-/// See lib.zig.
 pub fn finalize() void {
     layout_map.deinit(ctx.gpa);
+    layout_map = .empty; // This solves testing problems for now.
 }
 
 pub const Position = struct {

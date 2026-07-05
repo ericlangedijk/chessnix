@@ -9,10 +9,6 @@ pub fn main() !void {
     try lib.initialize();
     defer lib.finalize();
 
-    if (lib.is_debug) {
-        try @import("debugtests.zig").run();
-    }
-
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();
