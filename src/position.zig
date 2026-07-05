@@ -1632,7 +1632,6 @@ pub const LayoutKey = packed struct {
         }
     }
 
-    // TODO: how to...
     fn can_use_classic_layout(self: LayoutKey) bool {
         if (self.rights == 0) return false;
         return
@@ -1743,18 +1742,6 @@ pub const Error = error {
 };
 
 pub fn select_layout(key: LayoutKey) *const Layout {
-    // if (!@inComptime()) {
-    //     if (key.can_use_classic_layout()) {
-    //         lib.io.debugprint(
-    //             "{b:0>4} white k {} rr {} lr {} black k {} rr {} lr {}\n",
-    //             .{ key.rights,
-    //                key.white.king, key.white.right_rook, key.white.left_rook,
-    //                key.black.king, key.black.right_rook, key.black.left_rook
-    //             }
-    //         );
-    //     }
-    // }
-
     // Do do not use a hash entry if not nessesary.
     if (key.rights == 0 or key == LayoutKey.empty) {
         return empty_layout;
