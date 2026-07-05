@@ -46,20 +46,21 @@ pub const WDL = packed union {
     }
 };
 
-pub const Axis = enum(u2) {
-    no_axis = 0,
-    orth = 1,
-    diag = 2,
+pub const Axis = enum(u8) {
+    orth = 0,
+    diag = 1,
+    no_axis = 2,
 };
 
-pub const Orientation = enum(u2) {
+pub const Orientation = enum(u8) {
     horizontal = 0,
     vertical = 1,
     diagmain = 2,
     diaganti = 3,
+    no_orientation = 4,
 };
 
-pub const Direction = enum(u3) {
+pub const Direction = enum(u8) {
     north = 0,
     east = 1,
     south = 2,
@@ -68,6 +69,7 @@ pub const Direction = enum(u3) {
     north_east = 5,
     south_east = 6,
     south_west = 7,
+    no_direction = 8,
 
     pub const count = 8;
 
@@ -86,6 +88,7 @@ pub const Direction = enum(u3) {
             .north_east => .south_east,
             .south_east => .north_east,
             .south_west => .north_west,
+            .no_direction => .no_direction,
         };
     }
 
@@ -95,6 +98,7 @@ pub const Direction = enum(u3) {
             .east, .west => .horizontal,
             .north_west, .south_east => .diagmain,
             .north_east, .south_west => .diaganti,
+            .no_direction => .no_orientation,
         };
     }
 };
@@ -428,74 +432,15 @@ pub const file_h : u3 = 7;
 pub const all_ranks: [8]u3 = .{ rank_1, rank_2, rank_3, rank_4, rank_5, rank_6, rank_7, rank_8 };
 pub const all_files: [8]u3 = .{ file_a, file_b, file_c, file_d, file_e, file_f, file_g, file_h };
 
-// #experimental.
-pub const File = packed union {
-    en: E,
-    u: u3,
-
-    pub const count: usize = 8;
-
-    const E = enum(u3) {
-        a, b, c, d, e, f, g, h,
-    };
-
-    pub const a = make(0); pub const b = make(1);  pub const c  = make(2); pub const d = make(3);
-    pub const e = make(4); pub const f =  make(5); pub const  g =make(6); pub const h = make(7);
-
-    pub const all: [File.count]File = .{ a, b, c, d, e, f, g, h };
-
-    pub fn format(self: File, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("{u}", .{ funcs.int(u8, 'a') + self.u });
-    }
-
-    inline fn make(u: u3) File {
-        lib.only_in_comptime();
-        return .{ .u = u };
-    }
-};
-
-// #experimental.
-pub const Rank = packed union {
-    e: E,
-    u: u3,
-
-    pub const count: usize = 8;
-
-    const E = enum(u3) {
-        first, second, third, fourth, fifth, sixth, seventh, eighth,
-    };
-
-    pub const first = make(0); pub const second = make(1);  pub const third  = make(2); pub const fourth = make(3);
-    pub const fifth = make(4); pub const sixth =  make(5); pub const  seventh =make(6); pub const eighth = make(7);
-
-    pub const all: [Rank.count]Rank = .{ first, second, third, fourth, fifth, sixth, seventh, eighth };
-
-    pub fn format(self: Rank, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("{u}", .{ funcs.int(u8, '1') + self.u });
-    }
-
-    inline fn make(u: u3) Rank {
-        lib.only_in_comptime();
-        return .{ .u = u };
-    }
-
-};
-
 pub const Coord = packed struct(u6) {
-    file: u3, // file = x. square % 8 or square & 7 (0b000111)
+    file: u3, // file = x. square % 8 or square & 7   (0b000111)
     rank: u3, // rank = y. square / 8 or square >> 3  (0b111000)
-};
-
-pub const NamedCoord = packed struct(u6) {
-    file: File,
-    rank: Rank,
 };
 
 pub const Square = packed union {
     e: E,
     u: u6,
     coord: Coord,
-    nc: NamedCoord, // #experimental.
 
     pub const count: usize = 64;
 
@@ -634,6 +579,7 @@ pub const Square = packed union {
             .north_east => return if (self.coord.rank < 7 and self.coord.file < 7) self.add(9) else null,
             .south_east => return if (self.coord.rank > 0 and self.coord.file < 7) self.sub(7) else null,
             .south_west => return if (self.coord.rank > 0 and self.coord.file > 0) self.sub(9) else null,
+            else => unreachable,
         }
     }
 
@@ -1059,7 +1005,7 @@ pub const ScorePair = extern struct {
     }
 
     pub fn format(self: ScorePair, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("({}, {})", .{ self.mg, self.eg });
+        try writer.print("pair({}, {})", .{ self.mg, self.eg });
     }
 
 };

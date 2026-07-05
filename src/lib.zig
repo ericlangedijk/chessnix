@@ -10,6 +10,7 @@ pub fn initialize() !void {
     comptime compilation_check();
     memory_context = .init();
     io_context = .init();
+    init_console();
     try @import("position.zig").initialize();
 }
 
@@ -40,7 +41,7 @@ pub const Program = enum {
 };
 
 pub const program: Program = .uci;
-// pub const program: Program = .hcetuner;
+ //pub const program: Program = .hcetuner;
 //pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";
@@ -126,6 +127,24 @@ const IoContext = struct {
     }
 };
 
+fn init_console() void {
+
+    //
+    //const windows = std.os.windows.setconsole//@cImport(@cInclude("windows.h"));
+    //if (IS_WINDOWS) {
+        // if (windows_h.SetConsoleCP(windows_h.CP_UTF8) == 0) {
+        //     return;
+        // }
+        // if (windows_h.SetConsoleOutputCP(windows_h.CP_UTF8) == 0) {
+        //     return;
+        // }
+    //}
+
+    if (is_tty()) {
+        _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
+    }
+}
+
 /// Are we in terminal mode?
 pub fn is_tty() bool {
     return std.fs.File.stdin().isTty();
@@ -141,7 +160,7 @@ pub inline fn only_when_tuning() void {
 }
 
 pub inline fn only_in_comptime() void {
-    if (!is_tuning) @compileError("only in comptime!");
+    if (!@inComptime()) @compileError("only in comptime!");
 }
 
 pub fn wtf(comptime str: []const u8, args: anytype) noreturn {

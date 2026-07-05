@@ -140,6 +140,7 @@ pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
         .north_east => (u & ~bitboards.bb_file_h) << 9,
         .south_east => (u & ~bitboards.bb_file_a) >> 7,
         .south_west => (u & ~bitboards.bb_file_a) >> 9,
+        else => unreachable,
     };
 }
 

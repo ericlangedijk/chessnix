@@ -7,6 +7,7 @@ const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
 const movegen = @import("movegen.zig");
+const hce = @import("hce.zig");
 
 const wtf = lib.wtf;
 const io = lib.io;
@@ -85,6 +86,10 @@ fn do_run(comptime output: bool, comptime is_root: bool, comptime us: Color, dep
     return nodes;
 }
 
+const pos_1 = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const pos_2 = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+const pos_3 = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
+const pos_4 = "5nk1/pp3pp1/2p4p/q7/2PPB2P/P5P1/1P5K/3Q4 w - - 1 28";
 
 /// Doing 4 positions, measuring speed.
 pub fn bench() !void {
@@ -97,10 +102,10 @@ pub fn bench() !void {
 
     const testruns: [4]Test =
     .{
-        .{.name = "Startpos", .fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",                 .end_depth = 7, .end_depth_nodes = 3195901860 },
-        .{.name = "Kiwipete", .fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",     .end_depth = 6, .end_depth_nodes = 8031647685 },
-        .{.name = "Midgame",  .fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", .end_depth = 6, .end_depth_nodes = 6923051137 },
-        .{.name = "Endgame",  .fen = "5nk1/pp3pp1/2p4p/q7/2PPB2P/P5P1/1P5K/3Q4 w - - 1 28",                      .end_depth = 6, .end_depth_nodes = 849167880 },
+        .{.name = "Startpos", .fen = pos_1, .end_depth = 7, .end_depth_nodes = 3195901860 },
+        .{.name = "Kiwipete", .fen = pos_2, .end_depth = 6, .end_depth_nodes = 8031647685 },
+        .{.name = "Midgame",  .fen = pos_3, .end_depth = 6, .end_depth_nodes = 6923051137 },
+        .{.name = "Endgame",  .fen = pos_4, .end_depth = 6, .end_depth_nodes = 849167880 },
     };
 
     var totalnodes: u64 = 0;

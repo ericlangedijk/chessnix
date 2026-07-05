@@ -247,12 +247,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             const pos: *const Position = self.pos;
             const hist: *const History = &self.searcher.hist;
 
-            // TODO: we could have a 'gen_order' here.
             ex.score = 0;
 
             // Score a noisy move
             if (listmode == .noisies) {
-
                 switch (ex.move.kind) {
                     Move.capture => {
                         const is_bad_capture: bool = !see.evaluate(pos, ex.move, 0, .default);
@@ -281,7 +279,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         switch (prom.e) {
                             .queen => ex.score += base + 2000,
                             .knight => ex.score += base + 1000,
-                            .bishop, .rook => ex.score += base, // maybe add a value here?
+                            .bishop, .rook => ex.score += base,
                             else => unreachable,
                         }
                         if (is_bad_noisy) {
@@ -334,7 +332,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 }
             }
 
-            // If the best noisy score is a bad capture, we are done and skip to the next stage (quiets).
+            // If the best noisy score is a bad noisy, we are done and skip to the next stage (quiets).
             if (listmode == .noisies and extmoves[best_idx].score <= Scores.bad_capture_max) {
                 return null;
             }

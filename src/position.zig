@@ -61,7 +61,7 @@ pub const Position = struct {
     pins_diag: [Color.count]u64,
     pins_orth: [Color.count]u64,
     is_960: bool,
-    gen_flags: u2, // gf_pins for stm only!
+    gen_flags: u2, // gf_check + gf_pins (for stm only).
 
     pub const empty: Position = .init_empty();
     pub const classic_startpos: Position = .init_classic_startpos();
@@ -303,22 +303,6 @@ pub const Position = struct {
             self.castlingrights |= cf;
         }
     }
-
-    // // TODO: test! maybe put the function in LayoutKey.
-    // pub fn detect_frc(self: *const Position) bool {
-    //     const e1: Piece = self.get(.e1);
-    //     const e8: Piece = self.get(.e8);
-    //     const h1: Piece = self.get(.h1);
-    //     const a1: Piece = self.get(.a1);
-    //     const h8: Piece = self.get(.h8);
-    //     const a8: Piece = self.get(.a8);
-
-    //     return
-    //         (self.is_castling_allowed(.white, .short) and (e1.e != .white_king or h1.e != .white_rook)) or
-    //         (self.is_castling_allowed(.white, .long)  and (e1.e != .white_king or a1.e != .white_rook)) or
-    //         (self.is_castling_allowed(.black, .short) and (e8.e != .black_king or h8.e != .black_rook)) or
-    //         (self.is_castling_allowed(.black, .long)  and (e8.e != .black_king or a8.e != .black_rook));
-    // }
 
     pub fn phase(self: *const Position) u8 {
         return self.phase_by_color[0] + self.phase_by_color[1];
@@ -1459,11 +1443,9 @@ pub const Position = struct {
         }
 
         // Color to move.
-        if (self.stm.e == .white) {
-            try writer.print(" w", .{});
-        }
-        else {
-            try writer.print(" b", .{});
+        switch (self.stm.e) {
+            .white => try writer.print(" w", .{}),
+            .black => try writer.print(" b", .{}),
         }
 
         // Castling rights.
@@ -1473,34 +1455,34 @@ pub const Position = struct {
         }
         else {
             if (!self.is_960) {
-                if (self.castlingrights & cf_white_short != 0) try writer.print("K", .{});
-                if (self.castlingrights & cf_white_long != 0)  try writer.print("Q", .{});
-                if (self.castlingrights & cf_black_short != 0) try writer.print("k", .{});
-                if (self.castlingrights & cf_black_long != 0)  try writer.print("q", .{});
+                if (self.is_castling_allowed(.white, .short)) try writer.print("K", .{});
+                if (self.is_castling_allowed(.white, .long))  try writer.print("Q", .{});
+                if (self.is_castling_allowed(.black, .short)) try writer.print("k", .{});
+                if (self.is_castling_allowed(.black, .long))  try writer.print("q", .{});
             }
             else {
-                if (self.castlingrights & cf_white_short != 0) try writer.print("{u}", .{ self.layout.rook_start(.white, .short).char_of_file() - 32 }); // uppercase
-                if (self.castlingrights & cf_white_long != 0)  try writer.print("{u}", .{ self.layout.rook_start(.white, .long).char_of_file() - 32 }); // uppercase
-                if (self.castlingrights & cf_black_short != 0) try writer.print("{u}", .{ self.layout.rook_start(.black, .short).char_of_file() });
-                if (self.castlingrights & cf_black_long != 0)  try writer.print("{u}", .{ self.layout.rook_start(.black, .long).char_of_file() });
+                if (self.is_castling_allowed(.white, .short)) try writer.print("{u}", .{ self.layout.rook_start(.white, .short).char_of_file() - 32 }); // uppercase
+                if (self.is_castling_allowed(.white, .long))  try writer.print("{u}", .{ self.layout.rook_start(.white, .long).char_of_file() - 32 }); // uppercase
+                if (self.is_castling_allowed(.black, .short)) try writer.print("{u}", .{ self.layout.rook_start(.black, .short).char_of_file() });
+                if (self.is_castling_allowed(.black, .long))  try writer.print("{u}", .{ self.layout.rook_start(.black, .long).char_of_file() });
             }
         }
 
         // Enpassant.
         try writer.print(" ", .{});
         if (self.ep_square.u > 0) {
-            try writer.print("{t}", .{self.ep_square.e});
+            try writer.print("{t}", .{ self.ep_square.e });
         }
         else {
             try writer.print("-", .{});
         }
 
         // Draw counter.
-        try writer.print(" {}", .{self.rule50});
+        try writer.print(" {}", .{ self.rule50 });
 
         // Move number.
         const movenr: u16 = funcs.ply_to_movenumber(self.game_ply, self.stm);
-        try writer.print(" {}", .{movenr});
+        try writer.print(" {}", .{ movenr });
     }
 
     /// Prints the position diagram + information.

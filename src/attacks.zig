@@ -333,6 +333,7 @@ fn attack_index_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
         .vertical   => file_magics[sq.u].attack_index(occ),
         .diagmain   => main_magics[sq.u].attack_index(occ),
         .diaganti   => anti_magics[sq.u].attack_index(occ),
+        else => unreachable,
     };
 }
 
@@ -346,6 +347,7 @@ fn attacks_of(comptime ori: Orientation, sq: Square, occ: u64) u64 {
         .vertical   => file_attacks[offset + raw],
         .diagmain   => diag_main_attacks[offset + raw],
         .diaganti   => diag_anti_attacks[offset + raw],
+        else => unreachable,
     };
 }
 

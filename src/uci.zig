@@ -25,17 +25,13 @@ const wtf = lib.wtf;
 var engine: *Engine = undefined;
 
 pub fn run() !void {
-    const is_tty: bool = lib.is_tty();
-    try uci_loop(is_tty);
+    try uci_loop(lib.is_tty());
 }
 
 fn uci_loop(is_tty: bool) !void {
     if (is_tty) {
-        // Enable cls (clear screen) and maybe later some fancy coloring.
-        _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
         TTY.print_hello();
     }
-
     engine = try Engine.create(false);
     defer engine.destroy();
 
@@ -257,6 +253,7 @@ const TTY = struct {
         io.print("chessnix {s} by eric langedijk\n", .{ lib.version });
     }
 
+    /// Needs ansisupport. Enabled in lib when in terminal mode.
     fn cls() void {
         io.print("\x1B[2J\x1B[H", .{});
         print_hello();

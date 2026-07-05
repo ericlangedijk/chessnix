@@ -14,6 +14,7 @@ const lib = @import("lib.zig");
 const utils = @import("utils.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
+const scoring = @import("scoring.zig");
 const position = @import("position.zig");
 const hce = @import("hce.zig");
 const hceterms = @import("hceterms.zig");
@@ -84,13 +85,13 @@ const FloatScorePair = extern struct {
     // }
 
     pub fn format(self: FloatScorePair, writer: *std.io.Writer) std.io.Writer.Error!void {
-        try writer.print("({d:.4}, {d:.4})", .{ self.mg, self.eg });
+        try writer.print("fpair({d:.4}, {d:.4})", .{ self.mg, self.eg });
     }
 };
 
 const Status = struct {
     positions_seen: u64 = 0,
-
+    sum_errors: u64 = 0,
 };
 
 /// One learning term.
@@ -136,7 +137,13 @@ pub fn register_scorepair_usage(sp: *ScorePair, multiply: u8, us: Color, debugar
 pub fn register_hce_eval_result(hce_result: ScorePair) void {
     lib.only_when_tuning();
     // Here we can assert that hce_result == curr_sp.
-    _ = hce_result;
+    //_ = hce_result;
+    //std.debug.assert(std.meta.eql(hce_result, curr_sp));
+    //curr_sp = scoring.
+    curr_sp.mg = std.math.clamp(curr_sp.mg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
+    curr_sp.eg = std.math.clamp(curr_sp.eg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
+
+    lib.verify(std.meta.eql(hce_result, curr_sp), "seen {} {f} != {f}", .{ status.positions_seen, hce_result, curr_sp });
 }
 
 // --- Tuning ---
@@ -146,6 +153,15 @@ pub fn run() !void {
     lib.only_when_tuning();
     try initialize();
     defer finalize();
+
+    // for (0..25) |p| {
+    //     const ph: u8 = @intCast(p);
+    //     lib.io.print("0.8 {} {f}\n", .{ ph, compute_delta(ph, 0.8)});
+    //     lib.io.print("-0.8 {} {f}\n", .{ ph, compute_delta(ph, -0.8)});
+    //     lib.io.print("1.8 {} {f}\n", .{ ph, compute_delta(ph, 1.8)});
+    //     lib.io.print("-1.0.8 {} {f}\n", .{ ph, compute_delta(ph, -1.8)});
+    // }
+    // if (true) return;
 
     var file_nr: usize = 0; _ = &file_nr;
     var filename = compute_viri_filename(file_nr);
@@ -216,14 +232,11 @@ fn begin_eval() void {
 
 fn handle_used_term(sp: *ScorePair, multiply: u8, us: Color, debugargs: anytype) void {
     _ = debugargs;
-
     if (multiply == 0) {
         return;
     }
-
     const sp_index: usize = index_of_scorepair(sp);
-
-    // Update running sum and usage.
+    // Update usage and running sum.
     switch (us.e) {
         .white => {
             curr_usage[sp_index] += multiply;
@@ -234,33 +247,14 @@ fn handle_used_term(sp: *ScorePair, multiply: u8, us: Color, debugargs: anytype)
             curr_sp.dec(sp.*.mul(multiply));
         },
     }
-
-    // const sp_info: *const MetaData.ScorePairInfo = metadata.get_scorepair_info(sp_index);
-    // if (funcs.eql(sp_info.name.slice(), "knight_outpost_table")) {
-    //    lib.io.debugprint("A OUTPOST KNIGHT {any}\n", .{ debugargs });
-    // }
-
-    // lib.io.debugprint(
-    //     "usage sp ({:>4},{:>4}), times:{:>2}, {s} ({}), ({t}), args: {any}, ",
-    //     .{ sp.mg, sp.eg, multiply, sp_info.name.slice(), sp_info.array_index, us.e, debugargs }
-    // );
-    // lib.io.debugprint(
-    //     "curr_usage: {} curr_sp {any}\n",
-    //     .{ curr_usage[sp_index], curr_sp }
-    // );
 }
 
 /// When eval for the currentposition is ready, update the tuningterms.
 fn end_eval(chessnix_eval: i32, dataset_eval: i32) void {
-    const LR: f32 = 0.1;  // learning rate.
-    //const ST: u32 = 10; // sample threshold.
-
+    const LR: f32 = 0.1;
     const err: i32 = dataset_eval - chessnix_eval;
-    if (err >= -1 and err <= 1) {
-        return;
-    }
 
-    // Loop through the used features during eval and gather the indexes.
+    // Gather used terms.
     curr_active_indexes.len = 0;
     for (curr_usage, 0..) |curr, sp_index| {
         if (curr == 0) {
@@ -273,14 +267,17 @@ fn end_eval(chessnix_eval: i32, dataset_eval: i32) void {
     //const phase: u8 = types.restrict_phase(curr_pos.phase());
     //lib.io.debugprint("pos phase {}, curr_sp {f}, err {}, chessnix_eval {} dataset_eval {}, used terms {} {f}\n", .{ phase, curr_sp, err, chessnix_eval, dataset_eval, used, curr_pos });
     //lib.io.debugprint("pos phase {}, curr_sp {f}, err {}, chessnix_eval {} dataset_eval {}, used terms {}\n", .{ phase, curr_sp, err, chessnix_eval, dataset_eval, used });
+    std.debug.assert(used > 0);
 
     //const abs_err: u32 = @abs(err);
     // Spread out the error over the terms.
     const err_avg: f32 = float(f32, err) / float(f32, used);
     var delta: FloatScorePair = compute_delta(curr_pos.phase(), err_avg);
     delta.mul(LR);
+    const overall_avg_err: f64 = float(f64, status.sum_errors) / float(f64, status.positions_seen);
+    status.sum_errors += @abs(err);
 
-    if (status.positions_seen % 100 == 0) lib.io.debugprint("pos phase {}, used: {}, err {d:.4}, avg_err {d:.4}, delta {f}\n", .{ curr_pos.phase(), used, err, err_avg, delta });
+    if (status.positions_seen % 100 == 0) lib.io.debugprint("pos phase {}, used: {}, err {d:.4}, avg_err {d:.4}, delta {f} AVG {}\n", .{ curr_pos.phase(), used, err, err_avg, delta, overall_avg_err });
     // if (status.positions_seen % 100 == 0) {
     //      lib.io.debugprint("{f}\n", .{ &curr_pos });
     // }
@@ -312,9 +309,6 @@ fn end_eval(chessnix_eval: i32, dataset_eval: i32) void {
                 tt.samples = 0;
             }
   //      }
-
-
-
     }
 }
 
@@ -324,7 +318,7 @@ fn compute_delta(pos_phase: u8, err: f32) FloatScorePair {
     const relative_phase = phase / max_phase;
     const mg_delta: f32 = err * relative_phase;
     const eg_delta: f32 = err * (1.0 - relative_phase);
-    return .init(std.math.clamp(mg_delta, -100.0, 100.0), std.math.clamp(eg_delta, -100.0, 100.0));
+    return .init(std.math.clamp(mg_delta, -10.0, 10.0), std.math.clamp(eg_delta, -10.0, 10.0));
 }
 
 // --- Misc ---

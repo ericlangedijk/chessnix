@@ -22,6 +22,7 @@ const endgame = @import("endgame.zig");
 
 const io = lib.io;
 const popcnt = funcs.popcnt;
+const int = funcs.int;
 
 const ScorePair = types.ScorePair;
 const Color = types.Color;
@@ -518,10 +519,10 @@ pub const Evaluator = struct {
         // Pawn storm to enemy king.
         const storming_pawns: u64 = our_pawns & self.pawn_storm_areas[them.u];
         iter = .init(storming_pawns);
-        while (iter.next()) |sq| {
-            const sp: ScorePairPtr = get_pawn_storm_scorepair(us, their_king_sq, sq);
+        while (iter.next()) |pawn_sq| {
+            const sp: ScorePairPtr = get_pawn_storm_scorepair(us, their_king_sq, pawn_sq);
             score.inc(sp.*);
-            if (lib.is_tuning) register(sp, 1, us, .{PieceType.king, our_king_sq.e, sq.e});
+            if (lib.is_tuning) register(sp, 1, us, .{PieceType.king, our_king_sq.e, pawn_sq.e});
         }
 
         // Open files to our king.
@@ -663,22 +664,15 @@ pub const Evaluator = struct {
         return &terms.pawn_protection_table[i];
     }
 
-    /// TODO: speed up?  make file-symmetrical.
-    fn get_pawn_storm_scorepair(comptime us: Color, their_king_sq: Square, our_pawn_sq: Square) ScorePairPtr {
-        if (comptime lib.verifications) {
-            verify_king_pawn_storm_area(us, their_king_sq, our_pawn_sq);
+    fn get_pawn_storm_scorepair(comptime attacker: Color, defending_king: Square, attacking_pawn: Square) ScorePairPtr {
+        if (lib.verifications) {
+            verify_king_pawn_storm_area(attacker, defending_king, attacking_pawn);
         }
-        const them: Color = comptime us.opp();
-        const king_index: i32 = 19; // index of king in the 3x7 pawn storm area
-        const area_width: i32 = 3;
-        const pawn_rank: i32 = our_pawn_sq.coord.rank;
-        const pawn_file: i32 = our_pawn_sq.coord.file;
-        const rank_diff: i32 = pawn_rank - their_king_sq.coord.rank;
-        const file_diff: i32 = pawn_file - their_king_sq.coord.file;
-        const mul: i32 = comptime if (them.e == .black) -1 else 1;
-        const idx: i32 = king_index - (rank_diff * area_width + file_diff) * mul;
-        assert(idx >= 0);
-        const i: u32 = @abs(idx);
+        const defender: Color = comptime attacker.opp();
+        const mul: i16 = comptime if (defender.e == .black) -1 else 1;
+        const rank_diff: i16 = int(i16, attacking_pawn.coord.rank) - defending_king.coord.rank;
+        const file_diff: i16 = int(i16, attacking_pawn.coord.file) - defending_king.coord.file;
+        const i: u16 = @abs(19 - (rank_diff * 3 + file_diff) * mul); // 19 is the king index.
         return &terms.pawn_storm_table[i];
     }
 
@@ -693,11 +687,7 @@ pub const Evaluator = struct {
             return 0;
         }
         const king_sq: Square = self.king_squares[us.u];
-        // Direction should never be null here.
-        if (lib.is_paranoid) {
-            self.verify_non_null_pin_direction(pt, us, from);
-        }
-        const dir: types.Direction = squarepairs.get(king_sq, from).direction.?;
+        const dir: types.Direction = squarepairs.get(king_sq, from).direction;
         const bb_same_direction_as_pin: u64 = bitboards.direction_bitboards[@intFromEnum(dir)][king_sq.u];
         return bb_moves & bb_same_direction_as_pin;
     }
@@ -717,19 +707,6 @@ pub const Evaluator = struct {
         const ok: bool = funcs.contains_square(area, our_pawn_sq);
         if (!ok) {
             lib.verify(ok, "verify_king_pawn_storm_area (attacker {t}): pawn on {t} is not inside pawnstormarea of {t}", .{ attacker.e, our_pawn_sq.e, their_king_sq.e });
-        }
-    }
-
-    /// Direction king -> from should never be null.
-    fn verify_non_null_pin_direction(self: *Evaluator, comptime pt: PieceType, comptime us: Color, from: Square) void {
-        const king_sq: Square = self.pos.king_square(us);
-        const dir: ?types.Direction = squarepairs.get(king_sq, from).direction;
-        if (dir == null) {
-            lib.io.debugprint("white pins\n", .{});
-            funcs.print_bitboard(self.pos.pins(.white));
-            lib.io.debugprint("black pins\n", .{});
-            funcs.print_bitboard(self.pos.pins(.black));
-            lib.wtf("hce pin error for {t} {t} [{f}] king on {t} piece on {t}", .{ us.e, pt.e, self.pos, king_sq.e, from.e });
         }
     }
 
@@ -765,6 +742,8 @@ fn compute_king_pawnstorm_areas_white() [Square.count]u64 {
         ps[sq.u] = bitboards.passed_pawn_masks_white[sq.u];
         // Include the squares next to the king.
         ps[sq.u] |= funcs.pawns_shift(ps[sq.u], .black, .up);
+        ps[sq.u] &= ~bitboards.bb_rank_8; //#testing
+        ps[sq.u] &= ~sq.to_bitboard(); //#testing
     }
     return ps;
 }
@@ -775,6 +754,8 @@ fn compute_king_pawnstorm_areas_black() [Square.count]u64 {
         ps[sq.u] = bitboards.passed_pawn_masks_black[sq.u];
         // Include the squares next to the king.
         ps[sq.u] |= funcs.pawns_shift(ps[sq.u], .white, .up);
+        ps[sq.u] &= ~bitboards.bb_rank_1; //#testing
+        ps[sq.u] &= ~sq.to_bitboard(); //#testing
     }
     return ps;
 }
