@@ -435,7 +435,7 @@ fn is_legal_kingmove(pos: *const Position, comptime us: Color, bb_without_king: 
 inline fn is_castling_ok(pos: *const Position, comptime us: Color, comptime ct: Castle, pins_orth: u64, bb_unsafe: u64) bool {
     // Frc requires an additional rook pin check. In classic the rooks cannot be pinned.
     return
-        pos.is_castling_allowed(us, ct) and
+        pos.has_castlingright(us, ct) and
         pos.layout.empty_path(us, ct) & pos.all() == 0 and
         pins_orth & pos.layout.rook_start(us, ct).to_bitboard() == 0 and
         is_castling_path_safe(pos, us, ct, bb_unsafe);
@@ -445,14 +445,14 @@ inline fn is_castling_ok(pos: *const Position, comptime us: Color, comptime ct: 
 inline fn is_castling_ok_iterative(pos: *const Position, comptime us: Color, comptime ct: Castle, pins_orth: u64) bool {
     // Frc requires an additional rook pin check. In classic the rooks cannot be pinned.
     return
-        pos.is_castling_allowed(us, ct) and
+        pos.has_castlingright(us, ct) and
         pos.layout.empty_path(us, ct) & pos.all() == 0 and
         pins_orth & pos.layout.rook_start(us, ct).to_bitboard() == 0 and
         is_castling_path_safe_iterative(pos, us, ct);
 }
 
 fn is_castling_path_safe(pos: *const Position, comptime us: Color, comptime ct: Castle, bb_unsafe: u64) bool {
-    return  pos.layout.attack_path(us, ct) & bb_unsafe == 0;
+    return pos.layout.attack_path(us, ct) & bb_unsafe == 0;
 }
 
 fn is_castling_path_safe_iterative(pos: *const Position, comptime us: Color, comptime ct: Castle) bool {

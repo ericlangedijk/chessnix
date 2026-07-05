@@ -71,8 +71,8 @@ pub const ViriPosition = extern struct {
             // Encode castling rook.
             if (piecetype.e == .rook and sq.coord.rank == funcs.relative_rank(color, types.rank_1)) {
                 if (
-                    (pos.is_castling_allowed(color, .short) and sq.u == pos.layout.rook_start(color, .short).u) or
-                    (pos.is_castling_allowed(color, .long) and sq.u == pos.layout.rook_start(color, .long).u)
+                    (pos.has_castlingright(color, .short) and sq.u == pos.layout.rook_start(color, .short).u) or
+                    (pos.has_castlingright(color, .long) and sq.u == pos.layout.rook_start(color, .long).u)
                 ) {
                     piececode = unmoved_rook;
                 }

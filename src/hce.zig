@@ -646,21 +646,14 @@ pub const Evaluator = struct {
         return safe and funcs.outpost(us) & sq_bb != 0;
     }
 
-    /// TODO: speed up? make file-symmetrical.
-    fn get_pawn_protection_scorepair(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) ScorePairPtr {
+    fn get_pawn_protection_scorepair(comptime us: Color, king: Square, pawn: Square) ScorePairPtr {
         if (comptime lib.verifications) {
-            verify_king_pawn_protection_area(us, our_king_sq, our_pawn_sq);
+            verify_king_pawn_protection_area(us, king, pawn);
         }
-        const king_index: i32 = 7; // index of king in the 3x4 pawn storm area
-        const area_width: i32 = 3;
-        const pawn_rank: i32 = our_pawn_sq.coord.rank;
-        const pawn_file: i32 = our_pawn_sq.coord.file;
-        const rank_diff: i32 = pawn_rank - our_king_sq.coord.rank;
-        const file_diff: i32 = pawn_file - our_king_sq.coord.file;
-        const mul: i32 = comptime if (us.e == .black) -1 else 1;
-        const idx: i32 = king_index - (rank_diff * area_width + file_diff) * mul;
-        assert(idx >= 0);
-        const i: u32 = @abs(idx);
+        const mul: i16 = comptime if (us.e == .black) -1 else 1;
+        const rank_diff: i16 = int(i16, pawn.coord.rank) - king.coord.rank;
+        const file_diff: i16 = int(i16, pawn.coord.file) - king.coord.file;
+        const i: u16 = @abs(7 - (rank_diff * 3 + file_diff) * mul); // 7 is the king index.
         return &terms.pawn_protection_table[i];
     }
 
@@ -701,7 +694,7 @@ pub const Evaluator = struct {
         }
     }
 
-    /// Check if the pawn square is inside the 3x4 king area.
+    /// Check if the pawn square is inside the 3x7 king area.
     fn verify_king_pawn_storm_area(comptime attacker: Color, their_king_sq: Square, our_pawn_sq: Square) void {
         const area: u64 = if (attacker.e == .black) king_pawnstorm_areas_white[their_king_sq.u] else king_pawnstorm_areas_black[their_king_sq.u];
         const ok: bool = funcs.contains_square(area, our_pawn_sq);

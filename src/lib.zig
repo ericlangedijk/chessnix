@@ -49,7 +49,7 @@ pub const is_tuning: bool = program == .hcetuner;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 pub const is_debug: bool = builtin.mode == .Debug;
-pub const is_paranoid: bool = is_debug;
+pub const is_paranoid: bool = is_debug or builtin.is_test;
 pub const verifications: bool = is_debug or is_release_safe;
 
 // --- Io and memory ---

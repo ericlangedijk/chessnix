@@ -1275,7 +1275,7 @@ pub const Position = struct {
         return att;
     }
 
-    pub fn is_castling_allowed(self: *const Position, us: Color, ct: Castle) bool {
+    pub fn has_castlingright(self: *const Position, us: Color, ct: Castle) bool {
         return self.castlingrights & Castling.flag(us, ct) != 0;
     }
 
@@ -1329,8 +1329,8 @@ pub const Position = struct {
         // }
 
         // TODO: rewrite
-        // assert((self.state_flags & gf_check == 0 and self.checkmask == 0) or (self.state_flags & gf_check != 0 and self.checkmask != 0));
-        // assert((self.state_flags & gf_pins == 0 and self.pins() == 0) or (self.state_flags & gf_pins != 0 and self.pins() != 0));
+        assert((self.gen_flags & gf_check == 0 and self.checkmask == 0) or (self.gen_flags & gf_check != 0 and self.checkmask != 0));
+        assert((self.gen_flags & gf_pins == 0 and self.pins(self.stm) == 0) or (self.gen_flags & gf_pins != 0 and self.pins(self.stm) != 0));
 
         var key: u64 = undefined;
         var pawnkey: u64 = undefined;
@@ -1451,16 +1451,16 @@ pub const Position = struct {
         }
         else {
             if (!self.is_960) {
-                if (self.is_castling_allowed(.white, .short)) try writer.print("K", .{});
-                if (self.is_castling_allowed(.white, .long))  try writer.print("Q", .{});
-                if (self.is_castling_allowed(.black, .short)) try writer.print("k", .{});
-                if (self.is_castling_allowed(.black, .long))  try writer.print("q", .{});
+                if (self.has_castlingright(.white, .short)) try writer.print("K", .{});
+                if (self.has_castlingright(.white, .long))  try writer.print("Q", .{});
+                if (self.has_castlingright(.black, .short)) try writer.print("k", .{});
+                if (self.has_castlingright(.black, .long))  try writer.print("q", .{});
             }
             else {
-                if (self.is_castling_allowed(.white, .short)) try writer.print("{u}", .{ self.layout.rook_start(.white, .short).char_of_file() - 32 }); // uppercase
-                if (self.is_castling_allowed(.white, .long))  try writer.print("{u}", .{ self.layout.rook_start(.white, .long).char_of_file() - 32 }); // uppercase
-                if (self.is_castling_allowed(.black, .short)) try writer.print("{u}", .{ self.layout.rook_start(.black, .short).char_of_file() });
-                if (self.is_castling_allowed(.black, .long))  try writer.print("{u}", .{ self.layout.rook_start(.black, .long).char_of_file() });
+                if (self.has_castlingright(.white, .short)) try writer.print("{u}", .{ self.layout.rook_start(.white, .short).char_of_file() - 32 }); // uppercase
+                if (self.has_castlingright(.white, .long))  try writer.print("{u}", .{ self.layout.rook_start(.white, .long).char_of_file() - 32 }); // uppercase
+                if (self.has_castlingright(.black, .short)) try writer.print("{u}", .{ self.layout.rook_start(.black, .short).char_of_file() });
+                if (self.has_castlingright(.black, .long))  try writer.print("{u}", .{ self.layout.rook_start(.black, .long).char_of_file() });
             }
         }
 
@@ -1507,14 +1507,6 @@ pub const Position = struct {
         }
         io.print_buffered("\n", .{});
         io.flush();
-    }
-
-    /// Debug only.
-    pub fn equals(self: *const Position, other: *const Position) bool {
-        lib.not_in_release();
-        const a: []const u8 = std.mem.asBytes(self);
-        const b: []const u8 = std.mem.asBytes(other);
-        return std.mem.eql(u8, a, b);
     }
 };
 
