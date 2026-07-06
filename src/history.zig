@@ -229,7 +229,7 @@ pub const ContinuationHistory = struct {
 
 /// Small entitities.
 pub const CorrectionHistory = struct {
-    const table_size: usize = 16384;
+    const table_size: usize = 16384 * 2;
 
     pawn_table: [Color.count][table_size]i16, // Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
     white_table: [Color.count][table_size]i16, // Entries for white pieces. Indexing: [color][position.non_pawns_white_key % tablesize]
