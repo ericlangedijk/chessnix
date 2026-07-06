@@ -40,17 +40,18 @@ pub const Program = enum {
 };
 
 pub const program: Program = .uci;
-// pub const program: Program = .hcetuner;
+//pub const program: Program = .hcetuner;
 // pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";
 pub const builddate = "2026-07-05";
-pub const is_tuning: bool = program == .hcetuner;
-pub const is_release: bool = builtin.mode == .ReleaseFast;
-pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
+pub const is_test: bool = builtin.is_test;
 pub const is_debug: bool = builtin.mode == .Debug;
-pub const is_paranoid: bool = is_debug or builtin.is_test;
-pub const verifications: bool = is_debug or is_release_safe;
+pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
+pub const is_release: bool = builtin.mode == .ReleaseFast;
+pub const is_tuning: bool = !is_test and program == .hcetuner;
+pub const is_paranoid: bool = is_test or is_debug;
+pub const verifications: bool = is_test or is_debug or is_release_safe;
 
 // --- Io and memory ---
 pub const ctx: *const MemoryContext = &memory_context;

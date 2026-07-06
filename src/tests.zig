@@ -1,12 +1,10 @@
 // zig fmt: off
 
-//! Debug only. collection of tests.
+//! Tests for critical parts.
 
 const std = @import("std");
 const builtin = @import("builtin");
 const lib = @import("lib.zig");
-const bitboards = @import("bitboards.zig");
-const attacks = @import("attacks.zig");
 const utils = @import("utils.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
@@ -14,8 +12,9 @@ const position = @import("position.zig");
 const movegen = @import("movegen.zig");
 const hce = @import("hce.zig");
 const perft = @import("perft.zig");
-const tt = @import("tt.zig");
 const viri = @import("viri.zig");
+const scoring = @import("scoring.zig");
+const search = @import("search.zig");
 
 const assert = std.debug.assert;
 const ctx = lib.ctx;
@@ -68,9 +67,9 @@ test "evaluations equal" {
     for (consts.test_positions, 0..) |str, idx| {
         try pos.setup(str, false);
         const scaled_eval: i32 = ev.evaluate(&pos, .scaled);
-        try std.testing.expect(scaled_eval == consts.scaled_evaluations[idx]);
+        try std.testing.expect(scaled_eval == consts.scaled_static_evaluations[idx]);
         const unscaled_eval: i32 = ev.evaluate(&pos, .unscaled);
-        try std.testing.expect(unscaled_eval == consts.unscaled_evaluations[idx]);
+        try std.testing.expect(unscaled_eval == consts.unscaled_static_evaluations[idx]);
     }
 }
 
@@ -82,6 +81,7 @@ test "perft" {
     var pos: Position = .empty;
     for (consts.test_positions, 0..) |str, index| {
         try pos.setup(str, false);
+        try std.testing.expect(!pos.is_960);
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max_depth + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d| {
@@ -166,6 +166,8 @@ test "viri" {
     try lib.initialize();
     defer lib.finalize();
 
+    // TODO: test 960 as well
+
     var game: viri.ViriGame = .init();
     defer game.deinit();
 
@@ -203,6 +205,41 @@ test "viri" {
             try std.testing.expect(ex == random_game.moves.extmoves[i]);
         }
     }
+}
+
+test "engine" {
+    try lib.initialize();
+    defer lib.finalize();
+    var engine: *search.Engine = try .create(true);
+    defer engine.destroy();
+
+    var search_stats: search.RunOnceStats = undefined;
+    var expected_stats: search.RunOnceStats = undefined;
+
+    // info depth 8 seldepth 12 score cp 20 nodes 3746 qnodes 5% time 14 nps 255842 cps 608258 eff 59% pv d2d4 e7e6 g1f3 b8c6 e2e3 g8f6 b1c3
+    search_stats = try engine.test_run_with_fixed_depth(consts.startpos, 8);
+    expected_stats = .{ .score = 20, .bestmove = .init(.d2, .d4, Move.double_push), .nodes = 3746, .seldepth = 12 };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 8 seldepth 21 score cp -18 nodes 9518 qnodes 50% time 33 nps 281796 cps 606730 eff 69% pv e2a6 b4c3 d2c3 h3g2 f3g2 e6d5 e5g4
+    search_stats = try engine.test_run_with_fixed_depth(consts.kiwi, 8);
+    expected_stats = .{ .score = -18, .bestmove = .init(.e2, .a6, Move.capture), .nodes = 9518, .seldepth = 21 };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 8 seldepth 8 score mate 2 nodes 3160 qnodes 0% time 6 nps 506345 cps 1174849 eff 46% pv d2g2 f8e8 g2g8
+    search_stats = try engine.test_run_with_fixed_depth("5k2/8/4K3/8/8/8/3R4/8 w - - 0 1", 8);
+    expected_stats = .{ .score = scoring.mate - 3, .bestmove = .init(.d2, .g2, Move.silent), .nodes = 3160, .seldepth = 8 };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 8 seldepth 11 score cp -14 nodes 2112 qnodes 16% time 8 nps 235777 cps 545570 eff 59% pv e8g8 e1g1 d7d6 h2h3 c7c5 b2b3 c5d4
+    search_stats = try engine.test_run_with_fixed_depth("rn1qk2r/pbppnpbp/1p2p1p1/8/2PPP3/2NBBN2/PP3PPP/R2QK2R b KQkq - 3 7", 8);
+    expected_stats = .{ .score = -14, .bestmove = .init(.e8, .h8, Move.castle_short), .nodes = 2112, .seldepth = 11 };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 8 seldepth 16 score cp 64 nodes 6767 qnodes 31% time 24 nps 274242 cps 634442 eff 61% pv e4f5 h7h6 g5f6 d7f6 d3d4 e5d4 f3d4 d6d5
+    search_stats = try engine.test_run_with_fixed_depth("r1bq1rk1/pp1n2pp/2pp1n2/2b1ppB1/4P3/P1NP1N2/1PP1BPPP/R2Q1RK1 w - - 4 9", 8);
+    expected_stats = .{ .score = 64, .bestmove = .init(.e4, .f5, Move.capture), .nodes = 6767, .seldepth = 16 };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 }
 
 fn print_error(comptime str: []const u8, args: anytype) void {
@@ -288,8 +325,10 @@ fn gen_random_game() RandomGame {
 }
 
 const consts = if (!builtin.is_test) void else struct {
+    const startpos: []const u8 = test_positions[0];
+    const kiwi: []const u8 = test_positions[1];
 
-    const scaled_evaluations: [134]i32 = .{
+    const scaled_static_evaluations: [134]i32 = .{
         30,    -9, -1246,   -31,  -150,  1426,  1461, -1317, -1350,  2768, -2656,  1410,  1468, -1284, -1345,    14,    12,    16,    14,    15,
         11,    14, -1315, -1347,  1428,  1463, -2654,  2770, -1282, -1343,  1413,  1471,    14,    15,    12,    14,    13,    16,    14,     4,
         23,    13,   -47,    63,    23,     4,    45,    53,   -56,    -4,    39,  1296, -1243,   -11, -1213,  1326,    14,    12,    14,    15,
@@ -299,7 +338,7 @@ const consts = if (!builtin.is_test) void else struct {
         18,    17,   230,    43,    36,    20,   222,    12,    56,   149,     9,   392,   -60, 10284,
     };
 
-    const unscaled_evaluations: [134]i32 = .{
+    const unscaled_static_evaluations: [134]i32 = .{
         30,    -9,  1246,   -62,  -242,   693,   710,  -640,  -656,  1345, -1291,   605,   642,  -551,  -588,    28,    25,    32,    28,    30,
         23,    28,   639,   655,  -694,  -711,  1290, -1346,   550,   587,  -606,  -643,   -28,   -31,   -24,   -28,   -26,   -33,   -28,     8,
         46,    27,  -393,   527,   -47,    -8,   -91,  -448,   472,    -9,    78,   864,  -829,    23,   809,  -884,    28,    25,   -28,   -31,

@@ -9,6 +9,8 @@ const utils = @import("utils.zig");
 
 const assert = std.debug.assert;
 
+const ScorePair = types.ScorePair;
+
 // -32002: null
 // -32000: infinity, alpha limit
 // -30000: mate
@@ -86,6 +88,19 @@ pub fn score_from_tt(tt_score: i32, ply: u16) i32 {
         return tt_score - ply;
     }
     return tt_score;
+}
+
+/// Used by hce and tuner.
+pub fn restrict_scorepair_before_scaling(sp: ScorePair) ScorePair {
+    return .{
+        .mg = std.math.clamp(sp.mg, -static_eval_before_scaling_threshold, static_eval_before_scaling_threshold),
+        .eg = std.math.clamp(sp.eg, -static_eval_before_scaling_threshold, static_eval_before_scaling_threshold),
+    };
+}
+
+/// Used by hce and tuner.
+pub fn restrict_static_eval(eval: i32) i32 {
+    return std.math.clamp(eval, -static_eval_threshold, static_eval_threshold);
 }
 
 /// Returns "cp n" for a normal score.

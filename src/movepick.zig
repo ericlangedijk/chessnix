@@ -70,8 +70,8 @@ const ListMode = enum {
 pub const Scores = struct {
     pub const promotion       : i32 =  2_000_000;
     pub const capture         : i32 =  1_000_000;
-    pub const bad_capture     : i32 = -1_000_000;
-    pub const bad_capture_max : i32 = -900.000;
+    pub const bad_capture     : i32 = -1_000_000; // TODO: rename to bad_noisy
+    pub const bad_capture_max : i32 = -900.000; // TODO: rename to bad_noisy
 };
 
 /// There is no real staged move generation. This is a hybrid solution.
@@ -255,10 +255,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                     Move.capture => {
                         const is_bad_capture: bool = !see.evaluate(pos, ex.move, 0, .default);
                         if (is_bad_capture) {
-                            ex.score += Scores.bad_capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
+                            ex.score += Scores.bad_capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3; // TODO: bug alert did we use the see value in 1.4?
                         }
                         else {
-                            ex.score += Scores.capture + ex.captured.value() * 100 - ex.piece.value() >> 3;
+                            ex.score += Scores.capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3; // TODO: bug alert did we use the see value in 1.4?
                         }
                         ex.score += hist.get_capture_score(ex.*);
 
@@ -268,11 +268,12 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         }
                     },
                     Move.ep => {
-                        ex.score += Scores.capture + ex.captured.value() * 101 - ex.piece.value() >> 3;
+                        ex.score += Scores.capture + ex.captured.see_value() * 101 - ex.piece.see_value() >> 3;  // TODO: bug alert did we use the see value in 1.4?
                         ex.score += hist.get_capture_score(ex.*);
                     },
-                    Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
-                        const is_bad_noisy: bool = !see.evaluate(pos, ex.move, 0, .default); // #experimental
+                    // Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
+                    Move.knight_promotion...Move.queen_promotion => {
+                        const is_bad_noisy: bool = !see.evaluate(pos, ex.move, 0, .default); // #experimental // TODO: BUG ALERT see used simple_piece_values. run autoplay again.
                         const base: i32 = if (is_bad_noisy) Scores.bad_capture else Scores.promotion;
 
                         const prom: PieceType = ex.move.prom();
@@ -286,7 +287,9 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                             self.bad_noisies.add(ex.*);
                         }
                     },
-                    Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
+                    // Move.knight_promotion_capture...Move.queen_promotion_capture => {
+                    // Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
+                    Move.knight_promotion_capture...Move.queen_promotion_capture => {
                         const prom: PieceType = ex.move.prom();
                         switch (prom.e) {
                             .queen => ex.score += Scores.promotion + 2000,

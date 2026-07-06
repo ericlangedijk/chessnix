@@ -181,8 +181,8 @@ pub const PieceType = packed union {
         return self.u;
     }
 
-    pub fn value(self: PieceType) i32 {
-        return piece_values[self.u];
+    pub fn see_value(self: PieceType) i32 {
+        return see_piece_values[self.u];
     }
 
     pub fn simple_value(self: PieceType) i32 {
@@ -349,8 +349,8 @@ pub const Piece = packed union {
     }
 
     /// Returns the static exchange evaluation value. It is allowed to call this for no-piece.
-    pub fn value(self: Piece) i32 {
-        return piece_values[self.u];
+    pub fn see_value(self: Piece) i32 {
+        return see_piece_values[self.u];
     }
 
     pub fn simple_value(self: Piece) i32 {
@@ -967,7 +967,7 @@ pub fn ExtMoveList(max: u8) type {
 }
 
 /// Evaluation score. mg = opening or middlegame, eg = endgame.
-/// Extern to guarantee field order during turning.
+/// Extern to guarantee field order during tuning.
 pub const ScorePair = extern struct {
     mg: i16,
     eg: i16,
@@ -1008,6 +1008,14 @@ pub const ScorePair = extern struct {
         try writer.print("pair({}, {})", .{ self.mg, self.eg });
     }
 
+    pub fn to_score(self: ScorePair, phase: u8) i32 {
+        if (lib.is_paranoid) {
+            assert(phase <= max_phase);
+        }
+        const mg: i32 = self.mg;
+        const eg: i32 = self.eg;
+        return @divFloor(mg * phase + eg * (max_phase - phase), max_phase);
+    }
 };
 
 /// Easy initialization function for eval tables.
@@ -1031,16 +1039,16 @@ pub const max_noisy_count: u8 = 128;
 pub const max_search_depth: u8 = 128;
 
 // Scores for SEE and move ordering. TODO: move these into searchterms?
-pub const value_pawn: i32 = 98;
-pub const value_knight: i32 = 299;
-pub const value_bishop: i32 = 300;
-pub const value_rook: i32 = 533;
-pub const value_queen: i32 = 921;
-pub const value_king: i32 = 0;
+pub const see_value_pawn: i32 = 98;
+pub const see_value_knight: i32 = 299;
+pub const see_value_bishop: i32 = 300;
+pub const see_value_rook: i32 = 533;
+pub const see_value_queen: i32 = 921;
+pub const see_value_king: i32 = 0;
 
-pub const piece_values: [13]i32 = .{
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
-    value_pawn, value_knight, value_bishop, value_rook, value_queen, value_king,
+pub const see_piece_values: [13]i32 = .{
+    see_value_pawn, see_value_knight, see_value_bishop, see_value_rook, see_value_queen, see_value_king,
+    see_value_pawn, see_value_knight, see_value_bishop, see_value_rook, see_value_queen, see_value_king,
     0,
 };
 

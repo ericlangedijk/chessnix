@@ -177,8 +177,7 @@ pub const Evaluator = struct {
         }
         if (lib.is_tuning) register(&terms.tempo_bonus, 1, pos.stm, void);
 
-        score.mg = std.math.clamp(score.mg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
-        score.eg = std.math.clamp(score.eg, -scoring.static_eval_before_scaling_threshold, scoring.static_eval_before_scaling_threshold);
+        score = scoring.restrict_scorepair_before_scaling(score);
 
         // First interpolate the final score.
         var result: i32 = types.phased_score(pos.phase(), score);
@@ -186,7 +185,7 @@ pub const Evaluator = struct {
         // Don't scale when tuning. Return absolute result.
         if (mode == .unscaled) {
             if (lib.is_tuning) {
-                hcetuner.register_hce_eval_result(score);
+                hcetuner.register_final_result(score, result);
             }
             return result;
         }
@@ -195,7 +194,7 @@ pub const Evaluator = struct {
         // Note that scaling is done on the absolute value (white's perspective).
         const scale: f32 = endgame.scale(pos, result);
         result = funcs.fmul(result, scale);
-        result = std.math.clamp(result, -scoring.static_eval_threshold, scoring.static_eval_threshold);
+        result = scoring.restrict_static_eval(result);// std.math.clamp(result, -scoring.static_eval_threshold, scoring.static_eval_threshold);
         return if (pos.stm.e == .white) result else -result;
     }
 

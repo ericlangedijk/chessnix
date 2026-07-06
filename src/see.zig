@@ -23,8 +23,8 @@ const Move = types.Move;
 const Position = position.Position;
 
 pub const Mode = enum {
-    default,
-    testing,
+    default, // TODO: rename to see?
+    testing,  // TODO: rename to simple
 };
 
 /// Returns the result of a possible piece exchange on the to-square of the move.
@@ -44,7 +44,7 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
     }
     const stm: Color = pos.stm;
 
-    const pawn_value: i32 = comptime value(PieceType.pawn.u, mode);
+    const pawn_value: i32 = comptime val(PieceType.pawn.u);
     const from: Square = m.from;
     const to: Square = m.to;
     const is_ep: bool = m.is_ep();
@@ -58,7 +58,7 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
 
     // for a promotion: We gain a piece and lose a pawn.
     if (is_promo) {
-        score += value(m.prom().u, mode) - pawn_value;
+        score += val(m.prom().u) - pawn_value;
     }
 
     // We cannot beat the threshold.
@@ -66,7 +66,7 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
         return false;
     }
 
-    const lose: i32 = if (is_promo) value(m.prom().u, mode) else val(pos.get(from).u);
+    const lose: i32 = if (is_promo) val(m.prom().u) else val(pos.get(from).u);
     score = lose - score;
 
     // Equal or winning.
@@ -140,9 +140,8 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
 }
 
 fn default_value(piece_or_piecetype: u4) i32 {
-    return types.simple_piece_values[piece_or_piecetype];
+    return types.see_piece_values[piece_or_piecetype]; // TODO: BUG ALERT here we used simple_piece_values. run autoplay again.
 }
-
 
 fn simple_value(piece_or_piecetype: u4) i32 {
     return types.simple_piece_values[piece_or_piecetype];
