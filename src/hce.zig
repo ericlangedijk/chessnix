@@ -212,8 +212,8 @@ pub const Evaluator = struct {
                 sp.mg -= vp.mg * black_count;
                 sp.eg -= vp.eg * black_count;
                 if (lib.is_tuning) {
-                    register(&terms.material_table[pt], white_count, .white, .{PieceType.from_int(pt)});
-                    register(&terms.material_table[pt], black_count, .black, .{PieceType.from_int(pt)});
+                    register(&terms.material_table[pt], white_count, .white, .{ PieceType.from_int(pt) });
+                    register(&terms.material_table[pt], black_count, .black, .{ PieceType.from_int(pt) });
                 }
             }
         }
@@ -241,7 +241,7 @@ pub const Evaluator = struct {
         while (iter.next()) |sq| {
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
             score.inc(terms.pawn_phalanx_bonus[relative_rank]);
-            if (lib.is_tuning) register(&terms.pawn_phalanx_bonus[relative_rank], 1, us, .{PieceType.pawn.e, relative_rank});
+            if (lib.is_tuning) register(&terms.pawn_phalanx_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, relative_rank });
         }
 
         // Loop through our pawns. Determine passed pawns.
@@ -254,13 +254,13 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.pawn.u][relative_sq.u]);
-            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.pawn.u][relative_sq.u], 1, us, .{PieceType.pawn.e, sq.e});
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.pawn.u][relative_sq.u], 1, us, .{ PieceType.pawn.e, sq.e });
 
             // Protected pawn.
             const is_protected: bool = self.pawn_attacks[us.u] & sq_bb != 0;
             if (is_protected) {
                 score.inc(terms.protected_pawn_bonus[relative_rank]);
-                if (lib.is_tuning) register(&terms.protected_pawn_bonus[relative_rank], 1, us, .{PieceType.pawn.e, sq.e});
+                if (lib.is_tuning) register(&terms.protected_pawn_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, sq.e });
             }
 
             // Doubled pawn.
@@ -268,7 +268,7 @@ pub const Evaluator = struct {
             const is_doubled: bool = pawns_ahead_on_file != 0;
             if (is_doubled) {
                 score.inc(terms.doubled_pawn_penalty[file]);
-                if (lib.is_tuning) register(&terms.doubled_pawn_penalty[file], 1, us, .{PieceType.pawn.e, sq.e});
+                if (lib.is_tuning) register(&terms.doubled_pawn_penalty[file], 1, us, .{ PieceType.pawn.e, sq.e });
             }
 
             // Passed pawn.
@@ -277,7 +277,7 @@ pub const Evaluator = struct {
             if (is_passed) {
                 passed_pawns |= sq_bb; // Update passed pawns.
                 score.inc(terms.passed_pawn_bonus[relative_rank]);
-                if (lib.is_tuning) register(&terms.passed_pawn_bonus[relative_rank], 1, us, .{PieceType.pawn.e, sq.e});
+                if (lib.is_tuning) register(&terms.passed_pawn_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, sq.e });
             }
 
             // Isolated pawn.
@@ -285,7 +285,7 @@ pub const Evaluator = struct {
             const is_isolated: bool = pawns_on_adjacent_files == 0;
             if (is_isolated) {
                 score.inc(terms.isolated_pawn_penalty[file]);
-                if (lib.is_tuning) register(&terms.isolated_pawn_penalty[file], 1, us, .{PieceType.pawn.e, sq.e});
+                if (lib.is_tuning) register(&terms.isolated_pawn_penalty[file], 1, us, .{ PieceType.pawn.e, sq.e });
             }
         }
 
@@ -298,16 +298,16 @@ pub const Evaluator = struct {
             const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
             const dist_to_king: u3 = funcs.square_distance(sq, king_sq);
             score.inc(terms.king_passed_pawn_distance_table[dist_to_king]);
-            if (lib.is_tuning) register(&terms.king_passed_pawn_distance_table[dist_to_king], 1, us, .{PieceType.pawn.e, sq.e});
+            if (lib.is_tuning) register(&terms.king_passed_pawn_distance_table[dist_to_king], 1, us, .{ PieceType.pawn.e, sq.e });
             const dist_to_enemy_king: u3 = funcs.square_distance(sq, their_king_sq);
             score.inc(terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king]);
-            if (lib.is_tuning) register(&terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king], 1, us, .{PieceType.pawn.e, sq.e});
+            if (lib.is_tuning) register(&terms.enemy_king_passed_pawn_distance_table[dist_to_enemy_king], 1, us, .{ PieceType.pawn.e, sq.e });
             // Square rule for pawn race.
             const enemy_non_pawn_king_pieces: u64 = pos.by_color(them) & ~pos.kings(them) & ~pos.pawns(them);
             const dist_to_promotion: u3 = (7 - relative_rank);
             if (enemy_non_pawn_king_pieces == 0 and dist_to_promotion < dist_to_enemy_king - their_move) {
                 score.inc(terms.king_cannot_reach_passed_pawn_bonus);
-                if (lib.is_tuning) register(&terms.king_cannot_reach_passed_pawn_bonus, 1, us, .{PieceType.pawn.e, sq.e});
+                if (lib.is_tuning) register(&terms.king_cannot_reach_passed_pawn_bonus, 1, us, .{ PieceType.pawn.e, sq.e });
             }
         }
         return score;
@@ -324,7 +324,7 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.knight.u][relative_sq.u]);
-            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.knight.u][relative_sq.u], 1, us, .{PieceType.knight.e, sq.e});
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.knight.u][relative_sq.u], 1, us, .{ PieceType.knight.e, sq.e });
 
             // Mobility.
             const legal_moves: u64 = self.legalize_moves(.knight, us, sq, attacks.get_knight_attacks(sq));
@@ -341,14 +341,14 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.knight.u][king_attack_count]);
-                if (lib.is_tuning) register(&terms.attack_power[PieceType.knight.u][king_attack_count], 1, us, .{PieceType.knight.e, sq.e, king_attack_count});
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.knight.u][king_attack_count], 1, us, .{ PieceType.knight.e, sq.e, king_attack_count });
             }
 
             if (self.is_outpost(sq, us)) {
                 const sq_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
                 const is_blocking: u1 = @intFromBool(pos.board[sq_in_front.u].is_pawn_of_color(them));
                 score.inc(terms.knight_outpost_table[is_blocking][relative_sq.u - 24]);
-                if (lib.is_tuning) register(&terms.knight_outpost_table[is_blocking][relative_sq.u - 24], 1, us, .{PieceType.knight.e, sq.e, is_blocking});
+                if (lib.is_tuning) register(&terms.knight_outpost_table[is_blocking][relative_sq.u - 24], 1, us, .{ PieceType.knight.e, sq.e, is_blocking });
             }
         }
         return score;
@@ -365,7 +365,7 @@ pub const Evaluator = struct {
         // Bishop pair.
         if ((our_bishops & bitboards.bb_black_squares != 0) and (our_bishops & bitboards.bb_white_squares != 0)) {
             score.inc(terms.bishop_pair_bonus);
-            if (lib.is_tuning) register(&terms.bishop_pair_bonus, 1, us, .{PieceType.bishop.e});
+            if (lib.is_tuning) register(&terms.bishop_pair_bonus, 1, us, .{ PieceType.bishop.e });
         }
 
         var iter = bitboards.iterator(our_bishops);
@@ -374,19 +374,19 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.bishop.u][relative_sq.u]);
-            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.bishop.u][relative_sq.u], 1, us, .{PieceType.bishop.e, sq.e});
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.bishop.u][relative_sq.u], 1, us, .{ PieceType.bishop.e, sq.e });
 
             // Mobility.
             const moves: u64 = self.legalize_moves(PieceType.bishop, us, sq, attacks.get_bishop_attacks(sq, mobility_occ));
             const mobility: u64 = moves & self.mobility_areas[us.u];
             const mobility_count: u7 = popcnt(mobility);
             score.inc(terms.bishop_mobility_table[mobility_count]);
-            if (lib.is_tuning) register(&terms.bishop_mobility_table[mobility_count], 1, us, .{PieceType.bishop.e, sq.e, mobility_count});
+            if (lib.is_tuning) register(&terms.bishop_mobility_table[mobility_count], 1, us, .{ PieceType.bishop.e, sq.e, mobility_count });
 
             // Bishop on long diagonal.
             if (popcnt(moves & bitboards.bb_center_4) > 1) {
                 score.inc(terms.bishop_on_long_diagonal);
-                if (lib.is_tuning) register(&terms.bishop_on_long_diagonal, 1, us, .{PieceType.bishop.e, sq.e});
+                if (lib.is_tuning) register(&terms.bishop_on_long_diagonal, 1, us, .{ PieceType.bishop.e, sq.e });
             }
 
             // Update attacks.
@@ -397,13 +397,13 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.bishop.u][king_attack_count]);
-                if (lib.is_tuning) register(&terms.attack_power[PieceType.bishop.u][king_attack_count], 1, us, .{PieceType.bishop.e, sq.e, king_attack_count});
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.bishop.u][king_attack_count], 1, us, .{ PieceType.bishop.e, sq.e, king_attack_count });
             }
 
             // Outpost.
             if (self.is_outpost(sq, us)) {
                 score.inc(terms.bishop_outpost_table[relative_sq.u - 24]);
-                if (lib.is_tuning) register(&terms.bishop_outpost_table[relative_sq.u - 24], 1, us, .{PieceType.bishop.e, sq.e});
+                if (lib.is_tuning) register(&terms.bishop_outpost_table[relative_sq.u - 24], 1, us, .{ PieceType.bishop.e, sq.e });
             }
         }
         return score;
@@ -424,14 +424,14 @@ pub const Evaluator = struct {
 
             // Psqt.
             score.inc(terms.piece_square_table[PieceType.rook.u][relative_sq.u]);
-            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.rook.u][relative_sq.u], 1, us, .{PieceType.rook.e, sq.e});
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.rook.u][relative_sq.u], 1, us, .{ PieceType.rook.e, sq.e });
 
             // Mobility.
             const legal_moves: u64 = self.legalize_moves(.rook, us, sq, attacks.get_rook_attacks(sq, mobility_occ));
             const mobility: u64 = legal_moves & self.mobility_areas[us.u];
             const mobility_count: u7 = popcnt(mobility);
             score.inc(terms.rook_mobility_table[mobility_count]);
-            if (lib.is_tuning) register(&terms.rook_mobility_table[mobility_count], 1, us, .{PieceType.rook.e, sq.e, mobility_count});
+            if (lib.is_tuning) register(&terms.rook_mobility_table[mobility_count], 1, us, .{ PieceType.rook.e, sq.e, mobility_count });
 
             // Update attacks.
             self.rook_attacks[us.u] |= legal_moves;
@@ -441,7 +441,7 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.rook.u][king_attack_count]);
-                if (lib.is_tuning) register(&terms.attack_power[PieceType.rook.u][king_attack_count], 1, us, .{PieceType.rook.e, sq.e, king_attack_count});
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.rook.u][king_attack_count], 1, us, .{ PieceType.rook.e, sq.e, king_attack_count });
             }
 
             // Open file.
@@ -450,7 +450,7 @@ pub const Evaluator = struct {
                 const their_pawns_on_file: u64 = their_pawns & bitboards.file_bitboards[sq.coord.file];
                 const half_open: u1 = @intFromBool(their_pawns_on_file != 0);
                 score.inc(terms.rook_on_file_bonus[half_open][sq.coord.file]);
-                if (lib.is_tuning) register(&terms.rook_on_file_bonus[half_open][sq.coord.file], 1, us, .{PieceType.rook.e, sq.e, half_open});
+                if (lib.is_tuning) register(&terms.rook_on_file_bonus[half_open][sq.coord.file], 1, us, .{ PieceType.rook.e, sq.e, half_open });
             }
         }
         return score;
@@ -468,7 +468,7 @@ pub const Evaluator = struct {
 
             // Psqt
             score.inc(terms.piece_square_table[PieceType.queen.u][relative_sq.u]);
-            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.queen.u][relative_sq.u], 1, us, .{PieceType.queen, sq.e});
+            if (lib.is_tuning) register(&terms.piece_square_table[PieceType.queen.u][relative_sq.u], 1, us, .{ PieceType.queen, sq.e });
 
             // Mobility
             const moves: u64 = self.legalize_moves(.queen, us, sq, attacks.get_queen_attacks(sq, mobility_occ));
@@ -485,7 +485,7 @@ pub const Evaluator = struct {
             if (enemy_king_attacks != 0) {
                 const king_attack_count: u7 = @min(7, popcnt(enemy_king_attacks));
                 self.attack_power[us.u].inc(terms.attack_power[PieceType.queen.u][king_attack_count]);
-                if (lib.is_tuning) register(&terms.attack_power[PieceType.queen.u][king_attack_count], 1, us, .{PieceType.queen.e, sq.e, king_attack_count});
+                if (lib.is_tuning) register(&terms.attack_power[PieceType.queen.u][king_attack_count], 1, us, .{ PieceType.queen.e, sq.e, king_attack_count });
             }
         }
         return score;
@@ -504,7 +504,7 @@ pub const Evaluator = struct {
         // Psqt
         const relative_sq: Square = our_king_sq.relative(us);
         score.inc(terms.piece_square_table[PieceType.king.u][relative_sq.u]);
-        if (lib.is_tuning) register(&terms.piece_square_table[PieceType.king.u][relative_sq.u], 1, us, .{PieceType.king.e, our_king_sq.e});
+        if (lib.is_tuning) register(&terms.piece_square_table[PieceType.king.u][relative_sq.u], 1, us, .{ PieceType.king.e, our_king_sq.e });
 
         // Pawn protection
         const protecting_pawns: u64 = our_pawns & self.king_areas[us.u];
@@ -512,7 +512,7 @@ pub const Evaluator = struct {
         while (iter.next()) |sq| {
             const sp: ScorePairPtr = get_pawn_protection_scorepair(us, our_king_sq, sq);
             score.inc(sp.*);
-            if (lib.is_tuning) register(sp, 1, us, .{PieceType.king.e, our_king_sq.e, sq.e});
+            if (lib.is_tuning) register(sp, 1, us, .{ PieceType.king.e, our_king_sq.e, sq.e });
         }
 
         // Pawn storm to enemy king.
@@ -521,7 +521,7 @@ pub const Evaluator = struct {
         while (iter.next()) |pawn_sq| {
             const sp: ScorePairPtr = get_pawn_storm_scorepair(us, their_king_sq, pawn_sq);
             score.inc(sp.*);
-            if (lib.is_tuning) register(sp, 1, us, .{PieceType.king, our_king_sq.e, pawn_sq.e});
+            if (lib.is_tuning) register(sp, 1, us, .{ PieceType.king, our_king_sq.e, pawn_sq.e });
         }
 
         // Open files to our king.
@@ -599,7 +599,7 @@ pub const Evaluator = struct {
             const threatened: PieceType = pos.board[sq.u].piecetype();
             if (threatened.e != .no_piecetype) {
                 score.inc(terms.pawn_push_threat_table[threatened.u]);
-                if (lib.is_tuning) register(&terms.pawn_push_threat_table[threatened.u], 1, us, .{PieceType.pawn.e, sq.e, threatened.e});
+                if (lib.is_tuning) register(&terms.pawn_push_threat_table[threatened.u], 1, us, .{ PieceType.pawn.e, sq.e, threatened.e });
             }
         }
 
@@ -628,10 +628,10 @@ pub const Evaluator = struct {
         score.inc(terms.safe_check_bonus[PieceType.rook.u].mul(r_count));
         score.inc(terms.safe_check_bonus[PieceType.queen.u].mul(q_count));
         if (lib.is_tuning) {
-            register(&terms.safe_check_bonus[PieceType.knight.u], n_count, us, .{PieceType.knight.e, n_count});
-            register(&terms.safe_check_bonus[PieceType.bishop.u], b_count, us, .{PieceType.bishop.e, b_count});
-            register(&terms.safe_check_bonus[PieceType.rook.u], r_count, us, .{PieceType.rook.e, r_count});
-            register(&terms.safe_check_bonus[PieceType.queen.u], q_count, us, .{PieceType.queen.e, q_count});
+            register(&terms.safe_check_bonus[PieceType.knight.u], n_count, us, .{ PieceType.knight.e, n_count });
+            register(&terms.safe_check_bonus[PieceType.bishop.u], b_count, us, .{ PieceType.bishop.e, b_count });
+            register(&terms.safe_check_bonus[PieceType.rook.u], r_count, us, .{ PieceType.rook.e, r_count });
+            register(&terms.safe_check_bonus[PieceType.queen.u], q_count, us, .{ PieceType.queen.e, q_count });
         }
 
         return score;
