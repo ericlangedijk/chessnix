@@ -166,8 +166,6 @@ test "viri" {
     try lib.initialize();
     defer lib.finalize();
 
-    // TODO: test 960 as well
-
     var game: viri.ViriGame = .init();
     defer game.deinit();
 
@@ -183,6 +181,28 @@ test "viri" {
             try std.testing.expect(std.mem.eql(u8, a, b)); // TODO: only the fullmove number (if not specified in fen) is unequal. Change that in Position.setup.
         }
     }
+
+    // Basic position conversion 960 (TODO: FAILS)
+    // {
+    //     var pos: Position = .empty;
+    //     for (consts.test_positions_960) |str| {
+    //         try pos.setup(str, false);
+    //         const vp: viri.ViriPosition = .from_position(&pos, 0, 0);
+    //         const pos_back: Position = try vp.to_position();
+    //         const a: []const u8 = std.mem.asBytes(&pos);
+    //         const b: []const u8 = std.mem.asBytes(&pos_back);
+    //         const ok: bool = std.mem.eql(u8, a, b);
+    //         if (!ok) {
+    //             for (a, b, 0..) |first, second, idx| {
+    //                 if (first != second) {
+    //                     std.debug.print("diff at pos {} {} != {}", .{ idx, first, second });
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //         try std.testing.expect(std.mem.eql(u8, a, b));
+    //     }
+    // }
 
     // Game conversion.
     {
@@ -221,9 +241,9 @@ test "engine" {
     expected_stats = .{ .score = 20, .bestmove = .init(.d2, .d4, Move.double_push), .nodes = 3746, .seldepth = 12 };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
-    // info depth 8 seldepth 21 score cp -18 nodes 9518 qnodes 50% time 33 nps 281796 cps 606730 eff 69% pv e2a6 b4c3 d2c3 h3g2 f3g2 e6d5 e5g4
+    // info depth 8 seldepth 21 score cp -18 nodes 9560 qnodes 50% time 34 nps 273298 cps 588248 eff 69% pv e2a6 b4c3 d2c3 h3g2 f3g2 e6d5 e5g4
     search_stats = try engine.test_run_with_fixed_depth(consts.kiwi, 8);
-    expected_stats = .{ .score = -18, .bestmove = .init(.e2, .a6, Move.capture), .nodes = 9518, .seldepth = 21 };
+    expected_stats = .{ .score = -18, .bestmove = .init(.e2, .a6, Move.capture), .nodes = 9560, .seldepth = 21 };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
     // info depth 8 seldepth 8 score mate 2 nodes 3160 qnodes 0% time 6 nps 506345 cps 1174849 eff 46% pv d2g2 f8e8 g2g8
@@ -236,9 +256,9 @@ test "engine" {
     expected_stats = .{ .score = -14, .bestmove = .init(.e8, .h8, Move.castle_short), .nodes = 2112, .seldepth = 11 };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
-    // info depth 8 seldepth 16 score cp 64 nodes 6767 qnodes 31% time 24 nps 274242 cps 634442 eff 61% pv e4f5 h7h6 g5f6 d7f6 d3d4 e5d4 f3d4 d6d5
+    //info depth 8 seldepth 16 score cp 69 nodes 5678 qnodes 34% time 21 nps 269572 cps 624602 eff 63% pv e4f5 d6d5 d3d4 e5d4 f3d4 c5d6 b2b4 h7h6
     search_stats = try engine.test_run_with_fixed_depth("r1bq1rk1/pp1n2pp/2pp1n2/2b1ppB1/4P3/P1NP1N2/1PP1BPPP/R2Q1RK1 w - - 4 9", 8);
-    expected_stats = .{ .score = 64, .bestmove = .init(.e4, .f5, Move.capture), .nodes = 6767, .seldepth = 16 };
+    expected_stats = .{ .score = 69, .bestmove = .init(.e4, .f5, Move.capture), .nodes = 5678, .seldepth = 16 };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 }
 

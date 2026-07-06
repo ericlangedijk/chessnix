@@ -70,8 +70,8 @@ const ListMode = enum {
 pub const Scores = struct {
     pub const promotion       : i32 =  2_000_000;
     pub const capture         : i32 =  1_000_000;
-    pub const bad_capture     : i32 = -1_000_000; // TODO: rename to bad_noisy
-    pub const bad_capture_max : i32 = -900.000; // TODO: rename to bad_noisy
+    pub const bad_noisy       : i32 = -1_000_000;
+    pub const bad_noisy_max   : i32 = -900.000;
 };
 
 /// There is no real staged move generation. This is a hybrid solution.
@@ -253,29 +253,27 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             if (listmode == .noisies) {
                 switch (ex.move.kind) {
                     Move.capture => {
-                        const is_bad_capture: bool = !see.evaluate(pos, ex.move, 0, .default);
-                        if (is_bad_capture) {
-                            ex.score += Scores.bad_capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3; // TODO: bug alert did we use the see value in 1.4?
+                        const is_bad: bool = !see.evaluate(pos, ex.move, 0, .default);
+                        if (is_bad) {
+                            ex.score += Scores.bad_noisy + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
                         }
                         else {
-                            ex.score += Scores.capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3; // TODO: bug alert did we use the see value in 1.4?
+                            ex.score += Scores.capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
                         }
                         ex.score += hist.get_capture_score(ex.*);
 
                         // Right here, when scoring is complete, we add a bad capture move to the bad noisy moves.
-                        if (is_bad_capture) {
+                        if (is_bad) {
                             self.bad_noisies.add(ex.*);
                         }
                     },
                     Move.ep => {
-                        ex.score += Scores.capture + ex.captured.see_value() * 101 - ex.piece.see_value() >> 3;  // TODO: bug alert did we use the see value in 1.4?
+                        ex.score += Scores.capture + ex.captured.see_value() * 101 - ex.piece.see_value() >> 3;
                         ex.score += hist.get_capture_score(ex.*);
                     },
-                    // Move.knight_promotion, Move.bishop_promotion, Move.rook_promotion, Move.queen_promotion => {
                     Move.knight_promotion...Move.queen_promotion => {
-                        const is_bad_noisy: bool = !see.evaluate(pos, ex.move, 0, .default); // #experimental // TODO: BUG ALERT see used simple_piece_values. run autoplay again.
-                        const base: i32 = if (is_bad_noisy) Scores.bad_capture else Scores.promotion;
-
+                        const is_bad: bool = !see.evaluate(pos, ex.move, 0, .default);
+                        const base: i32 = if (is_bad) Scores.bad_noisy else Scores.promotion;
                         const prom: PieceType = ex.move.prom();
                         switch (prom.e) {
                             .queen => ex.score += base + 2000,
@@ -283,12 +281,11 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                             .bishop, .rook => ex.score += base,
                             else => unreachable,
                         }
-                        if (is_bad_noisy) {
+                        // Right here, when scoring is complete, we add a bad capture move to the bad noisy moves.
+                        if (is_bad) {
                             self.bad_noisies.add(ex.*);
                         }
                     },
-                    // Move.knight_promotion_capture...Move.queen_promotion_capture => {
-                    // Move.knight_promotion_capture, Move.bishop_promotion_capture, Move.rook_promotion_capture, Move.queen_promotion_capture => {
                     Move.knight_promotion_capture...Move.queen_promotion_capture => {
                         const prom: PieceType = ex.move.prom();
                         switch (prom.e) {
@@ -336,7 +333,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
             }
 
             // If the best noisy score is a bad noisy, we are done and skip to the next stage (quiets).
-            if (listmode == .noisies and extmoves[best_idx].score <= Scores.bad_capture_max) {
+            if (listmode == .noisies and extmoves[best_idx].score <= Scores.bad_noisy_max) {
                 return null;
             }
 

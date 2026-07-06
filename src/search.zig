@@ -1092,9 +1092,8 @@ pub const Searcher = struct {
                 break :moveloop;
             }
 
-            const pawnvalue: i32 = comptime PieceType.pawn.see_value();
             // Quiescence Futility Pruning (qs_fp). Prune capture moves that do not win material if the static eval is behind alpha by some margin.
-            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, pawnvalue, .default)) { // #experimental pawnvalue instead of the original 1
+            if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 1, .default)) {
                 best_score = @max(best_score, qs_futility_score);
                 continue :moveloop;
             }
@@ -1270,7 +1269,7 @@ pub const Searcher = struct {
             .bad_noisy => {
                 // TODO: finetune.
                 // lib.verify(ex.move.is_capture() and !ex.move.is_promotion(), "bad_noisy stage error", .{});
-                lib.verify(ex.score <= movepick.Scores.bad_capture_max, "bad_noisy stage error", .{});
+                lib.verify(ex.score <= movepick.Scores.bad_noisy_max, "bad_noisy stage error", .{});
             }
         }
     }
