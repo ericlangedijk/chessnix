@@ -232,22 +232,3 @@ pub fn float(comptime T: type, x: anytype) T {
         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
     };
 }
-
-
-// fn float(x: anytype) f64 {
-//     return switch (@typeInfo(@TypeOf(x))) {
-//         .int, .comptime_int => @floatFromInt(x),
-//         .float, .comptime_float => @floatCast(x),
-//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
-//     };
-// }
-
-// fn int(comptime T: type, x: anytype) T {
-//     return switch (@typeInfo(@TypeOf(x))) {
-//         .int, .comptime_int => @intCast(x),
-//         .float, .comptime_float => @intFromFloat(x),
-//         else => @compileError(std.fmt.comptimePrint("unsupported type {}\n", .{@TypeOf(x)})),
-//     };
-// }
-
-
