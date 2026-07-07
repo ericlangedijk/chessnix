@@ -182,12 +182,12 @@ pub const TranspositionTable = struct {
     /// Store the search score and the raw static eval.
     pub fn store(self: *TranspositionTable, ply: u16, key: u64, score: i32, raw_static_eval: i32, move: Move, depth: i32, bound: Bound) void {
         // Debug nonsense args.
-        if (comptime lib.verifications) {
+        if (lib.verifications) {
             verify_args(depth, score, raw_static_eval);
         }
 
         // Debug nonsense score.
-        if (comptime lib.verifications) {
+        if (lib.verifications) {
             if (score != scoring.null_score and @abs(score) > scoring.mate) {
                 lib.wtf("invalid tt score stored {}", .{ score });
             }

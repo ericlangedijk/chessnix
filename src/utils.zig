@@ -155,6 +155,15 @@ pub const FileWriter = struct {
         };
     }
 
+    pub fn init_cwd(filename: []const u8, buffer_size: usize) !FileWriter {
+        const file = try std.fs.cwd().createFile(filename, .{ .lock_nonblocking = true });
+        const buf = try ctx.gpa.alloc(u8, buffer_size);
+        return .{
+            .buf = buf,
+            .wr = file.writer(buf),
+        };
+    }
+
     /// Flushes before freeing.
     pub fn deinit(self: *FileWriter) void {
         self.wr.interface.flush() catch {};

@@ -214,7 +214,7 @@ fn compute_diagmain_attacks()[64 * 64]u64 {
             while (true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.north_west) orelse break;
-                if (comptime lib.is_paranoid) assert(bitpos > 0);
+                if (lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
             }
             // Scan southeast (forwards from offset).
@@ -223,7 +223,7 @@ fn compute_diagmain_attacks()[64 * 64]u64 {
             while(true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_east) orelse break;
-                if (comptime lib.is_paranoid) assert(bitpos < 7);
+                if (lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
             }
             dma[idx * 64 + occ] = bitboard;
@@ -247,7 +247,7 @@ fn compute_diaganti_attacks()[64 * 64]u64 {
             while (true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.south_west) orelse break;
-                if (comptime lib.is_paranoid) assert(bitpos > 0);
+                if (lib.is_paranoid) assert(bitpos > 0);
                 bitpos -= 1;
             }
             // Scan northeast (forwards from offset).
@@ -256,7 +256,7 @@ fn compute_diaganti_attacks()[64 * 64]u64 {
             while (true) {
                 if (funcs.test_bit_u8(attackmask, bitpos)) bitboard |= q.to_bitboard();
                 q = q.next(.north_east) orelse break;
-                if (comptime lib.is_paranoid) assert(bitpos < 7);
+                if (lib.is_paranoid) assert(bitpos < 7);
                 bitpos += 1;
             }
             daa[idx * 64 + occ] = bitboard;

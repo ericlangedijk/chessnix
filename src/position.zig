@@ -643,7 +643,7 @@ pub const Position = struct {
 
     /// Updates board, bitboards, material, phase. Not keys.
     fn add_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(self.get(sq).is_empty());
             assert(!pc.is_empty());
             assert(pc.color().e == us.e);
@@ -659,7 +659,7 @@ pub const Position = struct {
 
     /// Update sboard, bitboards, material, phase. Not keys.
     fn remove_piece(self: *Position, comptime us: Color, pc: Piece, sq: Square) void {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(self.get(sq).e == pc.e);
             assert(pc.color().e == us.e);
         }
@@ -674,7 +674,7 @@ pub const Position = struct {
 
     /// Updates board, bitboards. Not keys.
     fn move_piece(self: *Position, comptime us: Color, pc: Piece, from: Square, to: Square) void {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(self.get(from).e == pc.e);
             assert(self.get(to).is_empty());
             assert(pc.color().e == us.e);
@@ -715,11 +715,11 @@ pub const Position = struct {
 
     /// Makes the extmove on the board.`us` is comptime for performance reasons and must be the `stm`.
     pub fn do_move(self: *Position, comptime us: Color, ex: ExtMove) void {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(us.e == self.stm.e);
             self.assert_pos_ok(ex);
         }
-        const predicted_key = if (comptime lib.is_paranoid) self.predict_key(us, ex) else void;
+        const predicted_key = if (lib.is_paranoid) self.predict_key(us, ex) else void;
 
         const them: Color = comptime us.opp();
         const from: Square = ex.move.from;
@@ -969,7 +969,7 @@ pub const Position = struct {
 
         self.update_state(them);
 
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(predicted_key == self.key);
             self.assert_pos_ok(ex);
         }
@@ -1102,7 +1102,7 @@ pub const Position = struct {
 
     /// Skip a turn.
     pub fn do_nullmove(self: *Position, comptime us: Color) void {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(!self.nullmove_state);
         }
         self.nullmove_state = true;

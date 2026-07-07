@@ -227,7 +227,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         }
 
         fn score_moves(self: *Self, comptime listmode: ListMode) void {
-            if (comptime lib.is_paranoid) {
+            if (lib.is_paranoid) {
                 assert(listmode != .bad_noisies);
             }
             const extmoves: []ExtMove = self.select_slice(listmode);
@@ -238,7 +238,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
 
         /// Set the score.
         fn score_move(self: *Self, ex: *ExtMove, comptime listmode: ListMode) void {
-            if (comptime lib.is_paranoid) {
+            if (lib.is_paranoid) {
                 assert(listmode != .bad_noisies);
                 if (listmode == .noisies) { assert(ex.move.is_noisy()); }
                 else if (listmode == .quiets) { assert(ex.move.is_quiet()); }

@@ -637,7 +637,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_protection_scorepair(comptime us: Color, king: Square, pawn: Square) ScorePairPtr {
-        if (comptime lib.verifications) {
+        if (lib.verifications) {
             verify_king_pawn_protection_area(us, king, pawn);
         }
         const mul: i16 = comptime if (us.e == .black) -1 else 1;

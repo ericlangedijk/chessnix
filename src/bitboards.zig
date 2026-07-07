@@ -191,7 +191,7 @@ pub fn contains_square(bitboard: u64, sq: Square) bool {
 
 /// Unsafe lsb. Assumes bitboard != 0.
 pub fn first_square(bitboard: u64) Square {
-    if (comptime lib.is_paranoid) {
+    if (lib.is_paranoid) {
         assert(bitboard != 0);
     }
     //const lsb: u6 = @truncate(@ctz(bitboard));
@@ -201,7 +201,7 @@ pub fn first_square(bitboard: u64) Square {
 
 /// Unsafe lsb. Assumes bitboard != 0.
 pub fn last_square(bitboard: u64) Square {
-    if (comptime lib.is_paranoid) {
+    if (lib.is_paranoid) {
         assert(bitboard != 0);
     }
     const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));

@@ -544,7 +544,7 @@ pub const Searcher = struct {
         const is_root: bool = comptime rootmode == .root;
         const ply: u16 = node.ply;
 
-        if (comptime lib.verifications) {
+        if (lib.verifications) {
             lib.verify(input_depth >= 0, "search() invalid depth", .{});
             lib.verify(!is_root or is_pvs, "search() root must be pvs", .{});
             lib.verify(input_beta > input_alpha, "search() invalid alphabeta", .{});
@@ -648,7 +648,7 @@ pub const Searcher = struct {
         }
 
         // Tricky stuff.
-        if (comptime lib.verifications) {
+        if (lib.verifications) {
             if (!is_check and !is_singular_extension and (raw_static_eval == null_score or corrected_raw_static_eval == null_score or node.static_eval == null_score or node.eval == null_score)) {
                 lib.wtf("search() eval not filled", .{});
             }
@@ -753,7 +753,7 @@ pub const Searcher = struct {
                 continue :moveloop;
             }
 
-            if (comptime lib.verifications) {
+            if (lib.verifications) {
                 verify_movepicker_stage(ex, movepicker.stage);
             }
 

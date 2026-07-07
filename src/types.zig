@@ -275,7 +275,7 @@ pub const Piece = packed union {
     }
 
     pub fn color(self: Piece) Color {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(self.e != .no_piece);
         }
         return if (self.u < 6) .white else .black;
@@ -509,7 +509,7 @@ pub const Square = packed union {
     }
 
     pub fn from_int(u: usize) Square {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(u < 64);
         }
         return .{ .u = @intCast(u) };
@@ -725,7 +725,7 @@ pub const Move = packed struct(u16) {
     }
 
     pub fn is_quiet(self: Move) bool {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(!self.is_empty());
         }
         return self.kind & noisy_mask == 0;
@@ -756,7 +756,7 @@ pub const Move = packed struct(u16) {
 
     /// Only valid when we are a promotion.
     pub fn prom(self: Move) PieceType {
-        if (comptime lib.is_paranoid) {
+        if (lib.is_paranoid) {
             assert(self.is_promotion());
         }
         return .{ .u = (self.kind & 0b0111) - 3 };
