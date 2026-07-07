@@ -10,8 +10,8 @@ const attacks = @import("attacks.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 
-const popcnt = funcs.popcnt;
-const first_square = funcs.first_square;
+const popcnt = bitboards.popcnt;
+const first_square = bitboards.first_square;
 const fmul = funcs.fmul;
 const m48 = Material.encode_48;
 const m96 = Material.encode_96;

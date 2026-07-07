@@ -21,7 +21,7 @@ const hceterms = @import("hceterms.zig");
 const endgame = @import("endgame.zig");
 
 const io = lib.io;
-const popcnt = funcs.popcnt;
+const popcnt = bitboards.popcnt;
 const int = funcs.int;
 
 const ScorePair = types.ScorePair;
@@ -50,8 +50,6 @@ pub const Evaluator = struct {
     pos: *const Position,
     /// Cached pinned pieces.
     pinned: [Color.count]u64,
-    /// A little speedup by caching pawn-availability.
-    has_pawns: [Color.count]bool,
     /// The squares of the kings.
     king_squares: [Color.count]Square,
     /// The 3x4 squares area around and in front of our king.
@@ -86,7 +84,6 @@ pub const Evaluator = struct {
         return .{
             .pos = undefined,
             .pinned = @splat(0),
-            .has_pawns = .{ false, false },
             .king_squares = .{ .a1, .a1 },
             .king_areas = .{ 0, 0 },
             .pawn_storm_areas = .{ 0, 0 },
@@ -108,11 +105,6 @@ pub const Evaluator = struct {
         self.pinned = .{
             pos.pins(.white) & pos.by_color(.white),
             pos.pins(.black) & pos.by_color(.black),
-        };
-
-        self.has_pawns = .{
-            pos.pawns(.white) != 0,
-            pos.pawns(.black) != 0
         };
 
         const wk: Square = pos.king_square(.white);
@@ -223,7 +215,7 @@ pub const Evaluator = struct {
     fn eval_pawns(self: *Self, comptime us: Color) ScorePair {
         const pos: *const Position = self.pos;
 
-        if (!self.has_pawns[us.u]) {
+        if (pos.pawns(us) == 0) {
             return .empty;
         }
 
@@ -236,10 +228,10 @@ pub const Evaluator = struct {
         var passed_pawns: u64 = 0;
 
         // Pawn phalanx (horizontally next to eachother).
-        const phalanx_pawns: u64 = (funcs.shift_bitboard(our_pawns, .east)) & our_pawns;
+        const phalanx_pawns: u64 = (bitboards.shift_bitboard(our_pawns, .east)) & our_pawns;
         iter = .init(phalanx_pawns);
         while (iter.next()) |sq| {
-            const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
+            const relative_rank: u3 = types.relative_rank(us, sq.coord.rank);
             score.inc(terms.pawn_phalanx_bonus[relative_rank]);
             if (lib.is_tuning) register(&terms.pawn_phalanx_bonus[relative_rank], 1, us, .{ PieceType.pawn.e, relative_rank });
         }
@@ -295,7 +287,7 @@ pub const Evaluator = struct {
         iter = .init(passed_pawns);
         while (iter.next()) |sq| {
             const their_move: u1 = @intFromBool(pos.stm.e == them.e);
-            const relative_rank: u3 = funcs.relative_rank(us, sq.coord.rank);
+            const relative_rank: u3 = types.relative_rank(us, sq.coord.rank);
             const dist_to_king: u3 = funcs.square_distance(sq, king_sq);
             score.inc(terms.king_passed_pawn_distance_table[dist_to_king]);
             if (lib.is_tuning) register(&terms.king_passed_pawn_distance_table[dist_to_king], 1, us, .{ PieceType.pawn.e, sq.e });
@@ -501,8 +493,8 @@ pub const Evaluator = struct {
         const their_king_sq: Square = self.king_squares[them.u];
         var iter: bitboards.BitboardIterator = undefined;
 
-        // Psqt
         const relative_sq: Square = our_king_sq.relative(us);
+        // Psqt.
         score.inc(terms.piece_square_table[PieceType.king.u][relative_sq.u]);
         if (lib.is_tuning) register(&terms.piece_square_table[PieceType.king.u][relative_sq.u], 1, us, .{ PieceType.king.e, our_king_sq.e });
 
@@ -553,7 +545,7 @@ pub const Evaluator = struct {
         iter = .init(self.pawn_attacks[them.u] & our_pieces);
         while (iter.next()) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
-            const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
+            const is_defended: u1 = @intFromBool(bitboards.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_pawn_penalty[threatened_piece.u][is_defended]);
             if (lib.is_tuning) register(&terms.threatened_by_pawn_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.pawn.e, threatened_piece.e, is_defended });
         }
@@ -562,7 +554,7 @@ pub const Evaluator = struct {
         iter = .init(self.knight_attacks[them.u] & our_pieces);
         while (iter.next()) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
-            const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
+            const is_defended: u1 = @intFromBool(bitboards.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_knight_penalty[threatened_piece.u][is_defended]);
             if (lib.is_tuning) register(&terms.threatened_by_knight_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.knight.e, threatened_piece.e, is_defended });
         }
@@ -571,7 +563,7 @@ pub const Evaluator = struct {
         iter = .init(self.bishop_attacks[them.u] & our_pieces);
         while (iter.next()) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
-            const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
+            const is_defended: u1 = @intFromBool(bitboards.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_bishop_penalty[threatened_piece.u][is_defended]);
             if (lib.is_tuning) register(&terms.threatened_by_bishop_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.bishop.e, threatened_piece.e, is_defended });
         }
@@ -580,7 +572,7 @@ pub const Evaluator = struct {
         iter = .init(self.rook_attacks[them.u] & our_pieces);
         while (iter.next()) |sq| {
             const threatened_piece = pos.board[sq.u].piecetype();
-            const is_defended: u1 = @intFromBool(funcs.contains_square(our_attacks, sq));
+            const is_defended: u1 = @intFromBool(bitboards.contains_square(our_attacks, sq));
             score.inc(terms.threatened_by_rook_penalty[threatened_piece.u][is_defended]);
             if (lib.is_tuning) register(&terms.threatened_by_rook_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.rook.e, threatened_piece.e, is_defended });
         }
@@ -637,12 +629,11 @@ pub const Evaluator = struct {
         return score;
     }
 
-    /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn.
+    /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn. Only for rank 4, 5, 6.
     fn is_outpost(self: *Self, sq: Square, comptime us: Color) bool {
-        const them: Color = comptime us.opp(); // TODO: maybe prefilter outpost (ranks 4,5,6) at callsite.
-        const sq_bb: u64 = sq.to_bitboard();
-        const safe: bool = self.pawn_attacks[us.u] & sq_bb != 0 and self.pawn_attacks[them.u] & sq_bb == 0;
-        return safe and funcs.outpost(us) & sq_bb != 0;
+        const them = comptime us.opp();
+        const ranks456: u64 = comptime bitboards.relative_rank_456_bitboard(us);
+        return ranks456 & sq.to_bitboard() & self.pawn_attacks[us.u] & ~self.pawn_attacks[them.u] != 0;
     }
 
     fn get_pawn_protection_scorepair(comptime us: Color, king: Square, pawn: Square) ScorePairPtr {
@@ -687,7 +678,7 @@ pub const Evaluator = struct {
     /// Check if the pawn square is inside the 3x4 king area.
     fn verify_king_pawn_protection_area(comptime us: Color, our_king_sq: Square, our_pawn_sq: Square) void {
         const area: u64 = if (us.e == .white) king_areas_white[our_king_sq.u] else king_areas_black[our_king_sq.u];
-        const ok: bool = funcs.contains_square(area, our_pawn_sq);
+        const ok: bool = bitboards.contains_square(area, our_pawn_sq);
         if (!ok) {
             lib.verify(ok, "verify_king_pawn_protection_area", .{});
         }
@@ -696,7 +687,7 @@ pub const Evaluator = struct {
     /// Check if the pawn square is inside the 3x7 king area.
     fn verify_king_pawn_storm_area(comptime attacker: Color, their_king_sq: Square, our_pawn_sq: Square) void {
         const area: u64 = if (attacker.e == .black) king_pawnstorm_areas_white[their_king_sq.u] else king_pawnstorm_areas_black[their_king_sq.u];
-        const ok: bool = funcs.contains_square(area, our_pawn_sq);
+        const ok: bool = bitboards.contains_square(area, our_pawn_sq);
         if (!ok) {
             lib.verify(ok, "verify_king_pawn_storm_area (attacker {t}): pawn on {t} is not inside pawnstormarea of {t}", .{ attacker.e, our_pawn_sq.e, their_king_sq.e });
         }

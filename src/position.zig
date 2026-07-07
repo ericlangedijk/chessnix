@@ -14,7 +14,7 @@ const assert = std.debug.assert;
 const ctx = lib.ctx;
 const io = lib.io;
 const wtf = lib.wtf;
-const popcnt = funcs.popcnt;
+const popcnt = bitboards.popcnt;
 const pawns_shift = funcs.pawns_shift;
 const pawn_from = funcs.pawn_from;
 
@@ -247,8 +247,8 @@ pub const Position = struct {
 
     /// Assumes king is on the board. Applies a rook correction for 'KQkq' castling rights, if nessesary.
     pub fn set_castling_right(self: *Position, key: *LayoutKey, us: Color, input_rook_file: u3, comptime rook_correction: bool) !void {
-        const first_rank: u3 = funcs.relative_rank(us, 0);
-        const rank_bb: u64 = funcs.relative_rank_bb(us, 0);
+        const first_rank: u3 = types.relative_rank(us, 0);
+        const rank_bb: u64 = bitboards.relative_rank_bitboard(us, 0);
         const king_sq: Square = self.king_square(us);
         const rook_sq: Square = .from_rank_file(first_rank, input_rook_file);
         const rook: Piece = .init(.rook, us);
@@ -276,7 +276,7 @@ pub const Position = struct {
             if (rook_correction and !is_rook) {
                 // Try to find the most right rook, right from the king.
                 const bb: u64 = self.rooks(us) & rank_bb;
-                const sq: Square = funcs.last_square_or_null(bb) orelse return Error.CastlingLogic;
+                const sq: Square = bitboards.last_square_or_null(bb) orelse return Error.CastlingLogic;
                 if (sq.u < king_sq.u) return Error.CastlingLogic;
                 rook_file = sq.coord.file;
             }
@@ -289,7 +289,7 @@ pub const Position = struct {
             if (rook_correction and !is_rook) {
                 // Try to find the most left rook, left from the king.
                 const bb: u64 = self.rooks(us) & rank_bb;
-                const sq: Square = funcs.first_square_or_null(bb) orelse return Error.CastlingLogic;
+                const sq: Square = bitboards.first_square_or_null(bb) orelse return Error.CastlingLogic;
                 if (sq.u > king_sq.u) return Error.CastlingLogic;
                 rook_file = sq.coord.file;
             }
@@ -487,17 +487,17 @@ pub const Position = struct {
 
     /// Assumes there is a pawn. Returns lsb.
     pub fn pawn_square(self: *const Position, us: Color) Square {
-        return funcs.first_square(self.pawns(us));
+        return bitboards.first_square(self.pawns(us));
     }
 
     /// Assumes there is a bishop. Returns lsb.
     pub fn bishop_square(self: *const Position, us: Color) Square {
-        return funcs.first_square(self.bishops(us));
+        return bitboards.first_square(self.bishops(us));
     }
 
     /// Assumes there is a king. Returns lsb.
     pub fn king_square(self: *const Position, us: Color) Square {
-        return funcs.first_square(self.kings(us));
+        return bitboards.first_square(self.kings(us));
     }
 
     pub fn sliders(self: *const Position, us: Color) u64 {
@@ -1689,7 +1689,7 @@ pub const Layout = struct {
         var result: Layout = .empty;
 
         inline for (Color.all) |us| {
-            const rank: u3 = funcs.relative_rank(us, 0);
+            const rank: u3 = types.relative_rank(us, 0);
             inline for (Castle.all) |ct| {
                 const king_file: u3 = key.king_file(us);
                 const rook_file: u3 = key.rook_file(us, ct);

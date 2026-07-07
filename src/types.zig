@@ -1018,6 +1018,10 @@ pub const ScorePair = extern struct {
     }
 };
 
+pub fn relative_rank(us: Color, rank: u3) u3 {
+    return if (us.e == .white) rank else 7 - rank;
+}
+
 /// Easy initialization function for eval tables.
 pub fn pair(mg: i16, eg: i16) ScorePair {
     return .{ .mg = mg, .eg = eg };

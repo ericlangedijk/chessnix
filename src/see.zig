@@ -111,8 +111,8 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
                 const next_attacker: u64 = our_attackers & pos.by_type(piecetype);
                 if (next_attacker != 0) {
                     // Clear this attacker.
-                    const sq: Square = funcs.first_square(next_attacker);
-                    funcs.clear_square(&occupied, sq);
+                    const sq: Square = bitboards.first_square(next_attacker);
+                    bitboards.clear_square(&occupied, sq);
                     // Reveal next x-ray attacker on the attacks bitboard. Knights cannot reveal a new x-ray.
                     // We can stop if we see a king. If the king captures and the opponent can capture our king we lose othersize we win.
                     switch (piecetype.e) {

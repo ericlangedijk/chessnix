@@ -51,39 +51,6 @@ pub inline fn manhattan_distance(a: Square, b: Square) u8 {
     return @intCast(rank_distance + file_distance);
 }
 
-pub fn relative_rank_7_bitboard(us: Color) u64 {
-    return if (us.e == .white) bitboards.bb_rank_7 else bitboards.bb_rank_2;
-}
-
-pub fn relative_rank_8_bitboard(us: Color) u64 {
-    return if (us.e == .white) bitboards.bb_rank_8 else bitboards.bb_rank_1;
-}
-
-pub fn relative_rank_3_bitboard(us: Color) u64 {
-    return if (us.e == .white) bitboards.bb_rank_3 else bitboards.bb_rank_6;
-}
-
-pub fn relative_rank(us: Color, rank: u3) u3 {
-    return if (us.e == .white) rank else 7 - rank;
-}
-
-/// Relative rank 4,5,6
-pub fn outpost(comptime us: Color) u64 {
-    return if (us.e == .white) bitboards.bb_rank_4 | bitboards.bb_rank_5 | bitboards.bb_rank_6 else bitboards.bb_rank_3 | bitboards.bb_rank_4 | bitboards.bb_rank_5;
-}
-
-pub fn relative_side_bitboard(comptime us: Color) u64 {
-    return if (us.e == .white) bitboards.bb_white_side else bitboards.bb_black_side;
-}
-
-pub fn relative_rank_bb(us: Color, rank: u3) u64 {
-    return if (us.e == .white) bitboards.rank_bitboards[rank] else bitboards.rank_bitboards[7 - rank];
-}
-
-pub fn relative_rank_7(us: Color) u3 {
-    return if (us.e == .white) types.rank_7 else types.rank_2;
-}
-
 pub fn pawns_shift(pawns: u64, comptime us: Color, comptime shift: PawnShift) u64 {
     switch(us.e) {
         .white => {
@@ -130,113 +97,6 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
     }
 }
 
-pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
-    return switch (dir) {
-        .north      => (u & ~bitboards.bb_rank_8) << 8,
-        .east       => (u & ~bitboards.bb_file_h) << 1,
-        .south      => (u & ~bitboards.bb_rank_1) >> 8,
-        .west       => (u & ~bitboards.bb_file_a) >> 1,
-        .north_west => (u & ~bitboards.bb_file_a) << 7,
-        .north_east => (u & ~bitboards.bb_file_h) << 9,
-        .south_east => (u & ~bitboards.bb_file_a) >> 7,
-        .south_west => (u & ~bitboards.bb_file_a) >> 9,
-        else => unreachable,
-    };
-}
-
-pub fn mirror_vertically(u: u64) u64 {
-    return
-        ( (u & 0x00000000000000ff) << 56) |
-        ( (u & 0x000000000000ff00) << 40) |
-        ( (u & 0x0000000000ff0000) << 24) |
-        ( (u & 0x00000000ff000000) << 8 ) |
-        ( (u & 0x000000ff00000000) >> 8 ) |
-        ( (u & 0x0000ff0000000000) >> 24) |
-        ( (u & 0x00ff000000000000) >> 40) |
-        ( (u & 0xff00000000000000) >> 56);
-}
-
-pub fn popcnt(bitboard: u64) u7 {
-    return @popCount(bitboard);
-}
-
-pub fn contains_square(bitboard: u64, sq: Square) bool {
-    return test_bit_64(bitboard, sq.u);
-}
-
-/// Unsafe lsb. Assumes bitboard != 0.
-pub fn first_square(bitboard: u64) Square {
-    if (comptime lib.is_paranoid) {
-        assert(bitboard != 0);
-    }
-    //const lsb: u6 = @truncate(@ctz(bitboard));
-    const lsb: u6 = @intCast(@ctz(bitboard));
-    return .{ .u = lsb };
-}
-
-/// Unsafe lsb. Assumes bitboard != 0.
-pub fn last_square(bitboard: u64) Square {
-    if (comptime lib.is_paranoid) {
-        assert(bitboard != 0);
-    }
-    const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));
-    return .{ .u = msb };
-}
-
-pub fn first_square_or_null(bitboard: u64) ?Square {
-    if (bitboard == 0) return null;
-    const lsb: u6 = @intCast(@ctz(bitboard));
-    return .{ .u = lsb };
-}
-
-pub fn last_square_or_null(bitboard: u64) ?Square {
-    if (bitboard == 0) return null;
-    const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));
-    return .{ .u = msb };
-}
-
-/// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
-pub fn bitloop(bitboard: *u64) ?Square {
-    if (bitboard.* == 0) return null;
-    defer bitboard.* &= (bitboard.* - 1);
-    return .{ .u = @intCast(@ctz(bitboard.*)) };
-}
-
-/// Note: This requires x86-64 and the BMI2 instruction set.
-pub fn get_nth_set_bit_or_null(bitboard: u64, n: u6) ?u6 {
-    // Return null if we are asking for a bit that doesn't exist
-    if (@popCount(bitboard) <= n) return null;
-
-    const nth_bit = @as(u64, 1) << n;
-
-    // PDEP (Parallel Bit Deposit) magic via inline assembly
-    const isolated = asm (
-        "pdep %[mask], %[val], %[out]"
-        : [out] "=r" (-> u64),
-        : [val] "r" (nth_bit),
-          [mask] "r" (bitboard),
-    );
-
-    return @intCast(@ctz(isolated));
-}
-
-/// Note: This requires x86-64 and the BMI2 instruction set.
-pub fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
-    const nth_bit = @as(u64, 1) << n;
-    // PDEP (Parallel Bit Deposit) magic via inline assembly
-    const isolated = asm (
-        "pdep %[mask], %[val], %[out]"
-        : [out] "=r" (-> u64),
-        : [val] "r" (nth_bit),
-          [mask] "r" (bitboard),
-    );
-    return @intCast(@ctz(isolated));
-}
-
-pub fn clear_square(bitboard: *u64, sq: Square) void {
-    bitboard.* &= ~sq.to_bitboard();
-}
-
 pub fn test_bit_u8(u: u8, bit: u3) bool {
     const one: u8 = @as(u8, 1) << bit;
     return u & one != 0;
@@ -267,16 +127,6 @@ pub fn mate_to_dtm(mv: i32, stm: Color) i32 {
 
 pub fn str_eql(input: []const u8, comptime line: []const u8) bool {
     return std.mem.eql(u8, input, line);
-}
-
-/// Not used.
-pub fn ptr_add(T: type, ptr: *const T, comptime delta: comptime_int) *T {
-    return @ptrFromInt(@intFromPtr(ptr) + @sizeOf(T) * delta);
-}
-
-/// Not used.
-pub fn ptr_sub(T: type, ptr: *const T, comptime delta: comptime_int) *T {
-    return @ptrFromInt(@intFromPtr(ptr) - @sizeOf(T) * delta);
 }
 
 /// Calculates something per second.

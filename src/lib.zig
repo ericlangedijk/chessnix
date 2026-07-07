@@ -40,7 +40,7 @@ pub const Program = enum {
 };
 
 pub const program: Program = .uci;
-//pub const program: Program = .hcetuner;
+// pub const program: Program = .hcetuner;
 // pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";
@@ -68,7 +68,7 @@ pub const MemoryContext = struct {
             return .{ .gpa = std.testing.allocator };
         }
         else if (is_debug) {
-             return .{ .gpa = std.heap.DebugAllocator(.{}).init.backing_allocator };
+            return .{ .gpa = std.heap.DebugAllocator(.{}).init.backing_allocator };
         }
         else {
             return .{ .gpa = std.heap.smp_allocator };

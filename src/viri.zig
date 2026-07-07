@@ -27,7 +27,7 @@ const Castling = position.Castling;
 const LayoutKey = position.LayoutKey;
 const Position = position.Position;
 
-const popcnt = funcs.popcnt;
+const popcnt = bitboards.popcnt;
 
 comptime {
     std.debug.assert(@sizeOf(ViriPosition) == 32);
@@ -69,7 +69,7 @@ pub const ViriPosition = extern struct {
             const colorbit: u8 = if (color.e == .black) 0b1000 else 0;
             var piececode: u8 = piecetype.u;  // Value matches chessnix.
             // Encode castling rook.
-            if (piecetype.e == .rook and sq.coord.rank == funcs.relative_rank(color, types.rank_1)) {
+            if (piecetype.e == .rook and sq.coord.rank == types.relative_rank(color, types.rank_1)) {
                 if (
                     (pos.has_castlingright(color, .short) and sq.u == pos.layout.rook_start(color, .short).u) or
                     (pos.has_castlingright(color, .long) and sq.u == pos.layout.rook_start(color, .long).u)
@@ -115,7 +115,7 @@ pub const ViriPosition = extern struct {
             const piece: Piece = switch (piececode) {
                 0...5  => |u| Piece.init(PieceType.from_int(u), color),
                 unmoved_rook => blk: {
-                    if (sq.coord.rank != funcs.relative_rank(color, types.rank_1)) {
+                    if (sq.coord.rank != types.relative_rank(color, types.rank_1)) {
                         return Error.invalid_castling_rook_square;
                     }
                     castling_rooks[color.u] |= sq.to_bitboard();

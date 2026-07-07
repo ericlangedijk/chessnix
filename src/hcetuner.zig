@@ -113,6 +113,7 @@ const FloatScorePair = extern struct {
 const Status = struct {
     positions_seen: u64 = 0,
     sum_errors: u64 = 0,
+    total_terms_updated: u64 = 0,
 
     fn avg_error(self: *const Status) f64 {
         return float(f64, self.sum_errors) / float(f64, self.positions_seen);
@@ -124,8 +125,6 @@ const TuningTerm = struct {
     hce_pair: FloatScorePair = .empty,
     /// Adjustment.
     delta: FloatScorePair = .empty,
-    /// The total number of times this scorepair has been used.
-    samples: u64 = 0,
 
     const empty: TuningTerm = .{};
 
@@ -141,7 +140,7 @@ const Current = struct {
     /// The value we are learning from.
     dataset_eval: i32 = 0,
     /// The final chessnix eval scorepair.
-    hce_eval_pair: ScorePair = .empty,
+    hce_pair: ScorePair = .empty,
     /// Updated during one eval. Must be equal to hce_eval_pair.
     checksum_pair: ScorePair = .empty,
     /// Which scorepairs were used.
@@ -177,7 +176,7 @@ pub fn register_final_result(hce_pair: ScorePair, eval: i32) void {
     _ = eval;
     // Here we assert that checksum matches hce. Otherwise we have a bug.
     current.hce_pair = hce_pair;
-    current.checksum_pair = scoring.restrict_scorepair_before_scaling(current.checksum_eval_scorepair);
+    current.checksum_pair = scoring.restrict_scorepair_before_scaling(current.checksum_pair);
     if (!std.meta.eql(hce_pair, current.checksum_pair)) {
         lib.wtf(
             "eval sum mismatch {} {f} != {f}",
@@ -211,10 +210,10 @@ pub fn run() !void {
         current.pos = try game.startpos.to_position();
         current.hce_eval = evaluator.evaluate(&current.pos, .unscaled);
         current.dataset_eval = game.startpos.eval;
-        end_current();
         status.positions_seen += 1;
+        end_current();
         // Testing 3 positions.
-        if (status.positions_seen >= 3) {
+        if (status.positions_seen >= 1_000_000) {
             break :game_loop;
         }
     }
@@ -225,9 +224,8 @@ fn initialize()! void {
     current.clear();
     // Copy hce terms into tuningterms.
     for (&tuningterms, terms) |*bt, sp| {
-        bt.hce_scorepair = .from_scorepair(sp);
+        bt.hce_pair = .from_scorepair(sp);
         bt.delta = .empty;
-        bt.samples = 0;
     }
 }
 
@@ -246,10 +244,10 @@ fn register_term(sp: *ScorePair, multiply: u8, us: Color, debugargs: anytype) vo
     current.used_indexes.append_assume_capacity(sp_index);
     switch (us.e) {
         .white => {
-            current.checksum_eval_scorepair.inc(sp.*.mul(multiply));
+            current.checksum_pair.inc(sp.*.mul(multiply));
         },
         .black => {
-            current.checksum_eval_scorepair.dec(sp.*.mul(multiply));
+            current.checksum_pair.dec(sp.*.mul(multiply));
         },
     }
 }
@@ -260,64 +258,74 @@ fn begin_current() void {
 
 /// When eval for the current position is ready, update stuff.
 fn end_current() void {
-    const learning_rate: f32 = 1.0;
+    const learning_rate: f32 = 0.001;
 
     const err: i32 = current.dataset_eval - current.hce_eval;
     const used: usize = current.used_indexes.len;
     const phase: u8 = types.restrict_phase(current.pos.phase());
+    // Spread out the error over the terms.
+    const err_avg: f32 = float(f32, err) / float(f32, used);
 
     status.sum_errors += @abs(err);
 
-    lib.io.debugprint(
-        "phase: {}, hce_pair: {f}, chessnix_eval: {} dataset_eval: {}, used terms :{}, err: {}\n",
-        .{ phase, current.hce_eval_scorepair, current.hce_eval, current.dataset_eval, used, err }
-    );
+    if (status.positions_seen % 1000 == 0) {
+        lib.io.debugprint(
+            "seen {} phase: {}, hce_pair: {f}, chessnix_eval: {} dataset_eval: {}, used terms :{}, err: {} avg {} upd {} AVG {d:.4}\n",
+            .{ status.positions_seen, phase, current.hce_pair, current.hce_eval, current.dataset_eval, used, err, err_avg, status.total_terms_updated, status.avg_error() }
+        );
+    }
 
-    // Spread out the error over the terms.
-    const err_avg: f32 = float(f32, err) / float(f32, used);
     var delta: FloatScorePair = compute_delta(phase, err_avg);
-    delta.mul(learning_rate);
+    //if (current.pos.stm.e == .black) delta = delta.mul(-1.0);
+    delta = delta.mul(learning_rate);
 
-    var float_future: FloatScorePair = .from_scorepair(current.hce_eval_scorepair);
+    //var float_future: FloatScorePair = .from_scorepair(current.hce_pair);
     for (current.used_indexes.slice()) |sp_index| {
         const tt: *TuningTerm = &tuningterms[sp_index];
         tt.delta.inc(delta);
-        tt.samples += 1;
 
-        const inf: *const Meta.ScorePairInfo = meta.get_scorepair_info(sp_index); //_ = inf;
-        if (sp_index == 0)
-            lib.io.debugprint("    {s}({}) active {f} delta {f}\n", .{ inf.name.slice(), inf.raw_array_index, tt.src, tt.delta });
+        //const inf: *const Meta.ScorePairInfo = meta.get_scorepair_info(sp_index); //_ = inf;
+        //float_future.inc(tt.delta);
+        //if (sp_index == 0)
+            //lib.io.debugprint("    {s}({}) active {f} delta {f} r {}\n", .{ inf.name.slice(), inf.raw_array_index, tt.hce_pair, tt.delta, int(i32, float_future.to_score(phase)) });
 
-        float_future.inc(tt.delta);
         // // Update the hceterm.
-//        if (tt.samples >= 1) {
-            //const hceterm: *ScorePair = &terms[sp_index];
-            //hceterm.inc(.init(0, 0));
-            //if ((tt.delta.mg >= 1.0 or tt.delta.mg <= -1.0 or tt.delta.eg >= 1.0 and tt.delta.eg <= -1.0) and tt.samples >= ST) {
+        //const hceterm: *ScorePair = &terms[sp_index];
+        //hceterm.inc(.init(0, 0));
+        //if ((tt.delta.mg >= 1.0 or tt.delta.mg <= -1.0 or tt.delta.eg >= 1.0 and tt.delta.eg <= -1.0) and tt.samples >= ST) {
 
-            // if (tt.delta.mg >= 1.0 or tt.delta.mg <= -1.0 or tt.delta.eg >= 1.0 and tt.delta.eg <= -1.0) {
-            //     var future: ScorePair = tt.future();
-            //     future.mg = std.math.clamp(future.mg, -1000, 1000);
-            //     future.eg = std.math.clamp(future.eg, -1000, 1000);
-            //     const hceterm: *ScorePair = &terms[sp_index];
-            //     //const prev: ScorePair = hceterm.*;
-            //     hceterm.* = future;
-            //     //if (sp_index == 0) lib.io.debugprint("    updated {s}({}) from {f} to {f}\n", .{ inf.name.slice(), inf.raw_array_index, prev, hceterm.* });
-            //     tt.src = .from_scorepair(future);
-            //     tt.delta = .empty;
-            //     tt.samples = 0;
-            // }
+        if (tt.delta.mg >= 1.0 or tt.delta.mg <= -1.0) {
+            const hceterm: *ScorePair = &terms[sp_index];
+            const new_mg: i16 = int(i16, tt.hce_pair.mg + tt.delta.mg);
+            hceterm.*.mg = std.math.clamp(new_mg, -1000, 1000);
+            tt.hce_pair.mg = float(f32, hceterm.*.mg);
+            tt.delta.mg = 0.0;
+            status.total_terms_updated += 1;
+        }
+
+        if (tt.delta.eg >= 1.0 or tt.delta.eg <= -1.0) {
+            const hceterm: *ScorePair = &terms[sp_index];
+            const new_eg: i16 = int(i16, tt.hce_pair.eg + tt.delta.eg);
+            hceterm.*.eg = std.math.clamp(new_eg, -1000, 1000);
+            tt.hce_pair.eg = float(f32, hceterm.*.eg);
+            tt.delta.eg = 0.0;
+            status.total_terms_updated += 1;
+        }
+
     }
-    lib.io.debugprint("         hce: {f}, future: {f}, e: {}, f: {}\n", .{ current.hce_eval_scorepair, float_future, current.hce_eval, float_future.to_score(phase)});
+
+    //lib.io.debugprint("         hce: {f}, future: {f}, e: {}, f: {}\n", .{ current.hce_pair, float_future, current.hce_eval, float_future.to_score(phase)});
 }
 
 fn compute_delta(pos_phase: u8, err: f32) FloatScorePair {
     const phase: f32 = float(f32, pos_phase);
     const max_phase: f32 = float(f32, types.max_phase);
-    const relative_phase = phase / max_phase; // 0.0...1.0
-    const mg_delta: f32 = err * relative_phase;
-    const eg_delta: f32 = err * (1.0 - relative_phase);
+    const mg_mult: f32 = phase / max_phase;
+    const eg_mult: f32 = (max_phase - phase) / max_phase;
+    const mg_delta: f32 = err * mg_mult;
+    const eg_delta: f32 = err * eg_mult;
     return .init(mg_delta, eg_delta);
+    // return .init(err, err); // this gives the almost exact prediction for 1 pos
 }
 
 // --- Misc ---

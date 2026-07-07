@@ -2,10 +2,14 @@
 
 //! Lots of bitboards.
 
+const std = @import("std");
 const lib = @import("lib.zig");
 const attacks = @import("attacks.zig");
 const types = @import("types.zig");
 const funcs = @import("funcs.zig");
+
+const assert = std.debug.assert;
+const int = funcs.int;
 
 const Axis = types.Axis;
 const Orientation = types.Orientation;
@@ -13,6 +17,7 @@ const Direction = types.Direction;
 const Color = types.Color;
 const Piece = types.Piece;
 const Square = types.Square;
+
 
 // --- Const stuff ---
 pub const bb_rank_1: u64 = 0x00000000000000ff;
@@ -144,7 +149,186 @@ pub const direction_bitboards: [Direction.count][*]const u64 = .{
     &bb_north, &bb_east, &bb_south, &bb_west, &bb_northwest, &bb_northeast, &bb_southeast, &bb_southwest,
 };
 
+
+// --- Public functions ---
+
+pub fn iterator(bitboard: u64) BitboardIterator {
+    return BitboardIterator.init(bitboard);
+}
+
+pub const BitboardIterator = struct {
+    state: u64,
+
+    pub fn init(bitboard: u64) BitboardIterator {
+        return .{ .state = bitboard };
+    }
+
+    pub fn next(self: *BitboardIterator) ?Square {
+        if (self.state == 0) {
+            return null;
+        }
+        const res = @ctz(self.state);
+        self.state &= self.state -% 1;
+        return .{ .u = @intCast(res)};
+    }
+
+    pub fn peek(self: *const BitboardIterator) ?Square {
+        if (self.state == 0) {
+            return null;
+        }
+        const res = @ctz(self.state);
+        return .{ .u = @intCast(res)};
+    }
+};
+
+pub fn popcnt(bitboard: u64) u7 {
+    return @popCount(bitboard);
+}
+
+pub fn contains_square(bitboard: u64, sq: Square) bool {
+    return funcs.test_bit_64(bitboard, sq.u);
+}
+
+/// Unsafe lsb. Assumes bitboard != 0.
+pub fn first_square(bitboard: u64) Square {
+    if (comptime lib.is_paranoid) {
+        assert(bitboard != 0);
+    }
+    //const lsb: u6 = @truncate(@ctz(bitboard));
+    const lsb: u6 = @intCast(@ctz(bitboard));
+    return .{ .u = lsb };
+}
+
+/// Unsafe lsb. Assumes bitboard != 0.
+pub fn last_square(bitboard: u64) Square {
+    if (comptime lib.is_paranoid) {
+        assert(bitboard != 0);
+    }
+    const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));
+    return .{ .u = msb };
+}
+
+pub fn first_square_or_null(bitboard: u64) ?Square {
+    if (bitboard == 0) return null;
+    const lsb: u6 = @intCast(@ctz(bitboard));
+    return .{ .u = lsb };
+}
+
+pub fn last_square_or_null(bitboard: u64) ?Square {
+    if (bitboard == 0) return null;
+    const msb: u6 = int(u6, 63) - int(u6, @clz(bitboard));
+    return .{ .u = msb };
+}
+
+/// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
+pub fn bitloop(bitboard: *u64) ?Square {
+    if (bitboard.* == 0) return null;
+    defer bitboard.* &= (bitboard.* - 1);
+    return .{ .u = @intCast(@ctz(bitboard.*)) };
+}
+
+/// Note: This requires x86-64 and the BMI2 instruction set.
+pub fn get_nth_set_bit_or_null(bitboard: u64, n: u6) ?u6 {
+    // Return null if we are asking for a bit that doesn't exist
+    if (@popCount(bitboard) <= n) return null;
+
+    const nth_bit = @as(u64, 1) << n;
+
+    // PDEP (Parallel Bit Deposit) magic via inline assembly
+    const isolated = asm (
+        "pdep %[mask], %[val], %[out]"
+        : [out] "=r" (-> u64),
+        : [val] "r" (nth_bit),
+          [mask] "r" (bitboard),
+    );
+
+    return @intCast(@ctz(isolated));
+}
+
+/// Note: This requires x86-64 and the BMI2 instruction set.
+pub fn get_nth_set_bit(bitboard: u64, n: u6) u6 {
+    const nth_bit = @as(u64, 1) << n;
+    // PDEP (Parallel Bit Deposit) magic via inline assembly
+    const isolated = asm (
+        "pdep %[mask], %[val], %[out]"
+        : [out] "=r" (-> u64),
+        : [val] "r" (nth_bit),
+          [mask] "r" (bitboard),
+    );
+    return @intCast(@ctz(isolated));
+}
+
+pub fn clear_square(bitboard: *u64, sq: Square) void {
+    bitboard.* &= ~sq.to_bitboard();
+}
+
+pub fn relative_rank_7_bitboard(us: Color) u64 {
+    return if (us.e == .white) bb_rank_7 else bb_rank_2;
+}
+
+pub fn relative_rank_8_bitboard(us: Color) u64 {
+    return if (us.e == .white) bb_rank_8 else bb_rank_1;
+}
+
+pub fn relative_rank_3_bitboard(us: Color) u64 {
+    return if (us.e == .white) bb_rank_3 else bb_rank_6;
+}
+
+pub fn relative_rank_456_bitboard(comptime us: Color) u64 {
+    return if (us.e == .white) bb_rank_4 | bb_rank_5 | bb_rank_6 else bb_rank_3 | bb_rank_4 | bb_rank_5;
+}
+
+pub fn relative_side_bitboard(comptime us: Color) u64 {
+    return if (us.e == .white) bb_white_side else bb_black_side;
+}
+
+pub fn relative_rank_bitboard(us: Color, rank: u3) u64 {
+    return if (us.e == .white) rank_bitboards[rank] else rank_bitboards[7 - rank];
+}
+
+pub fn relative_rank_7(us: Color) u3 {
+    return if (us.e == .white) types.rank_7 else types.rank_2;
+}
+
+pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
+    return switch (us.e) {
+        .white => passed_pawn_masks_white[sq.u],
+        .black => passed_pawn_masks_black[sq.u],
+    };
+}
+
+pub fn forward_file(comptime us: Color, sq: Square) u64 {
+    return if (us.e == .white) bb_north[sq.u] else bb_south[sq.u];
+}
+
+pub fn shift_bitboard(u: u64, comptime dir: Direction) u64 {
+    return switch (dir) {
+        .north      => (u & ~bb_rank_8) << 8,
+        .east       => (u & ~bb_file_h) << 1,
+        .south      => (u & ~bb_rank_1) >> 8,
+        .west       => (u & ~bb_file_a) >> 1,
+        .north_west => (u & ~bb_file_a) << 7,
+        .north_east => (u & ~bb_file_h) << 9,
+        .south_east => (u & ~bb_file_a) >> 7,
+        .south_west => (u & ~bb_file_a) >> 9,
+        else => unreachable,
+    };
+}
+
+pub fn mirror_vertically(u: u64) u64 {
+    return
+        ( (u & 0x00000000000000ff) << 56) |
+        ( (u & 0x000000000000ff00) << 40) |
+        ( (u & 0x0000000000ff0000) << 24) |
+        ( (u & 0x00000000ff000000) << 8 ) |
+        ( (u & 0x000000ff00000000) >> 8 ) |
+        ( (u & 0x0000ff0000000000) >> 24) |
+        ( (u & 0x00ff000000000000) >> 40) |
+        ( (u & 0xff00000000000000) >> 56);
+}
+
 // --- Computing ---
+
 fn compute_direction_bitboards(comptime dir: Direction) [Square.count]u64 {
     @setEvalBranchQuota(8000);
     var bb: [Square.count]u64 = @splat(0);
@@ -199,7 +383,7 @@ fn compute_passed_pawn_masks_black() [Square.count]u64 {
     var pp: [Square.count]u64 = @splat(0);
     for (Square.all) |sq| {
         const black_sq: Square = sq.relative(.black);
-        pp[black_sq.u] = funcs.mirror_vertically(passed_pawn_masks_white[sq.u]);
+        pp[black_sq.u] = mirror_vertically(passed_pawn_masks_white[sq.u]);
     }
     return pp;
 }
@@ -242,44 +426,4 @@ fn compute_backward_pawn_masks_black()[Square.count]u64 {
         bpm[sq.u] = bb;
     }
     return bpm;
-}
-
-pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
-    return switch (us.e) {
-        .white => passed_pawn_masks_white[sq.u],
-        .black => passed_pawn_masks_black[sq.u],
-    };
-}
-
-pub fn forward_file(comptime us: Color, sq: Square) u64 {
-    return if (us.e == .white) bb_north[sq.u] else bb_south[sq.u];
-}
-
-pub const BitboardIterator = struct {
-    state: u64,
-
-    pub fn init(bitboard: u64) BitboardIterator {
-        return .{ .state = bitboard };
-    }
-
-    pub fn next(self: *BitboardIterator) ?Square {
-        if (self.state == 0) {
-            return null;
-        }
-        const res = @ctz(self.state);
-        self.state &= self.state -% 1;
-        return .{ .u = @intCast(res)};
-    }
-
-    pub fn peek(self: *const BitboardIterator) ?Square {
-        if (self.state == 0) {
-            return null;
-        }
-        const res = @ctz(self.state);
-        return .{ .u = @intCast(res)};
-    }
-};
-
-pub fn iterator(bitboard: u64) BitboardIterator {
-    return BitboardIterator.init(bitboard);
 }
