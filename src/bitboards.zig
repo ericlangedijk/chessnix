@@ -220,7 +220,7 @@ pub fn last_square_or_null(bitboard: u64) ?Square {
     return .{ .u = msb };
 }
 
-/// I finally managed to make this even faster than manual popping (intCast is probably the trick instead of truncate).
+/// Deprecated. BitboardIterator is preferred.
 pub fn bitloop(bitboard: *u64) ?Square {
     if (bitboard.* == 0) return null;
     defer bitboard.* &= (bitboard.* - 1);
@@ -262,18 +262,6 @@ pub fn clear_square(bitboard: *u64, sq: Square) void {
     bitboard.* &= ~sq.to_bitboard();
 }
 
-pub fn relative_rank_7_bitboard(us: Color) u64 {
-    return if (us.e == .white) bb_rank_7 else bb_rank_2;
-}
-
-pub fn relative_rank_8_bitboard(us: Color) u64 {
-    return if (us.e == .white) bb_rank_8 else bb_rank_1;
-}
-
-pub fn relative_rank_3_bitboard(us: Color) u64 {
-    return if (us.e == .white) bb_rank_3 else bb_rank_6;
-}
-
 pub fn relative_rank_456_bitboard(comptime us: Color) u64 {
     return if (us.e == .white) bb_rank_4 | bb_rank_5 | bb_rank_6 else bb_rank_3 | bb_rank_4 | bb_rank_5;
 }
@@ -284,10 +272,6 @@ pub fn relative_side_bitboard(comptime us: Color) u64 {
 
 pub fn relative_rank_bitboard(us: Color, rank: u3) u64 {
     return if (us.e == .white) rank_bitboards[rank] else rank_bitboards[7 - rank];
-}
-
-pub fn relative_rank_7(us: Color) u3 {
-    return if (us.e == .white) types.rank_7 else types.rank_2;
 }
 
 pub fn get_passed_pawn_mask(comptime us: Color, sq: Square) u64 {
