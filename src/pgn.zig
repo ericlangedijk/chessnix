@@ -163,7 +163,7 @@ pub const Pgn = struct {
             else => {},
         }
 
-        // Check same pieces.
+        // Check same pieces on the board.
         const others: u64 = pos.by_type(pt) & pos.by_color(us) & ~ex.move.from.to_bitboard();
         if (bitboards.popcnt(others) == 0) return .none;
 

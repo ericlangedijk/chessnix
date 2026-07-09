@@ -147,15 +147,6 @@ pub fn mnps(count: usize, elapsed_nanoseconds: u64) f64 {
     return s;
 }
 
-/// Convert any int to f32.
-pub fn float32(i: anytype) f32 {
-    return @floatFromInt(i);
-}
-
-pub fn float64(i: anytype) f64 {
-    return @floatFromInt(i);
-}
-
 pub fn percent(max: usize, count: usize) usize {
     if (max == 0) return 0;
     const c: f32 = @floatFromInt(count);
@@ -179,7 +170,7 @@ pub fn permille(max: usize, count: usize) usize {
 
 /// multiply any int with float.
 pub fn fmul(i: anytype, f: f32) @TypeOf(i) {
-    return @intFromFloat(float32(i) * f);
+    return @intFromFloat(float(f32, i) * f);
 }
 
 pub fn get_str(comptime fmt: []const u8, args: anytype) utils.BoundedArray(u8, 256) {

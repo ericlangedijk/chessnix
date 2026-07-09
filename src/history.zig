@@ -59,7 +59,7 @@ pub const History = struct {
     }
 
     pub fn clear(self: *History) void {
-        self.* = std.mem.zeroes(History);
+        self .* = std.mem.zeroes(History);
     }
 
     /// Increase the score of the node's move. If the node move is quiet, punish the quiets.

@@ -325,6 +325,19 @@ pub const ViriGame = struct {
         const vm: ViriMove = .from_move(move);
         try self.moves.append(ctx.gpa, ViriMoveExt.init(vm, eval));
     }
+
+    pub fn to_game(self: *const ViriGame) !position.Game {
+        var game: position.Game = .init();
+        const start: Position = try self.startpos.to_position();
+        game.reset_with_position(&start);
+        var pos: Position = game.startpos;
+        for (self.moves.items) |vm| {
+            const ex: types.ExtMove = vm.move.to_ext_move(&pos);
+            try game.append_move(ex);
+            pos.lazy_do_move(ex);
+        }
+        return game;
+    }
 };
 
 pub const ViriFileReader = struct {

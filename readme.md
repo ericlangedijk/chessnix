@@ -22,7 +22,6 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - Added: Evaluation: knight outpost refinement, bishop on long diagonal.
 - Added: Endgame scaling to guide the search.
 - Added: KBN_K mating logic.
-- Added: Experimental draw avoiding behaviour.
 - Changed: Correction History (better math, small individual signals, 5 tables for 5 position hashkeys).
 - Changed: Alpha Raises Reduction LMR (instead of depth reduction).
 - Changed: Only update pv when pv-node. Removed update pv in quiescence search.

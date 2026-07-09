@@ -260,19 +260,26 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                         else {
                             ex.score += Scores.capture + ex.captured.see_value() * 100 - ex.piece.see_value() >> 3;
                         }
-                        ex.score += hist.get_capture_score(ex.*);
+                        const c_score: i32 = hist.get_capture_score(ex.*);
+                        ex.score += c_score;
+
+                        if (is_bad and pos.predict_check(us, ex.*)) {
+                            ex.score += 1000 - ex.piece.see_value(); // #experimental check (add 1000 and substract the lost material: TODO: this must match see_values)
+                        }
 
                         // Right here, when scoring is complete, we add a bad capture move to the bad noisy moves.
                         if (is_bad) {
                             self.bad_noisies.add(ex.*);
                         }
+
                     },
                     Move.ep => {
                         ex.score += Scores.capture + ex.captured.see_value() * 101 - ex.piece.see_value() >> 3;
                         ex.score += hist.get_capture_score(ex.*);
                     },
                     Move.knight_promotion...Move.queen_promotion => {
-                        const is_bad: bool = !see.evaluate(pos, ex.move, 0, .default);
+                        // A silent promotion can end up in the bad noisies.
+                        const is_bad: bool = !see.evaluate(pos, ex.move, 0, .default) and !pos.predict_check(us, ex.*); // #experimental check
                         const base: i32 = if (is_bad) Scores.bad_noisy else Scores.promotion;
                         const prom: PieceType = ex.move.prom();
                         switch (prom.e) {
@@ -281,7 +288,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                             .bishop, .rook => ex.score += base,
                             else => unreachable,
                         }
-                        // Right here, when scoring is complete, we add a bad capture move to the bad noisy moves.
+                        // Right here, when scoring is complete, we add a bad (non capture) promotion move to the bad noisy moves.
                         if (is_bad) {
                             self.bad_noisies.add(ex.*);
                         }

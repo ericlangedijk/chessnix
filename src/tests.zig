@@ -2,6 +2,10 @@
 
 //! Tests for critical parts.
 
+comptime {
+    assert(lib.is_test);
+}
+
 const std = @import("std");
 const builtin = @import("builtin");
 const lib = @import("lib.zig");
@@ -13,8 +17,10 @@ const movegen = @import("movegen.zig");
 const hce = @import("hce.zig");
 const perft = @import("perft.zig");
 const viri = @import("viri.zig");
+const pgn = @import("pgn.zig");
 const scoring = @import("scoring.zig");
 const search = @import("search.zig");
+const uci = @import("uci.zig");
 
 const assert = std.debug.assert;
 const ctx = lib.ctx;
@@ -29,49 +35,7 @@ const ExtMove = types.ExtMove;
 const ExtMoveList = types.ExtMoveList;
 const Position = position.Position;
 
-test "find move" {
-    try lib.initialize();
-    defer lib.finalize();
-
-    var pos: Position = .empty;
-    var storage: movegen.MoveStorage = .init();
-    for (consts.test_positions, 0..) |str, idx| {
-        try pos.setup(str, false);
-        // find_move must be equal.
-        movegen.lazy_generate_all_moves(&pos, &storage);
-        for (storage.slice()) |ex| {
-            const found_move: ExtMove = try movegen.lazy_find_move(&pos, ex.move.from, ex.move.to, ex.move.prom_safe());
-            try std.testing.expect(found_move.move == ex.move);
-        }
-        // Fuzz test find_move on the first few positions.
-        if (idx < 5) {
-            var found: usize = 0;
-            for (0..65536) |u| {
-                const mu: u16 = @intCast(u);
-                const m: Move = @bitCast(mu);
-                if (m.kind != 10 and m.kind != 11) {
-                    if (movegen.is_legal(m, &pos)) found += 1;
-                }
-            }
-            try std.testing.expect(found == storage.count);
-        }
-    }
-}
-
-test "evaluations equal" {
-    try lib.initialize();
-    defer lib.finalize();
-
-    var pos: Position = .empty;
-    var ev: hce.Evaluator = .init();
-    for (consts.test_positions, 0..) |str, idx| {
-        try pos.setup(str, false);
-        const scaled_eval: i32 = ev.evaluate(&pos, .scaled);
-        try std.testing.expect(scaled_eval == consts.scaled_static_evaluations[idx]);
-        const unscaled_eval: i32 = ev.evaluate(&pos, .unscaled);
-        try std.testing.expect(unscaled_eval == consts.unscaled_static_evaluations[idx]);
-    }
-}
+const verbose: bool = true;
 
 test "perft" {
     try lib.initialize();
@@ -95,13 +59,14 @@ test "perft" {
     }
     // No hash entries should be created for classic.
     try std.testing.expect(position.layout_map.count() == 0);
+    if (verbose) print_success("perft ok\n", .{});
 }
 
 test "perft 960" {
     try lib.initialize();
     defer lib.finalize();
 
-    const max_depth = 2; // depth 3 is a bit slow. this should be enough.
+    const max_depth = 3; // depth 3 is a bit slow.
     var pos: Position = .empty;
     for (consts.test_positions_960, 0..) |str, index| {
         try pos.setup(str, true);
@@ -119,6 +84,94 @@ test "perft 960" {
     }
     // Hash entries should be created for 960.
     try std.testing.expect(position.layout_map.count() > 0 and position.layout_map.count() < 512);
+    if (verbose) print_success("perft 960 ok\n", .{});
+}
+
+test "find move" {
+    try lib.initialize();
+    defer lib.finalize();
+
+    var pos: Position = .empty;
+    var storage: movegen.MoveStorage = .init();
+    for (consts.test_positions, 0..) |str, idx| {
+        try pos.setup(str, false);
+        // find_move must be equal.
+        movegen.lazy_generate_all_moves(&pos, &storage);
+        for (storage.slice()) |ex| {
+            const found_move: ExtMove = try movegen.lazy_find_move(&pos, ex.move.from, ex.move.to, ex.move.prom_safe());
+            try std.testing.expect(found_move.move == ex.move);
+        }
+        // Fuzzy test find_move on the first few positions.
+        if (idx < 5) {
+            var found: usize = 0;
+            for (0..65536) |u| {
+                const mu: u16 = @intCast(u);
+                const m: Move = @bitCast(mu);
+                if (m.kind != 10 and m.kind != 11) {
+                    if (movegen.is_legal(m, &pos)) found += 1;
+                }
+            }
+            try std.testing.expect(found == storage.count);
+        }
+    }
+    if (verbose) print_success("find move ok\n", .{});
+}
+
+test "predict check" {
+    const do = struct {
+        fn is_ok(fen_str: []const u8, move_str: []const u8, gives_check: bool) bool {
+            var pos: Position = Position.from_fen(fen_str, false) catch unreachable; // Assume testcall is correct.
+            const ex: ExtMove = pos.parse_move(move_str) catch unreachable; // Assume testcall is correct.
+            const predicted_check: bool = pos.lazy_predict_check(ex);
+            pos.lazy_do_move(ex);
+            const actual_check: bool = pos.in_check();
+            return predicted_check == actual_check and predicted_check == gives_check;
+        }
+    };
+
+    try std.testing.expect(do.is_ok("r4k2/8/8/8/8/8/8/4K2R w K - 0 1", "e1g1", true));
+    try std.testing.expect(do.is_ok("r4k2/5n2/8/8/8/8/8/4K2R w K - 0 1", "e1g1", false));
+    try std.testing.expect(do.is_ok("r4k2/5n2/8/8/8/8/5B2/4K2R w K - 0 1", "f2c5", true));
+
+    // r4k2/5n2/8/2r5/8/8/5B2/4K2R w K - 0 1   f2c5 true
+    // 8/8/8/k2pP2Q/8/8/8/4K3 w - d6 0 1 e5d6 true
+    // k7/3P4/8/8/8/8/2P5/2K5 w - - 0 1 d7d8q true
+    // k7/3P4/8/8/8/8/2P5/2K5 w - - 0 1 d7d8b false
+    // k7/3P4/8/8/8/8/2P5/2K5 w - - 0 1 d7d8n false
+    // k1r5/3P4/8/8/8/8/2P5/2K5 w - - 0 1 d7c8r true
+    // k1r5/3P4/8/8/8/8/2P5/2K5 w - - 0 1 d7c8b false
+    // k1r5/3P4/8/8/8/8/2P5/2K5 w - - 0 1 d7c8n false
+    // knr5/3P4/8/8/8/8/8/2K5 w - - 0 1  d7c8r false
+
+    // Fuzzy test.
+    var pos: Position =.empty;
+    for (0..100) |_| {
+        var random_game: RandomFixedGame = gen_random_fixed_game();
+        pos = random_game.startpos;
+        for (random_game.moves.slice()) |ex| {
+            //if (pos.in_check()) std.debug.print("ch,", .{});
+            const predicted_check: bool = pos.lazy_predict_check(ex);
+            pos.lazy_do_move(ex);
+            try std.testing.expect(predicted_check == pos.in_check());
+        }
+    }
+    if (verbose) print_success("predict check ok\n", .{});
+}
+
+test "evaluations equal" {
+    try lib.initialize();
+    defer lib.finalize();
+
+    var pos: Position = .empty;
+    var ev: hce.Evaluator = .init();
+    for (consts.test_positions, 0..) |str, idx| {
+        try pos.setup(str, false);
+        const scaled_eval: i32 = ev.evaluate(&pos, .scaled);
+        try std.testing.expect(scaled_eval == consts.scaled_static_evaluations[idx]);
+        const unscaled_eval: i32 = ev.evaluate(&pos, .unscaled);
+        try std.testing.expect(unscaled_eval == consts.unscaled_static_evaluations[idx]);
+    }
+    if (verbose) print_success("evaluations equal ok\n", .{});
 }
 
 test "see" {
@@ -160,14 +213,55 @@ test "see" {
         const trimmed_move = std.mem.trimEnd(u8, move, &.{' '});
         try std.testing.expect(do.see(fen, trimmed_move, t));
     }
+    if (verbose) print_success("see ok\n", .{});
+}
+
+test "engine" {
+    try lib.initialize();
+    defer lib.finalize();
+
+    var engine: *search.Engine = try .create(true);
+    defer engine.destroy();
+
+    var params: uci.Go = .empty;
+    params.depth = 9;
+    var search_stats: search.TestStats = undefined;
+    var expected_stats: search.TestStats = undefined;
+
+    // info depth 9 seldepth 13 score cp 24 nodes 5539 qnodes 6% time 20 nps 266129 cps 628783 eff 60% pv d2d4 e7e6 g1f3 b8c6 e2e3 g8f6 b1c3 d7d6
+    search_stats = try engine.test_run(consts.startpos, &params);
+    expected_stats = .{ .seldepth = 13, .score = 24,  .nodes = 5539, .bestmove = .init(.d2, .d4, Move.double_push), };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 9 seldepth 16 score cp -18 nodes 11297 qnodes 48% time 39 nps 284204 cps 612762 eff 61% pv e2a6 b4c3 d2c3 h3g2 f3g2 e6d5 e5g4 d5e4
+    search_stats = try engine.test_run(consts.kiwi, &params);
+    expected_stats = .{ .seldepth = 16 , .score = -18, .nodes = 11297, .bestmove = .init(.e2, .a6, Move.capture) };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 9 seldepth 3 score mate 2 nodes 3196 qnodes 0% time 6 nps 516216 cps 1194760 eff 73% pv d2g2 f8e8 g2g8
+    search_stats = try engine.test_run("5k2/8/4K3/8/8/8/3R4/8 w - - 0 1", &params);
+    expected_stats = .{ .seldepth = 3 , .score = scoring.mate - 3, .nodes = 3196, .bestmove = .init(.d2, .g2, Move.silent) };
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 9 seldepth 11 score cp -31 nodes 4109 qnodes 17% time 16 nps 253754 cps 579825 eff 62% pv e8g8 b2b4 d7d6 b4b5 c7c5 e1g1 c5d4 e3d4
+    search_stats = try engine.test_run("rn1qk2r/pbppnpbp/1p2p1p1/8/2PPP3/2NBBN2/PP3PPP/R2QK2R b KQkq - 3 7", &params);
+    expected_stats = .{ .seldepth = 11, .score = -31, .nodes = 4109, .bestmove = .init(.e8, .h8, Move.castle_short)};
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    // info depth 9 seldepth 16 score cp 65 nodes 11315 qnodes 36% time 43 nps 259399 cps 599657 eff 64% pv g5h4 c5b6 e4f5 d6d5 d3d4 e5d4 f3d4 d7e5 h4g3
+    search_stats = try engine.test_run("r1bq1rk1/pp1n2pp/2pp1n2/2b1ppB1/4P3/P1NP1N2/1PP1BPPP/R2Q1RK1 w - - 4 9", &params);
+    expected_stats = .{ .seldepth = 16, .score = 65, .nodes = 11315, .bestmove = .init(.g5, .h4, Move.silent)};
+    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+
+    if (verbose) print_success("engine ok\n", .{});
 }
 
 test "viri" {
     try lib.initialize();
     defer lib.finalize();
 
-    var game: viri.ViriGame = .init();
-    defer game.deinit();
+    //var game: viri.ViriGame = .init();
+    //defer game.deinit();
 
     // Basic position conversion
     {
@@ -204,12 +298,12 @@ test "viri" {
     //     }
     // }
 
-    // Game conversion.
+    // Position + moves conversion.
     {
         var viri_game: viri.ViriGame = .init();
         defer viri_game.deinit();
 
-        var random_game: RandomGame = gen_random_game();
+        var random_game: RandomFixedGame = gen_random_fixed_game();
         try viri_game.reset_with_position(&random_game.startpos, 0, 0);
         for (random_game.moves.slice()) |ex| {
             const vm: viri.ViriMove = .from_move(ex.move);
@@ -225,41 +319,65 @@ test "viri" {
             try std.testing.expect(ex == random_game.moves.extmoves[i]);
         }
     }
+
+    // Game conversion
+    {
+        var viri_game: viri.ViriGame = .init();
+        defer viri_game.deinit();
+
+        var random_game: RandomFixedGame = gen_random_fixed_game();
+        try viri_game.reset_with_position(&random_game.startpos, 0, 0);
+        for (random_game.moves.slice()) |ex| {
+            const vm: viri.ViriMove = .from_move(ex.move);
+            const vme: viri.ViriMoveExt = .init(vm, 0);
+            try viri_game.append_viri_move(vme);
+        }
+
+        var chessnix_game: position.Game = try viri_game.to_game();
+        defer chessnix_game.deinit();
+        for (chessnix_game.moves.items, viri_game.moves.items) |a, b|{
+            try std.testing.expect(a.move.from.u == b.move.from.u and a.move.to.u == b.move.to.u);
+        }
+    }
+
+    if (verbose) print_success("viri ok\n", .{});
 }
 
-test "engine" {
-    try lib.initialize();
-    defer lib.finalize();
-    var engine: *search.Engine = try .create(true);
-    defer engine.destroy();
+test "pgn" {
 
-    var search_stats: search.RunOnceStats = undefined;
-    var expected_stats: search.RunOnceStats = undefined;
+const str =
+    \\[Event "?"]
+    \\[Site "?"]
+    \\[Date "????.??.??"]
+    \\[Round "?"]
+    \\[White "?"]
+    \\[Black "?"]
+    \\[Result "*"]
+    \\
+    \\1. Na3 g6 2. d3 f6 3. Bh6 e5 4. Bf4 Na6 5. b3 Rb8 6. c4 Bc5 7. h4 Nb4 8. Qc2 Ra8
+    \\9. Nf3 Nh6 10. e3 e4 11. d4 Nc6 12. Qd2 Bxa3 13. Be2 b6 14. Rf1 Ng8 15. Rb1 Nxd4
+    \\16. Ra1 Nxb3 17. Qa5 Ne7 18. Qf5 Kf7 19. Bg5 Nd4 20. Bd1 Re8 21. Ne5+ Kf8 22. Bg4
+    \\Nc6 23. Nxg6+ hxg6 24. Rh1 Ba6 25. Kd2 Bc8 26. Rhg1 Nxf5 27. Rae1 Kg8 28. g3 Kh8
+    \\29. Kd1 Nd4 30. Rh1 Re5 31. Bxf6+ Kh7 32. Be7 Kg7 *
+    \\
+    \\
+    ;
 
-    // info depth 8 seldepth 12 score cp 20 nodes 3746 qnodes 5% time 14 nps 255842 cps 608258 eff 59% pv d2d4 e7e6 g1f3 b8c6 e2e3 g8f6 b1c3
-    search_stats = try engine.test_run_with_fixed_depth(consts.startpos, 8);
-    expected_stats = .{ .score = 20, .bestmove = .init(.d2, .d4, Move.double_push), .nodes = 3746, .seldepth = 12 };
-    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+    var game: position.Game = try gen_random_game(1, 64);
+    defer game.deinit();
 
-    // info depth 8 seldepth 21 score cp -18 nodes 9560 qnodes 50% time 34 nps 273298 cps 588248 eff 69% pv e2a6 b4c3 d2c3 h3g2 f3g2 e6d5 e5g4
-    search_stats = try engine.test_run_with_fixed_depth(consts.kiwi, 8);
-    expected_stats = .{ .score = -18, .bestmove = .init(.e2, .a6, Move.capture), .nodes = 9560, .seldepth = 21 };
-    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+    var buf: [1024]u8 = undefined;
+    var fixed = std.Io.Writer.fixed(&buf);
+    var pg: pgn.Pgn = .init(&game, &fixed);
+    try pg.print();
+    try std.testing.expectEqualStrings(str, fixed.buffered());
+    if (verbose) print_success("pgn ok\n", .{});
+}
 
-    // info depth 8 seldepth 8 score mate 2 nodes 3160 qnodes 0% time 6 nps 506345 cps 1174849 eff 46% pv d2g2 f8e8 g2g8
-    search_stats = try engine.test_run_with_fixed_depth("5k2/8/4K3/8/8/8/3R4/8 w - - 0 1", 8);
-    expected_stats = .{ .score = scoring.mate - 3, .bestmove = .init(.d2, .g2, Move.silent), .nodes = 3160, .seldepth = 8 };
-    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
-
-    // info depth 8 seldepth 11 score cp -14 nodes 2112 qnodes 16% time 8 nps 235777 cps 545570 eff 59% pv e8g8 e1g1 d7d6 h2h3 c7c5 b2b3 c5d4
-    search_stats = try engine.test_run_with_fixed_depth("rn1qk2r/pbppnpbp/1p2p1p1/8/2PPP3/2NBBN2/PP3PPP/R2QK2R b KQkq - 3 7", 8);
-    expected_stats = .{ .score = -14, .bestmove = .init(.e8, .h8, Move.castle_short), .nodes = 2112, .seldepth = 11 };
-    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
-
-    //info depth 8 seldepth 16 score cp 69 nodes 5678 qnodes 34% time 21 nps 269572 cps 624602 eff 63% pv e4f5 d6d5 d3d4 e5d4 f3d4 c5d6 b2b4 h7h6
-    search_stats = try engine.test_run_with_fixed_depth("r1bq1rk1/pp1n2pp/2pp1n2/2b1ppB1/4P3/P1NP1N2/1PP1BPPP/R2Q1RK1 w - - 4 9", 8);
-    expected_stats = .{ .score = 69, .bestmove = .init(.e4, .f5, Move.capture), .nodes = 5678, .seldepth = 16 };
-    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+fn print_success(comptime str: []const u8, args: anytype) void {
+    std.debug.print("\x1b[32m", .{}); // green
+    std.debug.print(str, args);
+    std.debug.print("\x1b[0m", .{}); // reset
 }
 
 fn print_error(comptime str: []const u8, args: anytype) void {
@@ -312,18 +430,44 @@ fn decode_depths(fen: []const u8) !FenDepths {
     return depths;
 }
 
-const RandomGame = struct {
+/// Caller must free the result.
+fn gen_random_game(seed: u64, len: ?u16) !position.Game {
+    var game: position.Game = .init();
+    errdefer game.deinit();
+
+    var storage: movegen.MoveStorage = .init();
+    game.reset_with_position(&Position.classic_startpos);
+    var pos: Position = game.startpos;
+    var rnd: utils.Random = .init(seed);
+    const nr_of_moves: u16 = if (len) |l| l else @intCast(rnd.next_max(64) + 5);
+
+    for (0..nr_of_moves) |_| {
+        movegen.lazy_generate_all_moves(&pos, &storage);
+        // Mate or stalemate.
+        if (storage.count == 0) {
+            break;
+        }
+        const r: u64 = rnd.next_max(storage.count);
+        const ex: ExtMove = storage.moves[r];
+        try game.append_move(ex);
+        pos.lazy_do_move(ex);
+    }
+    return game;
+}
+
+/// TODO: ditch this one and use position.Game
+const RandomFixedGame = struct {
     startpos: Position,
     moves: ExtMoveList(128),
 };
 
-fn gen_random_game() RandomGame {
+fn gen_random_fixed_game() RandomFixedGame {
     const startpos: Position = .classic_startpos;
     var pos: Position = startpos;
     var moves: ExtMoveList(128) = .init();
     var storage: movegen.MoveStorage = .init();
     var rnd: utils.Random = .init_randomized();
-    const nr_of_moves: u64 = rnd.next_max(32) + 5;
+    const nr_of_moves: u64 = rnd.next_max(64) + 5;
 
     for (0..nr_of_moves) |_| {
         movegen.lazy_generate_all_moves(&pos, &storage);

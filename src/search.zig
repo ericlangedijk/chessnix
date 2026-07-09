@@ -224,31 +224,30 @@ pub const Engine = struct {
         return see.evaluate(&self.pos, ex.move, threshold, .testing);
     }
 
-    pub fn test_run_with_fixed_depth(self: *Engine, fen: []const u8, depth: u8) !RunOnceStats {
+    pub fn test_run(self: *Engine, fen: []const u8, params: *const uci.Go) !TestStats {
+        lib.not_in_release();
         try self.ucinewgame();
         try self.set_position(fen, null);
-        var params: uci.Go = .empty;
-        params.depth = depth;
-        try self.go(&params);
+        try self.go(params);
         while (self.is_busy()) {
             // Is this a correct approah, doing nothing?
         }
-        const info: RunOnceStats = .{
-            .score = self.searcher.nodes[0].score,
-            .bestmove = self.searcher.nodes[0].best_move,
-            .nodes = self.searcher.stats.nodes,
+        const info: TestStats = .{
             .seldepth = self.searcher.stats.seldepth,
+            .score = self.searcher.nodes[0].score,
+            .nodes = self.searcher.stats.nodes,
+            .bestmove = self.searcher.nodes[0].best_move,
         };
         return info;
     }
 };
 
 /// Only for tests.
-pub const RunOnceStats = struct {
-    score: i32,
-    bestmove: Move,
-    nodes: u64,
+pub const TestStats = struct {
     seldepth: u16,
+    score: i32,
+    nodes: u64,
+    bestmove: Move,
 };
 
 pub const Stats = struct {
@@ -1257,8 +1256,7 @@ pub const Searcher = struct {
         lib.not_in_release();
         switch (stage) {
             .tt => {
-                //const entry: tt.Entry = self.transpositiontable.probe(pos.key, ply);
-                //lib.verify(entry.move == ex.move, "tt stage error", .{});
+                // Can be any move.
             },
             .noisy => {
                 lib.verify(ex.move.is_noisy(), "noisy stage error", .{});
@@ -1268,7 +1266,7 @@ pub const Searcher = struct {
             },
             .bad_noisy => {
                 // TODO: finetune.
-                // lib.verify(ex.move.is_capture() and !ex.move.is_promotion(), "bad_noisy stage error", .{});
+                lib.verify(ex.move.is_noisy(), "bad_noisy stage error", .{});
                 lib.verify(ex.score <= movepick.Scores.bad_noisy_max, "bad_noisy stage error", .{});
             }
         }

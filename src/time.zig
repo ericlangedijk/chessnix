@@ -15,8 +15,7 @@ const Color = types.Color;
 const Move = types.Move;
 const Position = position.Position;
 
-const float32 = funcs.float32;
-const float64 = funcs.float64;
+const float = funcs.float;
 
 const max_search_depth = types.max_search_depth;
 
@@ -118,10 +117,10 @@ pub const TimeManager = struct {
             timeleft = 50; // Could flag in insane cases.
         }
 
-        const f_movestogo: f64 = float64(movestogo);
-        const f_time: f64 = float64(time);
-        const f_timeleft: f64 = float64(timeleft);
-        const f_move_overhead: f64 = float64(move_overhead);
+        const f_movestogo: f64 = float(f64, movestogo);
+        const f_time: f64 = float(f64, time);
+        const f_timeleft: f64 = float(f64, timeleft);
+        const f_move_overhead: f64 = float(f64, move_overhead);
 
         const optscale: f64 = switch (cyclic_timecontrol) {
             false => @min(optscale_fixed, optscale_time_left * f_time / f_timeleft),
@@ -144,7 +143,7 @@ pub const TimeManager = struct {
 
     /// When in clockmode we call this function after each search iteration.
     pub fn update_optimal_stoptime(self: *TimeManager, nodes_spent_on_move: u64, total_nodes: u64, best_move_stability: u3, eval_stability: u3) void {
-        const best_move_nodes_fraction: f64 = float64(nodes_spent_on_move) / float64(total_nodes);
+        const best_move_nodes_fraction: f64 = float(f64, nodes_spent_on_move) / float(f64, total_nodes);
         const node_scaling_factor: f64 = (node_tm_base - best_move_nodes_fraction) * node_tm_multiplier;
         const best_move_scaling_factor: f64 = bestmove_stability_scales[best_move_stability];
         const eval_scaling_factor: f64 = eval_stability_scales[eval_stability];

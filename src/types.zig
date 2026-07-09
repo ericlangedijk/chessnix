@@ -688,6 +688,9 @@ pub const Move = packed struct(u16) {
     pub const promotion_mask           : u4 = 0b0100; // bit 2 = promotion.
     pub const noisy_mask               : u4 = capture_mask | promotion_mask;
 
+    pub const unreachable_10: u4 = 10;
+    pub const unreachable_11: u4 = 11;
+
     pub const empty: Move = .{};
 
     /// Sometimes we need something simple.
@@ -875,20 +878,20 @@ pub const Move = packed struct(u16) {
     //     if (options) try writer.print(" with options", .{});
     // }
 
-    pub fn fmt(self: Move) Formatter {
-        return .{ .move = self };
-    }
+    // pub fn fmt(self: Move) Formatter {
+    //     return .{ .move = self };
+    // }
 
-    pub const Formatter = struct {
-        move: Move,
+    // pub const Formatter = struct {
+    //     move: Move,
 
-        pub fn format(self: Formatter, writer: *std.io.Writer) std.io.Writer.Error!void {
-            try writer.print("{t}{t}", .{ self.move.from.e, self.move.to.e });
-            if (self.move.is_promotion()) {
-                try writer.print("{u}", .{ self.move.prom().to_promotion_char() });
-            }
-        }
-    };
+    //     pub fn format(self: Formatter, writer: *std.io.Writer) std.io.Writer.Error!void {
+    //         try writer.print("{t}{t}", .{ self.move.from.e, self.move.to.e });
+    //         if (self.move.is_promotion()) {
+    //             try writer.print("{u}", .{ self.move.prom().to_promotion_char() });
+    //         }
+    //     }
+    // };
 };
 
 /// Extended move for the engine.

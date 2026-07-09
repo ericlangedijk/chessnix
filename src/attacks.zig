@@ -443,7 +443,7 @@ pub fn get_king_attacks(sq: Square) u64 {
     return king_attacks[sq.u];
 }
 
-pub fn get_piece_attacks(sq: Square, comptime pt: PieceType, comptime us: Color, occ: u64) u64 {
+pub fn get_piece_attacks(sq: Square, pt: PieceType, comptime us: Color, occ: u64) u64 {
     return switch (pt.e) {
         .pawn => get_pawn_attacks(sq, us),
         .knight => get_knight_attacks(sq),
@@ -451,5 +451,6 @@ pub fn get_piece_attacks(sq: Square, comptime pt: PieceType, comptime us: Color,
         .rook => get_rook_attacks(sq, occ),
         .queen => get_queen_attacks(sq, occ),
         .king => get_king_attacks(sq),
+        else => unreachable,
     };
 }

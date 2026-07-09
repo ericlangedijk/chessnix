@@ -1,8 +1,8 @@
 /.zig-cache
 /zig-out
 /notes
-/testdata
 /src/.zig-cache
+/src/local
 main.*
 main.pdb
 main.s
