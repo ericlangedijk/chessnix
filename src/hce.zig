@@ -184,9 +184,8 @@ pub const Evaluator = struct {
 
         // Scale the endresult (this plays stronger than scaling the eg component only).
         // Note that scaling is done on the absolute value (white's perspective).
-        const scale: f32 = endgame.scale(pos, result);
-        result = funcs.fmul(result, scale);
-        result = scoring.restrict_static_eval(result);// std.math.clamp(result, -scoring.static_eval_threshold, scoring.static_eval_threshold);
+        result = endgame.scale(pos, result);
+        result = scoring.restrict_static_eval(result);
         return if (pos.stm.e == .white) result else -result;
     }
 
@@ -279,6 +278,15 @@ pub const Evaluator = struct {
                 score.inc(terms.isolated_pawn_penalty[file]);
                 if (lib.is_tuning) register(&terms.isolated_pawn_penalty[file], 1, us, .{ PieceType.pawn.e, sq.e });
             }
+
+            // #testing #experimental (this seems to work already quite ok, but we need a more sophisticated backward pawn calculation)
+            // const sp_backw: ScorePair = comptime types.pair(-21, -26);
+            // if (!is_isolated and !is_doubled and !is_passed) {
+            //     if (self.is_backward_pawn(us, sq)) {
+            //         //score.inc(backward_pawn_table[relative_rank]);
+            //         score.inc(sp_backw);
+            //     }
+            // }
         }
 
         // Passed pawns with kings.
@@ -605,7 +613,7 @@ pub const Evaluator = struct {
         const checking_squares_queen: u64 = checking_squares_rook | checking_squares_bishop;
         const unsafe: u64 = (their_attacks | self.king_attacks[them.u]);
         const safe: u64 = ~unsafe;
-        const not_pawns: u64 = ~pos.pawns(us);
+        const not_pawns: u64 = ~pos.pawns(us); // TODO: experiment with pieces instead of pawns.
         // Determine our safe checks.
         const knight_checks: u64 = not_pawns & checking_squares_knight & self.knight_attacks[us.u];
         const bishop_checks: u64 = not_pawns & checking_squares_bishop & self.bishop_attacks[us.u];
@@ -627,6 +635,17 @@ pub const Evaluator = struct {
         }
 
         return score;
+    }
+
+    /// Assumes: (1) square contains our pawn (2) not isolated (3) not passed.
+    fn is_backward_pawn(self: *Self, comptime us: Color, sq: Square) bool {
+        const them: Color = comptime us.opp();
+        const bb_adjacent: u64 = bitboards.adjacent_square_masks[sq.u];
+        const bb_forward: u64 = bitboards.forward_file(us, sq) & self.pos.all_pawns();
+        const bb_support: u64 = bitboards.get_passed_pawn_mask(them, sq) & self.pos.pawns(us);
+        const square_in_front: Square = if (us.e == .white) sq.add(8) else sq.sub(8);
+        const bb_covered_by_their_pawns: u64 = attacks.get_pawn_attacks(square_in_front, us) & self.pos.pawns(them);
+        return bb_adjacent == 0 and bb_forward == 0 and bb_support == 0 and bb_covered_by_their_pawns != 0;
     }
 
     /// Returns true if the square is not attacked by their pawn and the square is protected by our pawn. Only for rank 4, 5, 6.

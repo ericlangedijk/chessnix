@@ -286,7 +286,7 @@ const TTY = struct {
         io.print("eval: {}\n", .{ e });
     }
 
-    /// Input: "see move threshold"
+    /// Input: "see [move] [threshold]"
     fn see(tokenizer: *Tokenizer) !void {
         const move: []const u8 = tokenizer.next() orelse return error.empty_move_argument;
         const threshold: []const u8 = tokenizer.next() orelse return error.empty_threshold_argument;

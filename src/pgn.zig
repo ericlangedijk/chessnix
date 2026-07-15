@@ -1,6 +1,6 @@
 // zig fmt: off
 
-///! Some clunky pgn output, just for debugging purposes.
+///! Some clunky pgn output, just for local usage.
 
 const std = @import("std");
 const types = @import("types.zig");

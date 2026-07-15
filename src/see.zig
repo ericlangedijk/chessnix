@@ -9,6 +9,7 @@ const lib = @import("lib.zig");
 const utils = @import("utils.zig");
 const attacks = @import("attacks.zig");
 const bitboards = @import("bitboards.zig");
+const squarepairs = @import("squarepairs.zig");
 const funcs = @import("funcs.zig");
 const types = @import("types.zig");
 const position = @import("position.zig");
@@ -23,8 +24,8 @@ const Move = types.Move;
 const Position = position.Position;
 
 pub const Mode = enum {
-    default, // TODO: rename to see?
-    testing,  // TODO: rename to simple
+    default,
+    simple,
 };
 
 /// Returns the result of a possible piece exchange on the to-square of the move.
@@ -35,7 +36,7 @@ pub const Mode = enum {
 pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mode) bool {
     const val: *const fn (piece_or_piecetype: u4) i32 = comptime switch (mode) {
         .default => default_value,
-        .testing => simple_value,
+        .simple => simple_value,
     };
 
     // Castling can never win a piece.
@@ -78,6 +79,7 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
     const queens_rooks = pos.all_queens_rooks();
 
     // Determine pieces that can move.
+    // Because we always 'execute' the first move we can get away with this.
     const white_allowed_to_move: u64 = ~pos.pins(.white) & pos.by_color(.white);
     const black_allowed_to_move: u64 = ~pos.pins(.black) & pos.by_color(.black);
     const allowed_to_move: u64 = white_allowed_to_move | black_allowed_to_move;

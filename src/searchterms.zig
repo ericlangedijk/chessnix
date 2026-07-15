@@ -20,7 +20,7 @@ pub const Tuned = struct {
     /// Correction History:
     corr_hist_max_applied_correction: i32 = 160,
     /// Correction History:
-    corr_hist_is_complex_margin: i32 = 120,
+    corr_hist_is_big_correction_margin: i32 = 120,
 
     /// Iterative Deepening: The margin used to establish the average stability of a search score.
     eval_stability_margin: i32 = 10,
@@ -61,8 +61,9 @@ pub const Tuned = struct {
     lmr_table_quiet_divider: f32 = 2.04,
     /// Late Move Reduction: the minimum depth for applying lmr.
     lmr_min_depth: i32 = 3,
-    /// Late Move Reduction: divider for calculating extra reduction (or negative reduction) based on a (quiet) move's history score.
-    lmr_history_divider: i32 = 14035,
+    /// Late Move Reduction: divider for calculating extra reduction (or negative reduction) based on a move's history score.
+    lmr_history_quiet_divider: i32 = 14035, // 4 scores of max 16384
+    lmr_history_noisy_divider: i32 = 14035, // 1 score of max 16384
 
     /// Quiscence Search Futility Pruning: the margin added to the initial best score to allow fp.
     qs_fp_margin: i32 = 101,
@@ -94,17 +95,17 @@ pub const Tuned = struct {
 
     /// Search: the list size of quiet moves that did not beat alpha.
     /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
-    search_quiet_list_size: u8 = 16,
+    search_quiet_list_size: u8 = 18,
     /// Search: the list size of capture moves that did not beat alpha.
     /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
-    search_capture_list_size: u8 = 8,
+    search_noisy_list_size: u8 = 10, // #testing original 8
 
     /// SEE pruning: Maximum depth for applying.
     see_prune_max_depth: i32 = 8,
     /// SEE pruning: Depth multiplier for quiet moves.
-    see_prune_quiet_mult: i32 = 64,
+    see_prune_quiet_mult: i32 = -68,
     /// SEE pruning: Depth multiplier for noisy moves.
-    see_prune_noisy_mult: i32 = 119,
+    see_prune_noisy_mult: i32 = -123,
 
     /// TT Entry value: weight of depth.
     tt_entry_depth_weight: i32 = 1024,

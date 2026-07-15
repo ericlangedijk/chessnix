@@ -118,7 +118,8 @@ const default_terms: Terms = .{
     .knight_outpost_table = .{
         .{
             pair(9, 10), pair(6, 3), pair(2, 16), pair(8, 18), pair(7, 21), pair(-7, 19), pair(2, 9), pair(1, 9),
-            pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24),
+            pair(1, 14), pair(13, 16), pair(17, 20), pair(9, 34), pair(13, 23), pair(11, 19), pair(14, 14), pair(-4, 24), // original
+            //pair(4, 17), pair(16, 19), pair(20, 23), pair(12, 37), pair(16, 26), pair(14, 22), pair(17, 17), pair(-1, 27), // #testing
             pair(18, 23), pair(16, 13), pair(36, 21), pair(43, 22), pair(47, 28), pair(31, 43), pair(43, 17), pair(-3, 39),
         },
         .{

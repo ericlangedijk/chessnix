@@ -150,6 +150,7 @@ pub const PieceType = packed union {
     u: u4,
 
     pub const count = 6;
+    pub const count_extented = 7;
 
     pub const E = enum(u4) {
         pawn = 0,
@@ -1011,14 +1012,14 @@ pub const ScorePair = extern struct {
         try writer.print("pair({}, {})", .{ self.mg, self.eg });
     }
 
-    pub fn to_score(self: ScorePair, phase: u8) i32 {
-        if (lib.is_paranoid) {
-            assert(phase <= max_phase);
-        }
-        const mg: i32 = self.mg;
-        const eg: i32 = self.eg;
-        return @divFloor(mg * phase + eg * (max_phase - phase), max_phase);
-    }
+    // pub fn to_score(self: ScorePair, phase: u8) i32 {
+    //     if (lib.is_paranoid) {
+    //         assert(phase <= max_phase);
+    //     }
+    //     const mg: i32 = self.mg;
+    //     const eg: i32 = self.eg;
+    //     return TRUNC>>>>@div(mg * phase + eg * (max_phase - phase), max_phase);
+    // }
 };
 
 pub fn relative_rank(us: Color, rank: u3) u3 {
@@ -1093,5 +1094,6 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const ph: u8 = @min(max_phase, phase);
     const mg: i32 = score.mg;
     const eg: i32 = score.eg;
-    return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
+    return @divTrunc(mg * ph + eg * (max_phase - ph), max_phase);
+//    return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }

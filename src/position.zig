@@ -34,17 +34,19 @@ pub fn finalize() void {
     layout_map = .empty; // This solves testing problems for now.
 }
 
-pub const Position = struct {
+pub const Position = struct { // TODO: order fields by size / access frequency.
     layout: *const Layout,
     board: [Square.count]Piece,
     bitboards_by_type: [PieceType.count]u64,
     bitboards_by_color: [Color.count]u64,
+    threats_by_color: [Color.count]Threats,
     material: Material,
     phase_by_color: [Color.count]u8,
     stm: Color,
     ply_from_root: u16,
     game_ply: u16,
     nullmove_state: bool,
+    threats_valid: bool,
     rule50: u16,
     ep_square: Square,
     castlingrights: u4,
@@ -69,12 +71,14 @@ pub const Position = struct {
             .board = @splat(.no_piece),
             .bitboards_by_type = @splat(0),
             .bitboards_by_color = @splat(0),
+            .threats_by_color = @splat(.empty),
             .material = .empty,
             .phase_by_color = @splat(0),
             .stm = .white,
             .ply_from_root = 0,
             .game_ply = 0,
             .nullmove_state = false,
+            .threats_valid = false,
             .rule50 = 0,
             .ep_square = Square.zero,
             .castlingrights = 0,
@@ -106,12 +110,14 @@ pub const Position = struct {
             b.bb_e1 | b.bb_e8  // kings
         };
         pos.bitboards_by_color = .{ b.bb_rank_1 | b.bb_rank_2, b.bb_rank_7 | b.bb_rank_8 };
+        pos.threats_by_color = @splat(.empty);
         pos.material = .default;
         pos.phase_by_color = .{ 12, 12 };
         pos.stm = .white;
         pos.ply_from_root = 0;
         pos.game_ply = 0;
         pos.nullmove_state = false;
+        pos.threats_valid = false;
         pos.rule50 = 0;
         pos.ep_square = Square.zero;
         pos.castlingrights = 0b1111;
@@ -397,6 +403,21 @@ pub const Position = struct {
         return self.bitboards_by_color[us.u];
     }
 
+    pub fn ensure_threats(self: *Position) void {
+        if (!self.threats_valid) {
+            self.update_threats_for(.white);
+            self.update_threats_for(.black);
+            self.threats_valid = true;
+        }
+    }
+
+    pub fn threats(self: *const Position, us: Color) *const Threats {
+        if (lib.verifications) {
+            lib.verify(self.threats_valid, "threats not updated", .{});
+        }
+        return &self.threats_by_color[us.u];
+    }
+
     pub fn all(self: *const Position) u64 {
         return self.bitboards_by_color[0] | self.bitboards_by_color[1];
     }
@@ -546,6 +567,11 @@ pub const Position = struct {
 
     pub fn has_castlingright(self: *const Position, us: Color, ct: Castle) bool {
         return self.castlingrights & Castling.flag(us, ct) != 0;
+    }
+
+    /// Future.
+    pub fn king_bucket(self: *const Position, us: Color) u8 {
+        return king_bucket_table[self.king_square(us).u];
     }
 
     pub fn in_check(self: *const Position) bool {
@@ -1285,6 +1311,36 @@ pub const Position = struct {
         }
     }
 
+    fn update_threats_for(self: *Position, comptime us: Color) void {
+        const occ: u64 = self.all();
+        var iter: bitboards.BitboardIterator = undefined;
+
+        self.threats_by_color[us.u] = .empty;
+        self.threats_by_color[us.u].by_pawns = funcs.pawns_attacks(self.pawns(us), us);
+
+        iter = .init(self.knights(us));
+        while (iter.next())|sq| {
+            self.threats_by_color[us.u].by_knights |= attacks.get_knight_attacks(sq);
+        }
+
+        iter = .init(self.bishops(us));
+        while (iter.next())|sq| {
+            self.threats_by_color[us.u].by_bishops |= attacks.get_bishop_attacks(sq, occ);
+        }
+
+        iter = .init(self.rooks(us));
+        while (iter.next())|sq| {
+            self.threats_by_color[us.u].by_rooks |= attacks.get_rook_attacks(sq, occ);
+        }
+
+        iter = .init(self.queens(us));
+        while (iter.next())|sq| {
+            self.threats_by_color[us.u].by_queens |= attacks.get_queen_attacks(sq, occ);
+        }
+
+        self.threats_by_color[us.u].by_king = attacks.get_king_attacks(self.king_square(us));
+    }
+
     /// Returns true if square `to` is attacked by any piece of `attacker`.
     pub fn is_square_attacked_by(self: *const Position, to: Square, comptime attacker: Color) bool {
         // Uses pawn inversion trick.
@@ -1357,6 +1413,29 @@ pub const Position = struct {
         att |= attacks.get_king_attacks(self.king_square(attacker));
 
         return att;
+    }
+
+    /// Returns a bitboard of our pieces attacked by less valued pieces.
+    /// - `victim` is the threatened side.
+    pub fn lesser_threats_to(self: *const Position, comptime victim: Color) u64 {
+        const attacker: Color = comptime victim.opp();
+        const victims_minors: u64 = self.minors(victim);
+        const victims_majors: u64 = self.majors(victim);
+        const attacker_threats: *const Threats = self.threats(attacker);
+        return
+            (attacker_threats.by_pawns & (victims_minors | victims_majors)) |
+            ((attacker_threats.by_knights | attacker_threats.by_bishops) & victims_majors);
+    }
+
+    pub fn greater_threats_to(self: *const Position, comptime victim: Color) u64 {
+        const attacker: Color = comptime victim.opp();
+        const victims_minors: u64 = self.minors(victim);
+        const victims_rooks: u64 = self.rooks(victim);
+        const victims_queens: u64 = self.queens(victim);
+        const attacker_threats: *const Threats = self.threats(attacker);
+        return
+            (attacker_threats.by_pawns & (victims_minors | victims_rooks | victims_queens)) |
+            ((attacker_threats.by_knights | attacker_threats.by_bishops) & victims_queens);
     }
 
     /// Paranoid only.
@@ -1636,6 +1715,23 @@ pub const Material = struct {
     }
 };
 
+/// Threats simply contains all covered squares of all pieces.
+/// - Note: A packed struct changes the `@fieldParentPtr("searcher", self)` inside search.zig, hence the extern struct for now.
+pub const Threats = extern struct {
+    by_pawns: u64 = 0,
+    by_knights: u64 = 0,
+    by_bishops: u64 = 0,
+    by_rooks: u64 = 0,
+    by_queens: u64 = 0,
+    by_king: u64 = 0,
+
+    pub const empty: Threats = .{};
+
+    pub fn all(self: *const Threats) u64 {
+        return self.by_pawns | self.by_knights | self.by_bishops | self.by_rooks | self.by_queens | self.by_king;
+    }
+};
+
 /// Hard castling constants.
 pub const Castling = struct {
     const dest_squares_king: [Color.count][Castle.count]Square = .{ .{ .g1, .c1 }, .{ .g8, .c8 } };
@@ -1842,7 +1938,6 @@ pub const Game = struct {
         try self.moves.append(ctx.gpa, extmove);
     }
 };
-
 
 pub const Error = error {
     /// There are not exactly 2 kings.

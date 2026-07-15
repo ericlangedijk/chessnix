@@ -1,6 +1,6 @@
 // zig fmt: off
 
-//! Evaluation scaling to guide the search.
+//! Evaluation scaling to guide the static evaluation.
 
 const lib = @import("lib.zig");
 const types = @import("types.zig");
@@ -24,7 +24,12 @@ const ScorePair = types.ScorePair;
 const Position = position.Position;
 const Material = position.Material;
 
-pub fn scale(pos: *const Position, eval: i32) f32 {
+pub fn scale(pos: *const Position, eval: i32) i32 {
+    const s: f32 = get_scale(pos, eval);
+    return funcs.fmul(eval, s);
+}
+
+fn get_scale(pos: *const Position, eval: i32) f32 {
 
     // Do not scale pawn endgames or scores that are already very close to zero.
     if (pos.phase() == 0 or is_drawish(eval)) {

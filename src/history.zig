@@ -5,6 +5,7 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 const types = @import("types.zig");
+const bitboards = @import("bitboards.zig");
 const funcs = @import("funcs.zig");
 const position = @import("position.zig");
 const search = @import("search.zig");
@@ -43,14 +44,14 @@ const HistCalc = struct {
     /// `bonus - score * abs(bonus) / max_score`.
     fn scale_bonus(score: i16, bonus: i16) i16 {
         const s: i32 = score;
-        return @intCast(bonus - @divFloor(s * @abs(bonus), tuned.history_max_score));
+        return @intCast(bonus - @divTrunc(s * @abs(bonus), tuned.history_max_score));
     }
 };
 
 /// Container for all history heuristics.
 pub const History = struct {
     quiet: QuietHistory,
-    capture: CaptureHistory,
+    noisy: NoisyHistory,
     continuation: ContinuationHistory,
     correction: CorrectionHistory,
 
@@ -67,28 +68,23 @@ pub const History = struct {
         if (lib.verifications) {
             self.continuation.verify_node(&nodes[ply]);
         }
-
         if (ex.move.is_quiet()) {
             self.quiet.update(depth, ex, bad_quiets);
             ContinuationHistory.update(depth, ex, ply, nodes, bad_quiets);
         }
-        else if (ex.move.is_capture()) {
-            self.capture.update(depth, ex);
+        else {
+            self.noisy.update(depth, ex);
         }
     }
 
     /// Returns the history score of a quiet move. Used for move ordering and pruning decisions.
     pub fn get_quiet_score(self: *const History, ex: ExtMove, ply: u16, nodes: []const Node) i32 {
-        var v: i32 = self.quiet.get_score(ex);
-        if (ply >= 1) v += ContinuationHistory.get_single_score(&nodes[ply - 1], ex);
-        if (ply >= 2) v += ContinuationHistory.get_single_score(&nodes[ply - 2], ex);
-        if (ply >= 4) v += ContinuationHistory.get_single_score(&nodes[ply - 4], ex);
-        return v;
+        return self.quiet.get_score(ex) + ContinuationHistory.get_score(ply, ex, nodes);
     }
 
-    /// Returns the history score of a capture move. Used for move ordering and pruning decisions.
-    pub fn get_capture_score(self: *const History, ex: ExtMove) i32 {
-        return self.capture.get_score(ex);
+    /// Returns the history score of a noisy move. Used for move ordering and pruning decisions.
+    pub fn get_noisy_score(self: *const History, ex: ExtMove) i32 {
+        return self.noisy.get_score(ex);
     }
 };
 
@@ -122,12 +118,12 @@ pub const QuietHistory = struct {
 };
 
 /// Hearistics for capture moves.
-pub const CaptureHistory = struct {
+pub const NoisyHistory = struct {
 
     /// Capture move scores. Indexing: [piece][to][captured-piecetype]
-    table: [Piece.count][Square.count][PieceType.count]i16,
+    table: [Piece.count][Square.count][PieceType.count_extented]i16,
 
-    pub fn update(self: *CaptureHistory, depth: i32, ex: ExtMove) void {
+    pub fn update(self: *NoisyHistory, depth: i32, ex: ExtMove) void {
         const bonus: i16 = HistCalc.get_bonus(depth);
 
         // Increase score for this move.
@@ -135,7 +131,7 @@ pub const CaptureHistory = struct {
         HistCalc.apply_bonus(v, bonus);
     }
 
-    pub fn punish(self: *CaptureHistory, depth: i32, captures: []const ExtMove) void {
+    pub fn punish(self: *NoisyHistory, depth: i32, captures: []const ExtMove) void {
         const bonus: i16 = HistCalc.get_bonus(depth);
 
         // Decrease score of capture moves (that did not raise alpha).
@@ -145,11 +141,11 @@ pub const CaptureHistory = struct {
         }
     }
 
-    fn get_score_ptr(self: *CaptureHistory, ex: ExtMove) *i16 {
+    fn get_score_ptr(self: *NoisyHistory, ex: ExtMove) *i16 {
         return &self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 
-    fn get_score(self: *const CaptureHistory, ex: ExtMove) i16 {
+    fn get_score(self: *const NoisyHistory, ex: ExtMove) i16 {
         return self.table[ex.piece.u][ex.move.to.u][ex.captured.piecetype().u];
     }
 };
@@ -206,19 +202,28 @@ pub const ContinuationHistory = struct {
         return 0;
     }
 
+    /// Sums the total score. The node's continuation_entry is used, so we do not need Self.
+    fn get_score(ply: u16, ex: ExtMove, nodes: []const Node) i32 {
+        var v: i32 = 0;
+        if (ply >= 1) v += get_single_score(&nodes[ply - 1], ex);
+        if (ply >= 2) v += get_single_score(&nodes[ply - 2], ex);
+        if (ply >= 4) v += get_single_score(&nodes[ply - 4], ex);
+        return v;
+    }
+
     /// Chess programming is crazy. In the node we store a pointer to an entry in the table.
     pub fn get_continuation_entry_for_node(self: *ContinuationHistory, ex: ExtMove) ContinuationEntry {
         return &self.table[ex.piece.u][ex.move.to.u];
     }
 
-    /// verification function.
+    /// Verification of the tricky node pointers.
     fn verify_node(self: *const ContinuationHistory, node: *const Node) void {
         lib.not_in_release();
         if (node.current_move.move.is_empty()) {
-            lib.verify(node.continuation_entry == null, "verify_node #1", .{});
+            lib.verify(node.continuation_entry == null, "verify_node (current_move)", .{});
         }
         if (!node.current_move.move.is_empty()) {
-            lib.verify(node.continuation_entry != null, "verify_node #2", .{});
+            lib.verify(node.continuation_entry != null, "verify_node (entry is set, move is not)", .{});
         }
         if (node.continuation_entry == null) {
             return;
@@ -231,7 +236,7 @@ pub const ContinuationHistory = struct {
 pub const CorrectionHistory = struct {
     const table_size: usize = 16384 * 2;
 
-    pawn_table: [Color.count][table_size]i16, // Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
+    pawn_table:  [Color.count][table_size]i16, // Entries for pawns. Indexing: [color][position.pawnhash % tablesize]
     white_table: [Color.count][table_size]i16, // Entries for white pieces. Indexing: [color][position.non_pawns_white_key % tablesize]
     black_table: [Color.count][table_size]i16, // Entries for black pieces. Indexing: [color][position.non_pawns_black_key % tablesize]
     minor_table: [Color.count][table_size]i16, // Entries for minors. Indexing: [color][position.minorkey-index % tablesize]
@@ -270,7 +275,7 @@ pub const CorrectionHistory = struct {
         const m1: i32 = self.minor_table[us.u][pos.minorkey % table_size];
         const m2: i32 = self.major_table[us.u][pos.majorkey % table_size];
 
-        var correction: i32 = @divFloor(p + w + b + m1 + m2, tuned.corr_hist_scale);
+        var correction: i32 = @divTrunc(p + w + b + m1 + m2, tuned.corr_hist_scale);
 
         correction = clamp(correction, -tuned.corr_hist_max_applied_correction, tuned.corr_hist_max_applied_correction);
         return clamp(static_eval + correction, -scoring.mate_threshold + 1, scoring.mate_threshold - 1);
@@ -279,7 +284,7 @@ pub const CorrectionHistory = struct {
     fn update_entry(entry: *i16, scaled_err: i32, weight: i32) void {
         const max: i32 = tuned.corr_hist_scale * tuned.corr_hist_max_entry_bonus;
         var score: i32 = entry.*;
-        score = @divFloor(score * (tuned.corr_hist_scale - weight) + (scaled_err * weight), tuned.corr_hist_scale);
+        score = @divTrunc(score * (tuned.corr_hist_scale - weight) + (scaled_err * weight), tuned.corr_hist_scale);
         score = clamp(score, -max, max);
         entry.* = @intCast(score);
     }

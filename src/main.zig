@@ -8,7 +8,9 @@ pub fn main() !void {
 
     try lib.initialize();
     defer lib.finalize();
-
+    //try @import("./local/heuristicswriter.zig").run_viri_avg_movecount(); _ = try lib.io.readline(); if (true) return;
+    //try @import("./local/heuristicswriter.zig").run_viri_avg_threatcount(); _ = try lib.io.readline(); if (true) return;
+    //try @import("./local/misc.zig").test_threats(); if (true) return;
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();

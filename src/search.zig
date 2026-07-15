@@ -22,11 +22,11 @@ const scoring = @import("scoring.zig");
 
 const assert = std.debug.assert;
 const clamp = std.math.clamp;
-
 const ctx = lib.ctx;
 const io = lib.io;
-
 const wtf = lib.wtf;
+const popcnt = bitboards.popcnt;
+const ipopcnt = bitboards.ipopcnt;
 
 const Color = types.Color;
 const PieceType = types.PieceType;
@@ -36,6 +36,7 @@ const Move = types.Move;
 const ExtMove = types.ExtMove;
 const ExtMoveList = types.ExtMoveList;
 const Position = position.Position;
+const Threats = position.Threats;
 const Entry = tt.Entry;
 const Bound = tt.Bound;
 const Evaluator = hce.Evaluator;
@@ -215,15 +216,16 @@ pub const Engine = struct {
         self.busy.store(false, .release);
     }
 
-    /// uci command.
+    /// Uci command (tty only).
     pub fn evaluate_see(self: *Engine, move: []const u8, threshold: i32) !bool {
         if (self.is_busy()) {
             return false;
         }
         const ex: ExtMove = try self.pos.parse_move(move);
-        return see.evaluate(&self.pos, ex.move, threshold, .testing);
+        return see.evaluate(&self.pos, ex.move, threshold, .simple);
     }
 
+    /// Zig-tests only.
     pub fn test_run(self: *Engine, fen: []const u8, params: *const uci.Go) !TestStats {
         lib.not_in_release();
         try self.ucinewgame();
@@ -355,6 +357,7 @@ pub const Searcher = struct {
         self.stopped = false;
         self.stats = .empty;
         self.nodes_spent = @splat(0);
+        //self.hist.updates = 0;
 
         switch (pos.stm.e) {
             .white => self.iterate(.white, &pos),
@@ -362,7 +365,7 @@ pub const Searcher = struct {
         }
     }
 
-    fn iterate(self: *Searcher, comptime us: Color, pos: *const Position) void {
+    fn iterate(self: *Searcher, comptime us: Color, pos: *Position) void {
         // TODO: print some more info before we go.
 
         // const only_one_move: bool = self.engine.rootmoves.count == 1;
@@ -411,7 +414,7 @@ pub const Searcher = struct {
             }
 
             // Time management: Keep track of the average score.
-            average_score = if (average_score == null_score) score else @divFloor(average_score + score, 2);
+            average_score = if (average_score == null_score) score else @divTrunc(average_score + score, 2); // #FLOOR->TRUNC
 
             // Time management: Keep track of how many times in a row the best move stays the same.
             if (best_move == previous_best_move) {
@@ -438,6 +441,7 @@ pub const Searcher = struct {
             const non_terminal_used: u64 = self.stats.non_terminal_nodes - start_non_terminal;
             const beta_cutoffs_used: u64 = self.stats.beta_cutoffs - start_beta_cutoffs;
             const qnodes: usize = funcs.percent(self.stats.nodes, self.stats.qnodes);
+            //const hist: usize = funcs.percent(self.stats.nodes, self.hist.updates);
             const search_efficiency = funcs.percent(non_terminal_used, beta_cutoffs_used);
             const elapsed_nanos = self.tm.timer.read();
             const ms: u64 = elapsed_nanos / 1_000_000;
@@ -490,7 +494,7 @@ pub const Searcher = struct {
         }
     }
 
-    fn aspiration_search(self: *Searcher, comptime us: Color, pos: *const Position, previous_score: i32, depth: i32) i32 {
+    fn aspiration_search(self: *Searcher, comptime us: Color, pos: *Position, previous_score: i32, depth: i32) i32 {
         var delta: i32 = 9;
         var alpha: i32 = -infinity;
         var beta: i32 = infinity;
@@ -517,7 +521,7 @@ pub const Searcher = struct {
 
             // Alpha: fail low.
             if (score <= alpha) {
-                beta = @divFloor(alpha + beta, 2);
+                beta = @divTrunc(alpha + beta, 2); //#FLOOR->TRUNC
                 alpha = @max(-infinity, score - delta);
                 searchdepth = depth;
             }
@@ -537,7 +541,7 @@ pub const Searcher = struct {
         return score;
     }
 
-    fn search(self: *Searcher, comptime us: Color, comptime mode: SearchMode, comptime rootmode: RootMode, comptime cutnode: bool, pos: *const Position, node: *Node, input_depth: i32, input_alpha: i32, input_beta: i32) i32 {
+    fn search(self: *Searcher, comptime us: Color, comptime mode: SearchMode, comptime rootmode: RootMode, comptime cutnode: bool, pos: *Position, node: *Node, input_depth: i32, input_alpha: i32, input_beta: i32) i32 {
         const them: Color = comptime us.opp();
         const is_pvs: bool = comptime mode == .pv;
         const is_root: bool = comptime rootmode == .root;
@@ -659,7 +663,7 @@ pub const Searcher = struct {
         // Check improvement compared to a previous node with the same side to move. Improvement is 0 or 1.
         var is_improving: bool = false;
         var is_opponent_worsening: bool = false;
-        var is_complex: bool = false;
+        var has_big_correction: bool = false;
 
         if (!is_check and node.static_eval != null_score) {
             const prevnode: ?*const Node =
@@ -667,7 +671,7 @@ pub const Searcher = struct {
                 else if (ply >= 4 and self.nodes[ply - 4].static_eval != null_score) &self.nodes[ply - 4]
                 else null;
 
-            is_complex = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_complex_margin;
+            has_big_correction = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_big_correction_margin;
 
             if (prevnode != null) {
                 is_improving = node.static_eval > prevnode.?.static_eval;
@@ -678,20 +682,29 @@ pub const Searcher = struct {
         // Pruning before processing any moves (the whole node is pruned).
         if (!is_pvs and !is_check and !is_singular_extension and !is_matescore(alpha) and !is_matescore(beta)) {
 
+            // If they have more capture threats than us, increase the pruning margin for rfp and razoring.
+            // The values are currently just based on a few bullet tests.
+            pos.ensure_threats();
+            const balance: i32 = threat_balance_for(pos, us);
+            const rfp_safety_margin: i32 = if (balance < 0) (depth * -balance * 4) else if (balance > 0) (depth * -balance * 2) else 0;
+            const razor_safety_margin: i32 = if (balance < 0) -balance * 4 else 0;
+
             // Reversed Futility Pruning (rfp): beta pruning.
             if (depth <= tuned.rfp_max_depth and node.eval < mate_threshold and node.eval - tuned.rfp_min_margin >= beta) {
                 // If we are improving, the margin to beat beta can be smaller.
                 var mult: i32 = if (is_improving) tuned.rfp_improving_margin else tuned.rfp_not_improving_margin;
-                if (is_opponent_worsening) mult -= 8;
-                const rfp_margin: i32 = (depth * mult);
+                if (is_opponent_worsening) {
+                    mult -= 8;
+                }
+                const rfp_margin: i32 = (depth * mult) + rfp_safety_margin;
                 if (node.eval - rfp_margin >= beta) {
                     return node.eval;
                 }
             }
 
             // Razoring: alpha pruning.
-            const depth_3 = @max(0, depth - 3);
-            if (node.static_eval + tuned.razor_base + depth * tuned.razor_mult + depth_3 * depth_3 * tuned.razor_quad <= alpha) {
+            const depth_3: i32 = @max(0, depth - 3);
+            if (node.static_eval + tuned.razor_base + depth * tuned.razor_mult + depth_3 * depth_3 * tuned.razor_quad + razor_safety_margin <= alpha) {
                 const r_score = self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
                 if (self.stopped) {
                     return 0;
@@ -701,18 +714,18 @@ pub const Searcher = struct {
                 }
             }
 
-            // TODO: use verification.
             // Null Move Pruning (nmp). Are we still good if we let the opponent play another move?
             if (
                 !pos.nullmove_state and
                 node.eval >= beta and
-                node.static_eval >= beta + 170 - depth * 24 and
+                //node.static_eval >= beta + 170 - depth * 24 and
+                node.static_eval >= (beta + 170) - (depth * 20) + razor_safety_margin and
                 pos.minor_major_count(us) != 0
             ) {
                 self.prefetch_tt(us, pos, .empty);
                 const eval_reduction: i32 = @min(2, @divTrunc(node.eval - beta, 202));
                 const r: i32 = clamp(@divTrunc(depth, 4) + 3 + eval_reduction, 0, depth);
-                const next_pos: Position = self.do_nullmove(pos, us);
+                var next_pos: Position = self.do_nullmove(pos, us);
                 node.clear(.undo);
                 const nmp_score: i32 = -self.search(them, .not_pv, .not_root, !cutnode, &next_pos, childnode, depth - r, -beta, -beta + 1);
                 if (self.stopped) {
@@ -736,8 +749,8 @@ pub const Searcher = struct {
 
         // Some locals for our move loop.
         var quiet_list: ExtMoveList(tuned.search_quiet_list_size) = .init();
-        var capture_list: ExtMoveList(tuned.search_capture_list_size) = .init();
-        var movepicker: MovePicker(.search, us) = .init(pos, self, node, tt_move);
+        var noisy_list: ExtMoveList(tuned.search_noisy_list_size) = .init();
+        var movepicker: MovePicker(.search, us) = .init(pos, self, node, tt_move, true);
         var best_move: Move = .empty;
         var best_score: i32 = -infinity;
         var moves_seen: u8 = 0;
@@ -758,8 +771,9 @@ pub const Searcher = struct {
 
             const is_tt_move: bool = movepicker.stage == .tt;
             const is_quiet_move: bool = ex.move.is_quiet();
-            const is_capture_move: bool = ex.move.is_capture();
-            const quiet_history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else 0;
+            //const is_capture_move: bool = ex.move.is_capture();
+            //const quiet_history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else 0;
+            const history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else self.hist.get_noisy_score(ex); // #experiment
 
             // Prunings before we actually execute the move.
             if (!is_root and best_score > -mate_threshold) {
@@ -782,13 +796,13 @@ pub const Searcher = struct {
 
                 // SEE pruning.
                 const see_threshold: i32 = if (is_quiet_move) depth * tuned.see_prune_quiet_mult else depth * tuned.see_prune_noisy_mult;
-                if (depth <= tuned.see_prune_max_depth and moves_seen >= 1 and !see.evaluate(pos, ex.move, -see_threshold, .default)) {
+                if (depth <= tuned.see_prune_max_depth and moves_seen >= 1 and !see.evaluate(pos, ex.move, see_threshold, .default)) {
                     continue :moveloop;
                 }
 
                 // History Pruning (hp).
                 if (is_quiet_move and depth <= tuned.hp_max_depth) {
-                    if (quiet_history_score < tuned.hp_quiet_offset - (depth * tuned.hp_quiet_mult)) {
+                    if (history_score < tuned.hp_quiet_offset - (depth * tuned.hp_quiet_mult)) {
                         movepicker.skip_quiets();
                         continue :moveloop;
                     }
@@ -835,12 +849,14 @@ pub const Searcher = struct {
                 }
             }
 
+            // TODO: I want some smarter restriction here.
+            //if (is_check and depth < 24) { // #experimental
             if (is_check) {
                 extension += 1;
             }
 
             // Do move.
-            const next_pos: Position = self.do_move(pos, us, ex);
+            var next_pos: Position = self.do_move(pos, us, ex);
             defer node.clear(.undo);
             const gives_check: bool = next_pos.checkmask != 0;
             node.current_move = ex;
@@ -878,11 +894,15 @@ pub const Searcher = struct {
 
                 // History reduction.
                 if (is_quiet_move) {
-                    reduction -= @divFloor(quiet_history_score, tuned.lmr_history_divider);
+                    reduction -= @divTrunc(history_score, tuned.lmr_history_quiet_divider);//#FLOOR->TRUNC
+                }
+                else { // #experimental
+                    //if (moves_seen > 3) // #experimental
+                        reduction -= @divTrunc(history_score, tuned.lmr_history_noisy_divider);
                 }
 
                 // And reduce less in these cases.
-                if (gives_check or is_complex) {
+                if (gives_check or has_big_correction) {
                     reduction -= 1;
                 }
 
@@ -959,8 +979,8 @@ pub const Searcher = struct {
                 if (is_quiet_move) {
                     quiet_list.try_add(ex);
                 }
-                else if (is_capture_move) {
-                    capture_list.try_add(ex);
+                else {
+                    noisy_list.try_add(ex);
                 }
             }
 
@@ -972,7 +992,7 @@ pub const Searcher = struct {
 
         // Punish captures that did not raise alpha.
         if (!best_move.is_empty()) {
-            self.hist.capture.punish(depth, capture_list.slice());
+            self.hist.noisy.punish(depth, noisy_list.slice());
         }
 
         if (!is_singular_extension) {
@@ -1000,7 +1020,7 @@ pub const Searcher = struct {
         return best_score;
     }
 
-    fn quiescence_search(self: *Searcher, comptime us: Color, comptime mode: SearchMode, pos: *const Position, node: *Node, input_alpha: i32, input_beta: i32) i32 {
+    fn quiescence_search(self: *Searcher, comptime us: Color, comptime mode: SearchMode, pos: *Position, node: *Node, input_alpha: i32, input_beta: i32) i32 {
         // Comptimes.
         const them = comptime us.opp();
         const is_pvs: bool = comptime mode == .pv;
@@ -1065,7 +1085,6 @@ pub const Searcher = struct {
             best_score = apply_drawcounter(pos, corrected_raw_static_eval);
 
             // Use TT score as a better eval.
-            // #CrazyMateScores
             if (tt_hit and tt_entry.is_score_usable_as_eval(best_score)) {
                 best_score = tt_entry.score;
             }
@@ -1078,7 +1097,13 @@ pub const Searcher = struct {
             alpha = @max(alpha, best_score);
         }
 
-        var movepicker: MovePicker(.quiescence, us) = .init(pos, self, node, tt_move);
+        // naively borrowed idea from Integral.
+        const gen_all: bool =
+            !is_pvs and
+            tt_hit and tt_entry.flags.bound != .no_bound and tt_entry.flags.bound != .alpha and
+            !tt_move.is_empty() and tt_move.is_quiet();
+
+        var movepicker: MovePicker(.quiescence, us) = .init(pos, self, node, tt_move, gen_all);
         var moves_seen: u8 = 0;
         const qs_futility_score: i32 = best_score + tuned.qs_fp_margin;
 
@@ -1098,7 +1123,7 @@ pub const Searcher = struct {
             }
 
             // Do move.
-            const next_pos: Position = self.do_move(pos, us, ex);
+            var next_pos: Position = self.do_move(pos, us, ex);
             defer node.clear(.undo);
             self.stats.nodes += 1;
             self.stats.qnodes += 1;
@@ -1158,9 +1183,7 @@ pub const Searcher = struct {
     fn apply_drawcounter(pos: *const Position, eval: i32) i32 {
         // if (true) return eval;
         const r: u16 = @min(100, pos.rule50);
-        return @divFloor(eval * (220 - r), 220);
-        // const r: u16 = @min(100, pos.rule50);
-        // return @divFloor(eval * (400 - r), 400);
+        return @divTrunc(eval * (220 - r), 220);//#FLOOR->TRUNC
     }
 
     /// Applies a little 'draw avoiding behaviour'.
@@ -1360,6 +1383,39 @@ pub const Options = struct {
         self.is_960 = value;
     }
 };
+
+const threat_value_pawn: i32 = 1;
+const threat_value_minor: i32 = 3;
+const threat_value_rook: i32 = 5;
+const threat_value_queen: i32 = 9;
+/// Returns a (clamped) balance of lesser valued pieces attacking higher valued ones.
+pub fn threat_balance_for(pos: *Position, comptime us: Color) i32 {
+    var result: i32 = 0;
+    inline for (Color.all) |color| {
+        const them: Color = color.opp();
+        const threats: *const Threats = pos.threats(color);
+        // Pawns attacking minors, rooks, queens.
+        const p_m: i32 = ipopcnt(i32, (threats.by_pawns) & (pos.bishops(them) | pos.knights(them)));
+        const p_r: i32 = ipopcnt(i32, (threats.by_pawns) & (pos.rooks(them)));
+        const p_q: i32 = ipopcnt(i32, (threats.by_pawns) & (pos.queens(them)));
+        // Minors attacking rooks, queens.
+        const m_r: i32 = ipopcnt(i32, (threats.by_knights | threats.by_bishops) & (pos.rooks(them)));
+        const m_q: i32 = ipopcnt(i32, (threats.by_knights | threats.by_bishops) & (pos.queens(them)));
+        // Rooks attacking queens.
+        const r_q: i32 = ipopcnt(i32, (threats.by_rooks) & (pos.queens(them)));
+
+        const v: i32 =
+            p_m * (threat_value_minor - threat_value_pawn) +
+            p_r * (threat_value_rook - threat_value_pawn) +
+            p_q * (threat_value_queen - threat_value_pawn) +
+            m_r * (threat_value_rook - threat_value_minor) +
+            m_q * (threat_value_queen - threat_value_minor) +
+            r_q * (threat_value_queen - threat_value_rook);
+
+        if (color.e == us.e) result += v else result -= v;
+    }
+    return std.math.clamp(result, -20, 20);
+}
 
 /// Retrieve default reduction from the lmr table. Access is safely restricted.
 /// - The max reduction for noisy is 9.

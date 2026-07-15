@@ -15,6 +15,22 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 
 ## Version 1.5 Work In Progress...
 - Compiler: Zig 0.15.2.
+- Insane amount of refactorings
+- Additions: lichess eval json conversion, viriformat, pgn output, some zig-style tests.
+- Current Early Experimental Status:
+    - HCE Tuning skeleton. Don't know how to. Math drama.
+    - Divfloor drama: changed div-floors into div-truncs. Slightly affects static evaluation and some other calculations.
+    - Load on demand threats in position.
+    - Threats balance, used for RFP and razoring.
+    - Always update pins for both sides. Slightly affects static evaluation.
+    - SEE now honors pins and handles ep, castle and promotions.
+    - Simplified move ordering / scoring.
+    - Changed capture history into noisy history.
+    - 'Bad' silent promotions are handled later in move ordering (bad noisy stage).
+    - Slightly increased length of punished late moves.
+    - Slightly increased see pruning constants.
+    - Doubled the size of correction history.
+    - If we have a quiet tt-move in quiescence search, generate all moves.
 
 ## Version 1.4
 - Compiler: Zig 0.15.2.
