@@ -3,14 +3,16 @@
 const std = @import("std");
 const lib = @import("lib.zig");
 
+/// In ReleaseSafe mode we log the error + stacktrace to a file.
+pub const panic =
+    if (lib.is_release_safe) std.debug.FullPanic(lib.panic_function) else std.debug.FullPanic(std.debug.defaultPanic);
+
 pub fn main() !void {
     comptime @setFloatMode(.optimized);
 
     try lib.initialize();
     defer lib.finalize();
-    //try @import("./local/heuristicswriter.zig").run_viri_avg_movecount(); _ = try lib.io.readline(); if (true) return;
-    //try @import("./local/heuristicswriter.zig").run_viri_avg_threatcount(); _ = try lib.io.readline(); if (true) return;
-    //try @import("./local/misc.zig").test_threats(); if (true) return;
+
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();

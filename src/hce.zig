@@ -656,7 +656,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_protection_scorepair(comptime us: Color, king: Square, pawn: Square) ScorePairPtr {
-        if (lib.verifications) {
+        if (lib.is_paranoid) {
             verify_king_pawn_protection_area(us, king, pawn);
         }
         const mul: i16 = comptime if (us.e == .black) -1 else 1;
@@ -667,7 +667,7 @@ pub const Evaluator = struct {
     }
 
     fn get_pawn_storm_scorepair(comptime attacker: Color, defending_king: Square, attacking_pawn: Square) ScorePairPtr {
-        if (lib.verifications) {
+        if (lib.is_paranoid) {
             verify_king_pawn_storm_area(attacker, defending_king, attacking_pawn);
         }
         const defender: Color = comptime attacker.opp();

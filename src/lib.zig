@@ -28,7 +28,6 @@ fn compilation_check() void {
     }
     if (is_release) {
         if (is_paranoid) @compileError("release is_paranoid");
-        if (verifications) @compileError("release verifications");
     }
 }
 
@@ -41,17 +40,16 @@ pub const Program = enum {
 
  pub const program: Program = .uci;
 //pub const program: Program = .hcetuner;
-// pub const program: Program = .lichess_dataset_conversion;
+//pub const program: Program = .lichess_dataset_conversion;
 
 pub const version = "1.5";
-pub const builddate = "2026-07-05";
+pub const builddate = "2026-07-16";
 pub const is_test: bool = builtin.is_test;
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
 pub const is_tuning: bool = !is_test and program == .hcetuner;
-pub const is_paranoid: bool = is_test or is_debug;
-pub const verifications: bool = is_test or is_debug or is_release_safe;
+pub const is_paranoid: bool = is_test or is_debug or is_release_safe;
 
 // --- Io and memory ---
 pub const ctx: *const MemoryContext = &memory_context;
@@ -153,25 +151,47 @@ pub inline fn only_in_comptime() void {
     if (!@inComptime()) @compileError("only in comptime!");
 }
 
+/// Allowed in all built modes.
 pub fn wtf(comptime str: []const u8, args: anytype) noreturn {
-    if (is_release_safe) {
-        log_wtf(str, args);
-    }
     std.debug.panic(str, args);
 }
 
-/// Only in ReleaseSafe.
+/// Only in ReleaseSafe or Debug.
 pub fn verify(ok: bool, comptime str: []const u8, args: anytype) void {
     not_in_release();
     if (!ok) {
-        wtf(str, args);
+        std.debug.panic(str, args);
     }
 }
 
 /// Only in ReleaseSafe.
-fn log_wtf(comptime str: []const u8, args: anytype) void {
+pub fn panic_function(msg: []const u8, returnaddress: ?usize) noreturn {
     not_in_release();
-    var writer = utils.FileWriter.init_cwd("chessnix.log", 256) catch return;
-    defer writer.deinit();
-    writer.writeline(str, args) catch return;
+    if (is_debug) @compileError("not allowed in debug mode");
+
+    // Dump the error + stacktrace to a file in the current working directory.
+    var writer = utils.FileWriter.init_cwd("chessnix.log", 4096) catch std.process.exit(1);
+    writer.wr.interface.print("{s}\n\n", .{ msg }) catch std.process.exit(1);
+    dump_stack_trace(returnaddress, &writer.wr.interface) catch {};
+    writer.deinit();
+
+    // I don't know if the GUI's that drive chessnix are able to do something with it.
+    std.debug.print("{s}", .{ msg });
+    std.process.exit(1);
+}
+
+/// Prevent colored output.
+pub fn dump_stack_trace(start_addr: ?usize, writer: *std.Io.Writer) !void {
+    if (builtin.strip_debug_info) {
+        try writer.writeAll("Unable to dump stack trace: debug info stripped\n");
+        return;
+    }
+    const debug_info = std.debug.getSelfDebugInfo() catch |err| {
+        try writer.print("Unable to dump stack trace: Unable to open debug info: {s}\n", .{ @errorName(err) });
+        return;
+    };
+    std.debug.writeCurrentStackTrace(writer, debug_info, .no_color, start_addr) catch |err| {
+        try writer.print("Unable to dump stack trace: {s}\n", .{ @errorName(err) });
+        return;
+    };
 }

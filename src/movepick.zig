@@ -113,7 +113,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         /// Bad capture list.
         bad_noisies: ExtMoveList(max_noisies),
         /// #Experimental
-        gen_all: bool,
+        gen_all_for_quiscence: bool,
 
         pub fn init(pos: *Position, searcher: *Searcher, node: *Node, tt_move: Move, gen_all: bool) Self {
             return .{
@@ -129,7 +129,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 .noisies = .init(),
                 .quiets = .init(),
                 .bad_noisies = .init(),
-                .gen_all = gentype == .quiescence and gen_all,
+                .gen_all_for_quiscence = gentype == .quiescence and gen_all,
             };
         }
 
@@ -238,7 +238,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 },
                 .quiescence => {
                     //movegen.generate_quiescence_moves(self.pos, us, self);
-                    if (self.gen_all) {
+                    if (self.gen_all_for_quiscence) {
                         movegen.generate_all_moves(self.pos, us, self);
                     }
                     else {

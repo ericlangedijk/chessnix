@@ -412,7 +412,7 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
     }
 
     pub fn threats(self: *const Position, us: Color) *const Threats {
-        if (lib.verifications) {
+        if (lib.is_paranoid) {
             lib.verify(self.threats_valid, "threats not updated", .{});
         }
         return &self.threats_by_color[us.u];
@@ -750,7 +750,7 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
     pub fn do_move(self: *Position, comptime us: Color, ex: ExtMove) void {
         if (lib.is_paranoid) {
             assert(us.e == self.stm.e);
-            self.assert_pos_ok(ex);
+            self.verify();
         }
         const predicted_key = if (lib.is_paranoid) self.predict_key(us, ex) else void;
 
@@ -1003,8 +1003,8 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
         self.update_state(them);
 
         if (lib.is_paranoid) {
-            assert(predicted_key == self.key);
-            self.assert_pos_ok(ex);
+            lib.verify(predicted_key == self.key, "predicted key", .{});
+            self.verify();
         }
     }
 
@@ -1439,46 +1439,44 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
     }
 
     /// Paranoid only.
-    pub fn assert_pos_ok(self: *const Position, ex: ExtMove) void {
+    pub fn verify(self: *const Position) void {
         lib.not_in_release();
 
-        // Check counts.
-        for (Color.all) |color| {
-            for (PieceType.all) |piecetype| {
-                const cnt: u8 = popcnt(self.bitboards_by_color[color.u] & self.bitboards_by_type[piecetype.u]);
-                lib.verify(self.material.counts[color.u][piecetype.u] == cnt, "pos count mismatch", .{});
+        // Don't slow down too much in ReleaseSafe.
+        if (lib.is_debug) {
+            // Check counts.
+            for (Color.all) |color| {
+                for (PieceType.all) |piecetype| {
+                    const cnt: u8 = popcnt(self.bitboards_by_color[color.u] & self.bitboards_by_type[piecetype.u]);
+                    lib.verify(self.material.counts[color.u][piecetype.u] == cnt, "pos count mismatch", .{});
+                }
             }
         }
 
-        if (popcnt(self.kings(.white)) != 1) {
-            lib.wtf("pos white king error", .{});
-        }
-
-        if (popcnt(self.kings(.black)) != 1) {
-            lib.wtf("pos black king error", .{});
-            return false;
+        if (popcnt(self.kings(.white)) != 1 or popcnt(self.kings(.black)) != 1) {
+            lib.wtf("pos king error", .{});
         }
 
         if (popcnt(self.all()) > 32) {
             lib.wtf("pos too many pieces", .{});
         }
 
-        if (self.castlingrights & cf_white_short != 0) {
+        if (self.has_castlingright(.white, .short)) {
             assert(self.get(self.layout.king_start(.white)).e == .white_king );
             assert(self.get(self.layout.rook_start(.white, .short)).e == .white_rook );
         }
 
-        if (self.castlingrights & cf_white_long != 0) {
+        if (self.has_castlingright(.white, .long)) {
             assert(self.get(self.layout.king_start(.white)).e == .white_king );
             assert(self.get(self.layout.rook_start(.white, .long)).e == .white_rook );
         }
 
-        if (self.castlingrights & cf_black_short != 0) {
+        if (self.has_castlingright(.black, .short)) {
             assert(self.get(self.layout.king_start(.black)).e == .black_king );
             assert(self.get(self.layout.rook_start(.black, .short)).e == .black_rook );
         }
 
-        if (self.castlingrights & cf_black_long != 0) {
+        if (self.has_castlingright(.black, .long)) {
             assert(self.get(self.layout.king_start(.black)).e == .black_king );
             assert(self.get(self.layout.rook_start(.black, .long)).e == .black_rook );
         }
@@ -1490,33 +1488,22 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
         assert((self.gen_flags & gf_check == 0) == (self.checkmask == 0));
         assert((self.gen_flags & gf_pins == 0) == (self.pins(self.stm) == 0));
 
-        var key: u64 = undefined;
-        var pawnkey: u64 = undefined;
-        var white_nonpawnkey: u64 = undefined;
-        var black_nonpawnkey: u64 = undefined;
-        var minorkey: u64 = undefined;
-        var majorkey: u64 = undefined;
+        // Don't slow down too much in ReleaseSafe.
+        if (lib.is_debug) {
+            var key: u64 = 0;
+            var pawnkey: u64 = 0;
+            var white_nonpawnkey: u64 = 0;
+            var black_nonpawnkey: u64 = 0;
+            var minorkey: u64 = 0;
+            var majorkey: u64 = 0;
 
-        self.compute_hashkeys(&key, &pawnkey, &white_nonpawnkey, &black_nonpawnkey, &minorkey, &majorkey);
-        if (key != self.key) {
-            lib.wtf("pos key", .{});
-        }
-        if (pawnkey != self.pawnkey) {
-            lib.wtf("pos pawnkey", .{});
-        }
-        if (white_nonpawnkey != self.nonpawnkeys[0]) {
-            lib.wtf("pos white nonpawnkey", .{});
-        }
-        if (black_nonpawnkey != self.nonpawnkeys[1]) {
-            lib.wtf("pos black nonpawnkey", .{});
-        }
-        if (minorkey != self.minorkey) {
-            self.draw();
-            lib.wtf("pos minorkey {t} {t}", .{ ex.move.from.e, ex.move.to.e });
-        }
-        if (majorkey != self.majorkey) {
-            self.draw();
-            lib.wtf("pos majorkey {t} {t}", .{ ex.move.from.e, ex.move.to.e });
+            self.compute_hashkeys(&key, &pawnkey, &white_nonpawnkey, &black_nonpawnkey, &minorkey, &majorkey);
+            lib.verify(key == self.key, "pos key", .{});
+            lib.verify(pawnkey == self.pawnkey, "pos pawnkey", .{});
+            lib.verify(white_nonpawnkey == self.nonpawnkeys[0], "pos white nonpawnkey", .{});
+            lib.verify(black_nonpawnkey == self.nonpawnkeys[1], "pos white nonpawnkey", .{});
+            lib.verify(minorkey == self.minorkey, "pos white nonpawnkey", .{});
+            lib.verify(majorkey == self.majorkey, "pos white nonpawnkey", .{});
         }
 
         // In check and not to move.
@@ -1524,11 +1511,11 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
         const king_sq_black = self.king_square(.black);
 
         if (self.is_square_attacked_by(king_sq_white, .black) and self.stm.e != .white) {
-            lib.wtf("pos white in check and not to move", .{});
+            lib.wtf("pos in check and not to move", .{});
         }
 
         if (self.is_square_attacked_by(king_sq_black, .white) and self.stm.e != .black) {
-            lib.wtf("pos black in check and not to move", .{});
+            lib.wtf("pos in check and not to move", .{});
         }
     }
 

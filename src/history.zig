@@ -65,7 +65,7 @@ pub const History = struct {
 
     /// Increase the score of the node's move. If the node move is quiet, punish the quiets.
     pub fn record_beta_cutoff(self: *History, depth: i32, ply: u16, ex: ExtMove, nodes: []const Node, bad_quiets: []const ExtMove) void {
-        if (lib.verifications) {
+        if (lib.is_paranoid) {
             self.continuation.verify_node(&nodes[ply]);
         }
         if (ex.move.is_quiet()) {
