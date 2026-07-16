@@ -529,10 +529,8 @@ pub const Square = packed union {
     }
 
     pub fn color(self: Square) Color {
-        const c: u1 = @intCast(((self.u ^ (self.coord.rank)) & 1) ^ 1); // #testing
+        const c: u1 = @intCast(((self.u ^ (self.coord.rank)) & 1) ^ 1);
         return .{ .u = c };
-
-        //return colors[self.u];
     }
 
     pub fn manhattan_distance_to_center(self: Square) u8 {
@@ -843,12 +841,10 @@ pub const Move = packed struct(u16) {
         if (!is_960) {
             if (self.kind == castle_short) {
                 const color: Color = if (to.u < 8) .white else .black;
-                //to = position.king_castle_destination_squares[color.u][Castle.short.u]; // TODO: use func
                 to = Castling.king_dest(color, .short);
             }
             else if (self.kind == castle_long) {
                 const color: Color = if (to.u < 8) .white else .black;
-                //to = position.king_castle_destination_squares[color.u][Castle.long.u]; // TODO: use func
                 to = Castling.king_dest(color, .long);
             }
         }
@@ -1046,7 +1042,7 @@ pub const max_move_count: u8 = 224;
 pub const max_noisy_count: u8 = 128;
 pub const max_search_depth: u8 = 128;
 
-// Scores for SEE and move ordering. TODO: move these into searchterms?
+// Scores for SEE and move ordering.
 pub const see_value_pawn: i32 = 98;
 pub const see_value_knight: i32 = 299;
 pub const see_value_bishop: i32 = 300;

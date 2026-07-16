@@ -17,6 +17,7 @@ const ExtMove = types.ExtMove;
 const Position = position.Position;
 const Game = position.Game;
 
+/// Far from ready...
 pub const Pgn = struct {
     game: *const Game,
     writer: *std.io.Writer,
@@ -33,7 +34,6 @@ pub const Pgn = struct {
         try self.writer.print("[White \"?\"]\n", .{});
         try self.writer.print("[Black \"?\"]\n", .{});
         try self.writer.print("[Result \"*\"]\n", .{});
-        // TODO: for non starting positions
         // try writer.print("[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]
         try self.writer.print("\n", .{});
 
@@ -41,12 +41,10 @@ pub const Pgn = struct {
         var storage: movegen.MoveStorage = .init();
         var pos: Position = self.game.startpos;
         var move_nr: usize = 1;
-        // TODO: find a less crazy way to keep track of the line length.
         var a: usize = 0;
         var b: usize = 0;
         var linelen: usize = 0;
 
-        // TODO: start with the correct move nr and use ... when it is black first to move.
         for (self.game.moves.items) |ex| {
             // Move nr.
             if (pos.ply_from_root % 2 == 0) {

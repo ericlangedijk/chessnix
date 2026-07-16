@@ -228,7 +228,7 @@ pub const ContinuationHistory = struct {
         if (node.continuation_entry == null) {
             return;
         }
-        lib.verify(node.continuation_entry == &self.table[node.current_move.piece.u][node.current_move.move.to.u], "verify_node #3", .{});
+        lib.verify(node.continuation_entry == &self.table[node.current_move.piece.u][node.current_move.move.to.u], "verify_node (node entry mismatch)", .{});
     }
 };
 

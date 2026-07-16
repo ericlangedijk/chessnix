@@ -42,6 +42,7 @@ const Bound = tt.Bound;
 const Evaluator = hce.Evaluator;
 const History = history.History;
 const MovePicker = movepick.MovePicker;
+const Stage = movepick.Stage;
 const TimeManager = time.TimeManager;
 
 const tuned = searchterms.tuned;
@@ -155,7 +156,6 @@ pub const Engine = struct {
         var idx: usize = 1;
         while (tokenizer.next()) |m| {
             const ex: ExtMove = self.pos.parse_move(m) catch break;
-            //const ex: ExtMove = self.pos.parse_move(m) catch wtf("illegal move {s}", .{ m }); // #testing
             self.pos.lazy_do_move(ex);
             self.repetition_table[idx] = self.pos.key;
             idx += 1;
@@ -413,7 +413,7 @@ pub const Searcher = struct {
             }
 
             // Time management: Keep track of the average score.
-            average_score = if (average_score == null_score) score else @divTrunc(average_score + score, 2); // #FLOOR->TRUNC
+            average_score = if (average_score == null_score) score else @divTrunc(average_score + score, 2);
 
             // Time management: Keep track of how many times in a row the best move stays the same.
             if (best_move == previous_best_move) {
@@ -520,7 +520,7 @@ pub const Searcher = struct {
 
             // Alpha: fail low.
             if (score <= alpha) {
-                beta = @divTrunc(alpha + beta, 2); //#FLOOR->TRUNC
+                beta = @divTrunc(alpha + beta, 2);
                 alpha = @max(-infinity, score - delta);
                 searchdepth = depth;
             }
@@ -605,7 +605,7 @@ pub const Searcher = struct {
         const is_singular_extension: bool = !node.excluded_tt_move.is_empty();
 
         // TT Probe.
-        const tt_entry: tt.Entry = self.transpositiontable.probe(pos.key, ply); // TODO: use the if check and if !is_singular_extension smarter
+        const tt_entry: tt.Entry = self.transpositiontable.probe(pos.key, ply); // TODO: use the if check and if !is_singular_extension smarter (Zig 0.16 even complains about it).
         // Remember that tt_hit can be true just hitting a raw static eval. Don't trust it.
         const tt_hit: bool = !is_singular_extension and !tt_entry.is_empty();
         const tt_move: Move = if (tt_hit) tt_entry.move else .empty;
@@ -640,7 +640,6 @@ pub const Searcher = struct {
             node.static_eval = apply_drawcounter(pos, corrected_raw_static_eval);
 
             // Use TT score as a better eval.
-            // #CrazyMateScores
             if (tt_hit and tt_entry.is_score_usable_as_eval(node.static_eval)) {
                 node.eval = tt_entry.score;
             }
@@ -678,20 +677,21 @@ pub const Searcher = struct {
             }
         }
 
-        // Pruning before processing any moves (the whole node is pruned).
+        // Forward pruning: prune before processing any moves (the whole node is pruned).
         if (!is_pvs and !is_check and !is_singular_extension and !is_matescore(alpha) and !is_matescore(beta)) {
 
             // If they have more capture threats than us, increase the pruning margin for rfp and razoring.
             // The values are currently just based on a few bullet tests.
             pos.ensure_threats();
-            const balance: i32 = threat_balance_for(pos, us);
-            const rfp_safety_margin: i32 = if (balance < 0) (depth * -balance * 4) else if (balance > 0) (depth * -balance * 2) else 0;
-            const razor_safety_margin: i32 = if (balance < 0) -balance * 4 else 0;
+            const threat_value: i32 = compute_forward_pruning_threat_value(pos, us);
+            const rfp_safety_margin: i32 = if (threat_value < 0) (depth * -threat_value) else 0;
+            const razor_safety_margin: i32 = if (threat_value < 0) (depth * -threat_value) else 0;
 
             // Reversed Futility Pruning (rfp): beta pruning.
             if (depth <= tuned.rfp_max_depth and node.eval < mate_threshold and node.eval - tuned.rfp_min_margin >= beta) {
                 // If we are improving, the margin to beat beta can be smaller.
                 var mult: i32 = if (is_improving) tuned.rfp_improving_margin else tuned.rfp_not_improving_margin;
+                // If the opponent is worsening, the margin to beat beta can also be smaller.
                 if (is_opponent_worsening) {
                     mult -= 8;
                 }
@@ -717,8 +717,7 @@ pub const Searcher = struct {
             if (
                 !pos.nullmove_state and
                 node.eval >= beta and
-                //node.static_eval >= beta + 170 - depth * 24 and
-                node.static_eval >= (beta + 170) - (depth * 20) + razor_safety_margin and
+                node.static_eval >= (beta + 170) - (depth * 24) and
                 pos.minor_major_count(us) != 0
             ) {
                 self.prefetch_tt(us, pos, .empty);
@@ -749,7 +748,7 @@ pub const Searcher = struct {
         // Some locals for our move loop.
         var quiet_list: ExtMoveList(tuned.search_quiet_list_size) = .init();
         var noisy_list: ExtMoveList(tuned.search_noisy_list_size) = .init();
-        var movepicker: MovePicker(.search, us) = .init(pos, self, node, tt_move, true);
+        var movepicker: MovePicker(.search, us) = .init(pos, self, node, tt_move, false);
         var best_move: Move = .empty;
         var best_score: i32 = -infinity;
         var moves_seen: u8 = 0;
@@ -770,9 +769,7 @@ pub const Searcher = struct {
 
             const is_tt_move: bool = movepicker.stage == .tt;
             const is_quiet_move: bool = ex.move.is_quiet();
-            //const is_capture_move: bool = ex.move.is_capture();
-            //const quiet_history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else 0;
-            const history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else self.hist.get_noisy_score(ex); // #experiment
+            const history_score: i32 = if (is_quiet_move) self.hist.get_quiet_score(ex, ply, &self.nodes) else self.hist.get_noisy_score(ex);
 
             // Prunings before we actually execute the move.
             if (!is_root and best_score > -mate_threshold) {
@@ -848,8 +845,6 @@ pub const Searcher = struct {
                 }
             }
 
-            // TODO: I want some smarter restriction here.
-            //if (is_check and depth < 24) { // #experimental
             if (is_check) {
                 extension += 1;
             }
@@ -893,11 +888,10 @@ pub const Searcher = struct {
 
                 // History reduction.
                 if (is_quiet_move) {
-                    reduction -= @divTrunc(history_score, tuned.lmr_history_quiet_divider);//#FLOOR->TRUNC
+                    reduction -= @divTrunc(history_score, tuned.lmr_history_quiet_divider);
                 }
-                else { // #experimental
-                    //if (moves_seen > 3) // #experimental
-                        reduction -= @divTrunc(history_score, tuned.lmr_history_noisy_divider);
+                else {
+                    reduction -= @divTrunc(history_score, tuned.lmr_history_noisy_divider);
                 }
 
                 // And reduce less in these cases.
@@ -1099,7 +1093,9 @@ pub const Searcher = struct {
         // Naively borrowed idea from Integral.
         const gen_all: bool =
             !is_pvs and
-            tt_hit and tt_entry.flags.bound != .no_bound and tt_entry.flags.bound != .alpha and
+            tt_hit and
+            tt_entry.flags.bound != .no_bound and
+            tt_entry.flags.bound != .alpha and
             !tt_move.is_empty() and tt_move.is_quiet();
 
         var movepicker: MovePicker(.quiescence, us) = .init(pos, self, node, tt_move, gen_all);
@@ -1110,13 +1106,11 @@ pub const Searcher = struct {
         moveloop: while (movepicker.next()) |ex| {
             self.prefetch_tt(them, pos, ex);
 
-            // Skip quiets or bad noisy moves, if we have seen a move already and not giving check.
-            //if (moves_seen > 0 and movepicker.stage == .bad_noisy) {
-            if (moves_seen > 0 and @intFromEnum(movepicker.stage) > @intFromEnum(movepick.Stage.noisy) and !pos.predict_check(us, ex)) { // #experiment don't break on giving check.
+            // Skip quiets or bad noisy moves when we have seen a move already (and not giving check).
+            if (moves_seen > 0 and @intFromEnum(movepicker.stage) > @intFromEnum(Stage.noisy) and !pos.predict_check(us, ex)) {
                 break :moveloop;
             }
 
-            // TODO: maybe use is_noisy() instead of is_capture, because SEE handles that one.
             // Quiescence Futility Pruning (qs_fp). Prune capture moves that do not win material if the static eval is behind alpha by some margin.
             if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 1, .default)) {
                 best_score = @max(best_score, qs_futility_score);
@@ -1184,10 +1178,9 @@ pub const Searcher = struct {
     fn apply_drawcounter(pos: *const Position, eval: i32) i32 {
         // if (true) return eval;
         const r: u16 = @min(100, pos.rule50);
-        return @divTrunc(eval * (220 - r), 220);//#FLOOR->TRUNC
+        return @divTrunc(eval * (220 - r), 220);
     }
 
-    /// Applies a little 'draw avoiding behaviour'.
     fn drawscore(self: *const Searcher) i32 {
         return scoring.drawscore(self.stats.nodes);
     }
@@ -1283,15 +1276,14 @@ pub const Searcher = struct {
                 // Can be any move.
             },
             .noisy => {
-                lib.verify(ex.move.is_noisy(), "noisy stage error", .{});
+                lib.verify(ex.move.is_noisy(), "stage error noisy", .{});
             },
             .quiet => {
-                lib.verify(ex.move.is_quiet(), "quiet stage error", .{});
+                lib.verify(ex.move.is_quiet(), "stage error quiet", .{});
             },
             .bad_noisy => {
-                // TODO: finetune.
-                lib.verify(ex.move.is_noisy(), "bad_noisy stage error", .{});
-                lib.verify(ex.score <= movepick.Scores.bad_noisy_max, "bad_noisy stage error", .{});
+                lib.verify(ex.move.is_noisy(), "stage error bad_noisy", .{});
+                lib.verify(ex.score <= movepick.Scores.bad_noisy_max, "stage error bad_noisy score", .{});
             }
         }
     }
@@ -1389,33 +1381,26 @@ const threat_value_pawn: i32 = 1;
 const threat_value_minor: i32 = 3;
 const threat_value_rook: i32 = 5;
 const threat_value_queen: i32 = 9;
-/// Returns a (clamped) balance of lesser valued pieces attacking higher valued ones.
-pub fn threat_balance_for(pos: *Position, comptime us: Color) i32 {
+
+/// Returns a simple score of lesser valued pieces attacking higher valued ones.
+/// Result is negative if we are threatened.
+pub fn compute_forward_pruning_threat_value(pos: *Position, comptime us: Color) i32 {
     var result: i32 = 0;
-    inline for (Color.all) |color| {
-        const them: Color = color.opp();
-        const threats: *const Threats = pos.threats(color);
-        // Pawns attacking minors, rooks, queens.
-        const p_m: i32 = ipopcnt(i32, (threats.by_pawns) & (pos.bishops(them) | pos.knights(them)));
-        const p_r: i32 = ipopcnt(i32, (threats.by_pawns) & (pos.rooks(them)));
-        const p_q: i32 = ipopcnt(i32, (threats.by_pawns) & (pos.queens(them)));
-        // Minors attacking rooks, queens.
-        const m_r: i32 = ipopcnt(i32, (threats.by_knights | threats.by_bishops) & (pos.rooks(them)));
-        const m_q: i32 = ipopcnt(i32, (threats.by_knights | threats.by_bishops) & (pos.queens(them)));
-        // Rooks attacking queens.
-        const r_q: i32 = ipopcnt(i32, (threats.by_rooks) & (pos.queens(them)));
-
-        const v: i32 =
-            p_m * (threat_value_minor - threat_value_pawn) +
-            p_r * (threat_value_rook - threat_value_pawn) +
-            p_q * (threat_value_queen - threat_value_pawn) +
-            m_r * (threat_value_rook - threat_value_minor) +
-            m_q * (threat_value_queen - threat_value_minor) +
-            r_q * (threat_value_queen - threat_value_rook);
-
-        if (color.e == us.e) result += v else result -= v;
-    }
-    return std.math.clamp(result, -20, 20);
+    const them: Color = us.opp();
+    const threats: *const Threats = pos.threats(them);
+    const p_m: u64 = (threats.by_pawns) & (pos.bishops(us) | pos.knights(us));
+    const p_r: u64 = (threats.by_pawns) & (pos.rooks(us));
+    const p_q: u64 = (threats.by_pawns) & (pos.queens(us));
+    const m_r: u64 = (threats.by_knights | threats.by_bishops) & (pos.rooks(us));
+    const m_q: u64 = (threats.by_knights | threats.by_bishops) & (pos.queens(us));
+    const r_q: u64 = (threats.by_rooks) & (pos.queens(us));
+    if (p_m != 0) result -= threat_value_minor - threat_value_pawn;
+    if (p_r != 0) result -= threat_value_rook - threat_value_pawn;
+    if (p_q != 0) result -= threat_value_queen - threat_value_pawn;
+    if (m_r != 0) result -= threat_value_rook - threat_value_minor;
+    if (m_q != 0) result -= threat_value_queen - threat_value_minor;
+    if (r_q != 0) result -= threat_value_queen - threat_value_rook;
+    return result;
 }
 
 /// Retrieve default reduction from the lmr table. Access is safely restricted.

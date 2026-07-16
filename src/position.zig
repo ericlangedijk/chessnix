@@ -34,7 +34,7 @@ pub fn finalize() void {
     layout_map = .empty; // This solves testing problems for now.
 }
 
-pub const Position = struct { // TODO: order fields by size / access frequency.
+pub const Position = struct {
     layout: *const Layout,
     board: [Square.count]Piece,
     bitboards_by_type: [PieceType.count]u64,
@@ -322,8 +322,7 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
         var promo: PieceType = .no_piecetype;
 
         if (str.len == 4) {
-            // TODO: code this better.
-            // TODO: catch "g1g1" types of castling moves. the last one i do not catch.
+            // TODO: code this better. catch "g1g1" types of castling moves. the last one i do not catch.
             // Repair malformed castling moves in chess960 positions (not encoding 'king takes rook').
             if ((from.e == .e1 or from.e == .e8) and self.get(from).is_king_of_color(us)) {
                 if (to.e == .g1 or to.e == .g8) {
@@ -413,7 +412,7 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
 
     pub fn threats(self: *const Position, us: Color) *const Threats {
         if (lib.is_paranoid) {
-            lib.verify(self.threats_valid, "threats not updated", .{});
+            assert(self.threats_valid);
         }
         return &self.threats_by_color[us.u];
     }
@@ -1029,7 +1028,7 @@ pub const Position = struct { // TODO: order fields by size / access frequency.
         self.game_ply += 1;
         // TODO: Rule50 += 1 ???
         self.ep_square = Square.zero;
-        self.update_state(them); // TODO: optimize
+        self.update_state(them);
     }
 
     /// Computes the key only. Assumes the move is not yet on the board.
@@ -1857,7 +1856,7 @@ pub const Layout = struct {
                 const rook_file: u3 = key.rook_file(us, ct);
                 const king_ok: bool = king_file > 0 and king_file < 7;
                 const apply: bool = king_ok and (if (ct.e == .short) rook_file > king_file else rook_file < king_file);
-                if (apply and key.is_set(us, ct)) { // TODO: still work to do here.
+                if (apply and key.is_set(us, ct)) {
                     const k: Square = .from_rank_file(rank, king_file);
                     const r: Square = .from_rank_file(rank, rook_file);
                     const all_flags: u4 = Castling.flag(us, .short) | Castling.flag(us, .long);

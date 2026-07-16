@@ -112,10 +112,10 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         quiets: ExtMoveList(max_quiets),
         /// Bad capture list.
         bad_noisies: ExtMoveList(max_noisies),
-        /// #Experimental
-        gen_all_for_quiscence: bool,
+        /// Special case.
+        gen_all_for_quiescence: bool,
 
-        pub fn init(pos: *Position, searcher: *Searcher, node: *Node, tt_move: Move, gen_all: bool) Self {
+        pub fn init(pos: *Position, searcher: *Searcher, node: *Node, tt_move: Move, gen_all_for_quiscence: bool) Self {
             return .{
                 .internal_stage = .generate,
                 .stage = .tt,
@@ -129,7 +129,7 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
                 .noisies = .init(),
                 .quiets = .init(),
                 .bad_noisies = .init(),
-                .gen_all_for_quiscence = gentype == .quiescence and gen_all,
+                .gen_all_for_quiescence = gentype == .quiescence and gen_all_for_quiscence,
             };
         }
 
@@ -224,21 +224,12 @@ pub fn MovePicker(comptime gentype: GenType, comptime us: Color) type {
         }
 
         fn generate_moves(self: *Self) void {
-            // #experimental.
-            // if (gentype == .search or self.gen_all) {
-            //     movegen.generate_all_moves(self.pos, us, self);
-            // }
-            // else {
-            //     movegen.generate_quiescence_moves(self.pos, us, self);
-            // }
-
             switch (gentype) {
                 .search => {
                     movegen.generate_all_moves(self.pos, us, self);
                 },
                 .quiescence => {
-                    //movegen.generate_quiescence_moves(self.pos, us, self);
-                    if (self.gen_all_for_quiscence) {
+                    if (self.gen_all_for_quiescence) {
                         movegen.generate_all_moves(self.pos, us, self);
                     }
                     else {

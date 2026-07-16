@@ -158,7 +158,6 @@ pub fn convert_lichess_dataset_to_viri() !void {
         const line = reader.readline() catch break :read_loop;
         if (line == null) {
             break :read_loop;
-            //continue; TODO: this hangs on end-of-file.
         }
         stats.positions_processed += 1;
         const line_len: usize = line.?.len;
@@ -337,7 +336,7 @@ fn execute_pv(pos: *Position, pv_str: []const u8, stop_if_first_move_is_capture:
     var tokenizer = std.mem.tokenizeScalar(u8, pv_str, ' ');
     var idx: usize = 0;
     while (tokenizer.next()) |m| {
-        const ex: ExtMove = pos.parse_move(m) catch return PvError.illegal; // TODO: use movegen.find inside parse_move.
+        const ex: ExtMove = pos.parse_move(m) catch return PvError.illegal;
         pos.lazy_do_move(ex);
         pv.add(ex);
         if (idx == 0 and stop_if_first_move_is_capture) {

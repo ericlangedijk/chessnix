@@ -98,7 +98,6 @@ pub const Entry = struct {
         return self.flags.bound == .exact and scoring.is_normalscore(self.score);
     }
 
-    // #CrazyMateScores
     pub fn is_score_usable_as_eval(self: *const Entry, static_eval: i32) bool {
         if (scoring.is_nullscore(self.score)) {
             return false;

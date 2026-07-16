@@ -129,7 +129,6 @@ const IoContext = struct {
 
 fn init_console() void {
     if (is_tty()) {
-        // TODO: Utf8 output
         _ = std.fs.File.stdout().getOrEnableAnsiEscapeSupport();
     }
 }

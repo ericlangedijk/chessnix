@@ -98,7 +98,7 @@ pub const Tuned = struct {
     search_quiet_list_size: u8 = 18,
     /// Search: the list size of capture moves that did not beat alpha.
     /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
-    search_noisy_list_size: u8 = 10, // #testing original 8
+    search_noisy_list_size: u8 = 10,
 
     /// SEE pruning: Maximum depth for applying.
     see_prune_max_depth: i32 = 8,

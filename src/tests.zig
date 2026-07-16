@@ -48,8 +48,8 @@ test "perft" {
         try pos.setup(str, false);
         try std.testing.expect(!pos.is_960);
         //var ev: hce.Evaluator = .init(); const e = ev.evaluate(&pos, .scaled); print_yellow("{}, ", .{e}); if ((index + 1) % 20 == 0) print_yellow("\n", .{});
-        pos.ensure_threats();
-        const e = search.threat_balance_for(&pos, .white); print_yellow("{}, ", .{ e });
+        //pos.ensure_threats();
+        //const e = search.threat_balance_for(&pos, .white); print_yellow("{}, ", .{ e });
         const depths: FenDepths = try decode_depths(str);
         const end: usize = @min(max_depth + 1, depths.len);
         for (depths.slice()[1..end], 1..) |expected_nodes, d| {

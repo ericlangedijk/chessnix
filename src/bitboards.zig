@@ -185,7 +185,7 @@ pub fn popcnt(bitboard: u64) u7 {
     return @popCount(bitboard);
 }
 
-/// Convenience function. #testing
+/// Convenience function.
 pub fn ipopcnt(comptime T: anytype, bitboard: u64) T {
     return @intCast(@popCount(bitboard));
 }
@@ -267,7 +267,7 @@ pub fn clear_square(bitboard: *u64, sq: Square) void {
     bitboard.* &= ~sq.to_bitboard();
 }
 
-pub fn relative_rank_456_bitboard(us: Color) u64 { // #removed comptime
+pub fn relative_rank_456_bitboard(comptime us: Color) u64 {
     return if (us.e == .white) bb_rank_4 | bb_rank_5 | bb_rank_6 else bb_rank_3 | bb_rank_4 | bb_rank_5;
 }
 
@@ -378,13 +378,10 @@ fn compute_passed_pawn_masks_black() [Square.count]u64 {
 }
 
 fn compute_adjacent_square_masks() [Square.count]u64 {
-    // TODO: only for ep now. do them all? #testing!! we do them all
     var ep: [Square.count]u64 = @splat(0);
     for (Square.all) |sq| {
-        //if (sq.coord.rank == types.rank_4 or sq.coord.rank == types.rank_5) {
-            if (sq.next(.west)) |n| ep[sq.u] |= n.to_bitboard();
-            if (sq.next(.east)) |n| ep[sq.u] |= n.to_bitboard();
-        //}
+        if (sq.next(.west)) |n| ep[sq.u] |= n.to_bitboard();
+        if (sq.next(.east)) |n| ep[sq.u] |= n.to_bitboard();
     }
     return ep;
 }

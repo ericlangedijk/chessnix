@@ -142,7 +142,7 @@ pub fn evaluate(pos: *const Position, m: Move, threshold: i32, comptime mode: Mo
 }
 
 fn default_value(piece_or_piecetype: u4) i32 {
-    return types.see_piece_values[piece_or_piecetype]; // TODO: BUG ALERT here we used simple_piece_values. run autoplay again.
+    return types.see_piece_values[piece_or_piecetype];
 }
 
 fn simple_value(piece_or_piecetype: u4) i32 {

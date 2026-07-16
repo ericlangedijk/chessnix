@@ -28,7 +28,7 @@ pub const PawnShift = enum(u2) {
     northeast
 };
 
-/// Note that these are stored in SquarePair. TODO: remove runtime calls or move to squarepairs
+/// Note that these are stored in SquarePair.
 pub inline fn square_distance(a: Square, b: Square) u3 {
     //lib.comptime_only();
     const ar: i32 = a.coord.rank;
@@ -39,7 +39,7 @@ pub inline fn square_distance(a: Square, b: Square) u3 {
     return @truncate(@abs(d));
 }
 
-/// Note that these are stored in SquarePair. TODO: remove runtime calls or move to squarepairs
+/// Note that these are stored in SquarePair.
 pub inline fn manhattan_distance(a: Square, b: Square) u8 {
     //lib.comptime_only();
     const rank1: i32 = a.coord.rank;
@@ -97,21 +97,6 @@ pub fn pawn_from(to: Square, comptime us: Color, comptime shift: PawnShift) Squa
     }
 }
 
-// pub fn backward_pawns(comptime us: Color, our_pawns: u64, their_pawns: u64) u64 {
-//     // ? forward file does not contain any pawns.
-//     // ? the pawn is not isolated.
-//     // ? the pawn has no pawns on adjacent squares.
-//     // ? pawn cannot be supported by pawns behind him on the adjacent files.
-//     // ? the square (or squares?) in front of the pawn is covered by an enemy pawn.
-
-//     const them: Color = comptime us.opp();
-//     const stops: u64 = pawns_shift(our_pawns, us, .up);  // shift ours
-//     const our_cover: u64 = pawns_attacks(our_pawns, us); // covered by us (to exclude non-backward pawns)
-//     const their_cover: u64 = pawns_attacks(their_pawns, them); // covered by them
-
-//     return pawns_shift(stops & their_cover & ~our_cover, them, .up) ;
-// }
-
 pub fn test_bit_u8(u: u8, bit: u3) bool {
     const one: u8 = @as(u8, 1) << bit;
     return u & one != 0;
@@ -128,7 +113,7 @@ pub fn movenumber_to_ply(movenr: u16, stm: Color) u16 {
 }
 
 pub fn ply_to_movenumber(ply: u16, tomove: Color) u16 {
-    return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1; // TODO: bugged?
+    return if (ply == 0) 1 else (ply - tomove.u) / 2 + 1;
 }
 
 /// Convert "mate in X moves" to an absolute "distance to mate".

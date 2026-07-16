@@ -278,15 +278,6 @@ pub const Evaluator = struct {
                 score.inc(terms.isolated_pawn_penalty[file]);
                 if (lib.is_tuning) register(&terms.isolated_pawn_penalty[file], 1, us, .{ PieceType.pawn.e, sq.e });
             }
-
-            // #testing #experimental (this seems to work already quite ok, but we need a more sophisticated backward pawn calculation)
-            // const sp_backw: ScorePair = comptime types.pair(-21, -26);
-            // if (!is_isolated and !is_doubled and !is_passed) {
-            //     if (self.is_backward_pawn(us, sq)) {
-            //         //score.inc(backward_pawn_table[relative_rank]);
-            //         score.inc(sp_backw);
-            //     }
-            // }
         }
 
         // Passed pawns with kings.
@@ -460,7 +451,7 @@ pub const Evaluator = struct {
         var score: ScorePair = .empty;
         const pos: *const Position = self.pos;
         const them: Color = comptime us.opp();
-        const mobility_occ = pos.all() ^ pos.bishops(us) ^ pos.rooks(us); // TODO: verify
+        const mobility_occ = pos.all() ^ pos.bishops(us) ^ pos.rooks(us);
 
         var iter = bitboards.iterator(pos.queens(us));
         while (iter.next()) |sq| {
@@ -585,7 +576,7 @@ pub const Evaluator = struct {
             if (lib.is_tuning) register(&terms.threatened_by_rook_penalty[threatened_piece.u][is_defended], 1, us, .{ PieceType.rook.e, threatened_piece.e, is_defended });
         }
 
-        // Our pawn push threats. // TODO: #future also use the double pawn push.
+        // Our pawn push threats.
         // Get the squares defended by the enemy, excluding squares that are defended by our pawns and not attacked by their pawns
         const their_piece_attacks: u64 = self.knight_attacks[them.u] | self.bishop_attacks[them.u] | self.rook_attacks[them.u] | self.queen_attacks[them.u];
         const their_protected_squares: u64 = self.pawn_attacks[them.u] | (their_piece_attacks & ~self.pawn_attacks[us.u]);
@@ -613,7 +604,7 @@ pub const Evaluator = struct {
         const checking_squares_queen: u64 = checking_squares_rook | checking_squares_bishop;
         const unsafe: u64 = (their_attacks | self.king_attacks[them.u]);
         const safe: u64 = ~unsafe;
-        const not_pawns: u64 = ~pos.pawns(us); // TODO: experiment with pieces instead of pawns.
+        const not_pawns: u64 = ~pos.pawns(us);
         // Determine our safe checks.
         const knight_checks: u64 = not_pawns & checking_squares_knight & self.knight_attacks[us.u];
         const bishop_checks: u64 = not_pawns & checking_squares_bishop & self.bishop_attacks[us.u];
@@ -744,8 +735,8 @@ fn compute_king_pawnstorm_areas_white() [Square.count]u64 {
         ps[sq.u] = bitboards.passed_pawn_masks_white[sq.u];
         // Include the squares next to the king.
         ps[sq.u] |= funcs.pawns_shift(ps[sq.u], .black, .up);
-        ps[sq.u] &= ~bitboards.bb_rank_8; //#testing
-        ps[sq.u] &= ~sq.to_bitboard(); //#testing
+        ps[sq.u] &= ~bitboards.bb_rank_8;
+        ps[sq.u] &= ~sq.to_bitboard();
     }
     return ps;
 }
@@ -756,8 +747,8 @@ fn compute_king_pawnstorm_areas_black() [Square.count]u64 {
         ps[sq.u] = bitboards.passed_pawn_masks_black[sq.u];
         // Include the squares next to the king.
         ps[sq.u] |= funcs.pawns_shift(ps[sq.u], .white, .up);
-        ps[sq.u] &= ~bitboards.bb_rank_1; //#testing
-        ps[sq.u] &= ~sq.to_bitboard(); //#testing
+        ps[sq.u] &= ~bitboards.bb_rank_1;
+        ps[sq.u] &= ~sq.to_bitboard();
     }
     return ps;
 }

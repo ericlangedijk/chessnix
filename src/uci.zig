@@ -19,7 +19,7 @@ const Tokenizer = std.mem.TokenIterator(u8, .scalar);
 
 const ctx = lib.ctx;
 const io = lib.io;
-const eql = funcs.str_eql; // TODO: make ascii case-insensitive.
+const eql = funcs.str_eql; // TODO: make ascii case-insensitive?
 const wtf = lib.wtf;
 
 var engine: *Engine = undefined;
@@ -103,7 +103,7 @@ fn uci_loop(is_tty: bool) !void {
                 TTY.print_state();
             }
             else {
-                io.print("unknown command: {s}\n", .{ cmd }); // #testing
+                io.print("unknown command: {s}\n", .{ cmd });
             }
         }
     }
