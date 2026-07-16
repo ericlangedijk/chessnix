@@ -225,7 +225,6 @@ pub const Engine = struct {
         return see.evaluate(&self.pos, ex.move, threshold, .simple);
     }
 
-    /// Zig-tests only.
     pub fn test_run(self: *Engine, fen: []const u8, params: *const uci.Go) !TestStats {
         lib.not_in_release();
         try self.ucinewgame();
@@ -547,10 +546,10 @@ pub const Searcher = struct {
         const is_root: bool = comptime rootmode == .root;
         const ply: u16 = node.ply;
 
-        if (lib.verifications) {
-            lib.verify(input_depth >= 0, "search() invalid depth", .{});
-            lib.verify(!is_root or is_pvs, "search() root must be pvs", .{});
-            lib.verify(input_beta > input_alpha, "search() invalid alphabeta", .{});
+        if (lib.is_paranoid) {
+            lib.verify(input_depth >= 0, "search invalid depth", .{});
+            lib.verify(!is_root or is_pvs, "search root must be pvs", .{});
+            lib.verify(input_beta > input_alpha, "search invalid alphabeta", .{});
         }
 
         assert(input_depth >= 0);
@@ -651,12 +650,12 @@ pub const Searcher = struct {
         }
 
         // Tricky stuff.
-        if (lib.verifications) {
+        if (lib.is_paranoid) {
             if (!is_check and !is_singular_extension and (raw_static_eval == null_score or corrected_raw_static_eval == null_score or node.static_eval == null_score or node.eval == null_score)) {
-                lib.wtf("search() eval not filled", .{});
+                lib.wtf("search eval not filled", .{});
             }
             if (is_singular_extension and !tt_move.is_empty()) {
-                lib.wtf("search() invalid singular extension", .{});
+                lib.wtf("search invalid singular extension", .{});
             }
         }
 
@@ -765,7 +764,7 @@ pub const Searcher = struct {
                 continue :moveloop;
             }
 
-            if (lib.verifications) {
+            if (lib.is_paranoid) {
                 verify_movepicker_stage(ex, movepicker.stage);
             }
 
@@ -1097,7 +1096,7 @@ pub const Searcher = struct {
             alpha = @max(alpha, best_score);
         }
 
-        // naively borrowed idea from Integral.
+        // Naively borrowed idea from Integral.
         const gen_all: bool =
             !is_pvs and
             tt_hit and tt_entry.flags.bound != .no_bound and tt_entry.flags.bound != .alpha and
@@ -1111,11 +1110,13 @@ pub const Searcher = struct {
         moveloop: while (movepicker.next()) |ex| {
             self.prefetch_tt(them, pos, ex);
 
-            // Skip bad noisies if we have seen a move already.
-            if (moves_seen > 0 and movepicker.stage == .bad_noisy) {
+            // Skip quiets or bad noisy moves, if we have seen a move already and not giving check.
+            //if (moves_seen > 0 and movepicker.stage == .bad_noisy) {
+            if (moves_seen > 0 and @intFromEnum(movepicker.stage) > @intFromEnum(movepick.Stage.noisy) and !pos.predict_check(us, ex)) { // #experiment don't break on giving check.
                 break :moveloop;
             }
 
+            // TODO: maybe use is_noisy() instead of is_capture, because SEE handles that one.
             // Quiescence Futility Pruning (qs_fp). Prune capture moves that do not win material if the static eval is behind alpha by some margin.
             if (!is_check and ex.move.is_capture() and qs_futility_score <= alpha and !see.evaluate(pos, ex.move, 1, .default)) {
                 best_score = @max(best_score, qs_futility_score);
