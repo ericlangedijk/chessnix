@@ -69,14 +69,7 @@ fn uci_loop(is_tty: bool) !void {
         }
         // Terminal only commands.
         else if (is_tty) {
-            if (eql(cmd, "crash")) {
-                if (lib.is_release_safe or lib.is_debug) {
-                    var x: u8 = 255;
-                    x += 1;
-                    lib.io.print("my new number is {}", .{ x });
-                }
-            }
-            else if (eql(cmd, "d")) {
+            if (eql(cmd, "d")) {
                 TTY.draw_position();
             }
             else if (eql(cmd, "q")) {
