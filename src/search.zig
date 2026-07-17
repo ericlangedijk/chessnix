@@ -45,7 +45,7 @@ const MovePicker = movepick.MovePicker;
 const Stage = movepick.Stage;
 const TimeManager = time.TimeManager;
 
-const tuned = searchterms.tuned;
+const terms = searchterms.terms;
 const max_game_length: u16 = types.max_game_length;
 const max_move_count: u8 = types.max_move_count;
 const max_search_depth: u8 = types.max_search_depth;
@@ -359,12 +359,12 @@ pub const Searcher = struct {
         //self.hist.updates = 0;
 
         switch (pos.stm.e) {
-            .white => self.iterate(.white, &pos),
-            .black => self.iterate(.black, &pos),
+            .white => self.iterative_deepening(.white, &pos),
+            .black => self.iterative_deepening(.black, &pos),
         }
     }
 
-    fn iterate(self: *Searcher, comptime us: Color, pos: *Position) void {
+    fn iterative_deepening(self: *Searcher, comptime us: Color, pos: *Position) void {
         // TODO: print some more info before we go.
 
         // const only_one_move: bool = self.engine.rootmoves.count == 1;
@@ -395,7 +395,7 @@ pub const Searcher = struct {
 
             // Give the eval stability some slack at greater depths. This influences time management.
             // The idea is that at a greater depth we care more about move stability than eval stability.
-            const slack: i32 = depth / tuned.eval_stability_slack_depth_divider;
+            const slack: i32 = depth / terms.iterative_deepening.eval_stability_slack_depth_divider;
 
             const start_non_terminal: u64 = self.stats.non_terminal_nodes;
             const start_beta_cutoffs: u64 = self.stats.beta_cutoffs;
@@ -424,7 +424,7 @@ pub const Searcher = struct {
             }
 
             // Time management: Keep track of the evaluation stability.
-            if (score > average_score - tuned.eval_stability_margin - slack and score < average_score + tuned.eval_stability_margin + slack) {
+            if (score > average_score - terms.iterative_deepening.eval_stability_margin - slack and score < average_score + terms.iterative_deepening.eval_stability_margin + slack) {
                 eval_stability = @min(4, eval_stability + 1);
             }
             else {
@@ -669,7 +669,7 @@ pub const Searcher = struct {
                 else if (ply >= 4 and self.nodes[ply - 4].static_eval != null_score) &self.nodes[ply - 4]
                 else null;
 
-            has_big_correction = @abs(corrected_raw_static_eval - raw_static_eval) >= tuned.corr_hist_is_big_correction_margin;
+            has_big_correction = @abs(corrected_raw_static_eval - raw_static_eval) >= terms.correction_history.is_big_correction_margin;
 
             if (prevnode != null) {
                 is_improving = node.static_eval > prevnode.?.static_eval;
@@ -680,18 +680,19 @@ pub const Searcher = struct {
         // Forward pruning: prune before processing any moves (the whole node is pruned).
         if (!is_pvs and !is_check and !is_singular_extension and !is_matescore(alpha) and !is_matescore(beta)) {
 
-            // If they have more capture threats than us, increase the pruning margin for rfp and razoring.
+            // Get a threat value and increase the pruning margin for rfp and razoring.
             // The values are currently just based on a few bullet tests.
             pos.ensure_threats();
-            const threat_value: i32 = compute_forward_pruning_threat_value(pos, us);
+            const threat_value: i32 = get_forward_pruning_threat_value(pos, us);
             const rfp_safety_margin: i32 = if (threat_value < 0) (depth * -threat_value) else 0;
             const razor_safety_margin: i32 = if (threat_value < 0) (depth * -threat_value) else 0;
 
-            // Reversed Futility Pruning (rfp): beta pruning.
-            if (depth <= tuned.rfp_max_depth and node.eval < mate_threshold and node.eval - tuned.rfp_min_margin >= beta) {
+            // Reversed Futility Pruning (beta pruning).
+            const rfp = terms.reversed_futility_pruning;
+            if (depth <= rfp.max_depth and node.eval < mate_threshold and node.eval - rfp.min_margin >= beta) {
                 // If we are improving, the margin to beat beta can be smaller.
-                var mult: i32 = if (is_improving) tuned.rfp_improving_margin else tuned.rfp_not_improving_margin;
                 // If the opponent is worsening, the margin to beat beta can also be smaller.
+                var mult: i32 = if (is_improving) rfp.improving_margin else rfp.not_improving_margin;
                 if (is_opponent_worsening) {
                     mult -= 8;
                 }
@@ -701,9 +702,10 @@ pub const Searcher = struct {
                 }
             }
 
-            // Razoring: alpha pruning.
+            // Razoring (alpha pruning).
+            const razoring = terms.razoring;
             const depth_3: i32 = @max(0, depth - 3);
-            if (node.static_eval + tuned.razor_base + depth * tuned.razor_mult + depth_3 * depth_3 * tuned.razor_quad + razor_safety_margin <= alpha) {
+            if (node.static_eval + razoring.base + depth * razoring.mult + depth_3 * depth_3 * razoring.quad + razor_safety_margin <= alpha) {
                 const r_score = self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
                 if (self.stopped) {
                     return 0;
@@ -713,7 +715,7 @@ pub const Searcher = struct {
                 }
             }
 
-            // Null Move Pruning (nmp). Are we still good if we let the opponent play another move?
+            // Null Move Pruning: are we still good if we let the opponent play another move?
             if (
                 !pos.nullmove_state and
                 node.eval >= beta and
@@ -737,7 +739,7 @@ pub const Searcher = struct {
         }
 
         // Internal Iterative Reduction (iir): If we have no tt move, move ordering is not optimal.
-        if ((is_pvs or cutnode) and !is_singular_extension and depth >= tuned.iir_min_depth and tt_move.is_empty()) {
+        if ((is_pvs or cutnode) and !is_singular_extension and depth >= terms.internal_iterative_deepening.min_depth and tt_move.is_empty()) {
             depth -= 1;
         }
 
@@ -746,8 +748,8 @@ pub const Searcher = struct {
         node.double_extensions = if (!is_root) parentnode.?.double_extensions else 0;
 
         // Some locals for our move loop.
-        var quiet_list: ExtMoveList(tuned.search_quiet_list_size) = .init();
-        var noisy_list: ExtMoveList(tuned.search_noisy_list_size) = .init();
+        var quiet_list: ExtMoveList(terms.search_historylist_size.for_quiets) = .init();
+        var noisy_list: ExtMoveList(terms.search_historylist_size.for_noisies) = .init();
         var movepicker: MovePicker(.search, us) = .init(pos, self, node, tt_move, false);
         var best_move: Move = .empty;
         var best_score: i32 = -infinity;
@@ -784,21 +786,24 @@ pub const Searcher = struct {
                 }
 
                 // Futility Pruning (fp).
-                const fp_margin: i32 = tuned.fp_margin_base + (depth * tuned.fp_depth_mult);
-                if (!is_check and is_quiet_move and depth <= tuned.fp_max_depth and node.eval != null_score and node.eval + fp_margin < alpha) {
+                const fp = terms.futility_pruning;
+                const fp_margin: i32 = fp.margin_base + (depth * fp.depth_mult);
+                if (!is_check and is_quiet_move and depth <= fp.max_depth and node.eval != null_score and node.eval + fp_margin < alpha) {
                     movepicker.skip_quiets();
                     continue :moveloop;
                 }
 
                 // SEE pruning.
-                const see_threshold: i32 = if (is_quiet_move) depth * tuned.see_prune_quiet_mult else depth * tuned.see_prune_noisy_mult;
-                if (depth <= tuned.see_prune_max_depth and moves_seen >= 1 and !see.evaluate(pos, ex.move, see_threshold, .default)) {
+                const sp = terms.see_pruning;
+                const see_threshold: i32 = if (is_quiet_move) depth * sp.quiet_mult else depth * sp.noisy_mult;
+                if (depth <= sp.max_depth and moves_seen >= 1 and !see.evaluate(pos, ex.move, see_threshold, .default)) {
                     continue :moveloop;
                 }
 
                 // History Pruning (hp).
-                if (is_quiet_move and depth <= tuned.hp_max_depth) {
-                    if (history_score < tuned.hp_quiet_offset - (depth * tuned.hp_quiet_mult)) {
+                const hp = terms.history_pruning;
+                if (is_quiet_move and depth <= hp.max_depth) {
+                    if (history_score < hp.quiet_offset - (depth * hp.quiet_mult)) {
                         movepicker.skip_quiets();
                         continue :moveloop;
                     }
@@ -867,8 +872,9 @@ pub const Searcher = struct {
             new_depth = clamp(new_depth, 0, max_search_depth);
 
             // Late Move Reduction (lmr). First try a reduced search on late moves.
+            const lmr = terms.late_move_reduction;
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
-            if (depth >= tuned.lmr_min_depth and moves_seen >= lmr_move_threshold) {
+            if (depth >= lmr.min_depth and moves_seen >= lmr_move_threshold) {
 
                 // Retrieve default reduction from the lmr table.
                 reduction = get_lmr(is_quiet_move, depth, moves_seen);
@@ -888,10 +894,10 @@ pub const Searcher = struct {
 
                 // History reduction.
                 if (is_quiet_move) {
-                    reduction -= @divTrunc(history_score, tuned.lmr_history_quiet_divider);
+                    reduction -= @divTrunc(history_score, lmr.history_quiet_divider);
                 }
                 else {
-                    reduction -= @divTrunc(history_score, tuned.lmr_history_noisy_divider);
+                    reduction -= @divTrunc(history_score, lmr.history_noisy_divider);
                 }
 
                 // And reduce less in these cases.
@@ -961,7 +967,7 @@ pub const Searcher = struct {
                     }
 
                     // Alpha Raise Reduction.
-                    if (depth >= tuned.lmr_min_depth) {
+                    if (depth >= lmr.min_depth) {
                         alpha_raises += 1;
                     }
                 }
@@ -1100,7 +1106,7 @@ pub const Searcher = struct {
 
         var movepicker: MovePicker(.quiescence, us) = .init(pos, self, node, tt_move, gen_all);
         var moves_seen: u8 = 0;
-        const qs_futility_score: i32 = best_score + tuned.qs_fp_margin;
+        const qs_futility_score: i32 = best_score + terms.quiscence_futility_pruning.margin;
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {
@@ -1384,7 +1390,7 @@ const threat_value_queen: i32 = 9;
 
 /// Returns a simple score of lesser valued pieces attacking higher valued ones.
 /// Result is negative if we are threatened.
-pub fn compute_forward_pruning_threat_value(pos: *Position, comptime us: Color) i32 {
+pub fn get_forward_pruning_threat_value(pos: *Position, comptime us: Color) i32 {
     var result: i32 = 0;
     const them: Color = us.opp();
     const threats: *const Threats = pos.threats(them);
@@ -1400,7 +1406,7 @@ pub fn compute_forward_pruning_threat_value(pos: *Position, comptime us: Color) 
     if (m_r != 0) result -= threat_value_rook - threat_value_minor;
     if (m_q != 0) result -= threat_value_queen - threat_value_minor;
     if (r_q != 0) result -= threat_value_queen - threat_value_rook;
-    return result;
+    return clamp(result, -16, 16);
 }
 
 /// Retrieve default reduction from the lmr table. Access is safely restricted.
@@ -1428,10 +1434,11 @@ fn compute_lmr(depth: usize, moves: usize, base: f32, divisor: f32) u8 {
 fn compute_lmr_table() LmrTable {
     @setEvalBranchQuota(128000);
     var result: LmrTable = std.mem.zeroes(LmrTable);
+    const table = terms.late_move_reduction_table_computing;
     for (1..max_search_depth + 2) |depth| {
         for (1..max_move_count) |move| {
-            result[0][depth][move] = compute_lmr(depth, move, tuned.lmr_table_noisy_base, tuned.lmr_table_noisy_divider); // noisy
-            result[1][depth][move] = compute_lmr(depth, move, tuned.lmr_table_quiet_base, tuned.lmr_table_quiet_divider); // quiet
+            result[0][depth][move] = compute_lmr(depth, move, table.noisy_base, table.noisy_divider); // noisy
+            result[1][depth][move] = compute_lmr(depth, move, table.quiet_base, table.quiet_divider); // quiet
         }
     }
     return result;

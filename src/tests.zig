@@ -36,7 +36,6 @@ const ExtMoveList = types.ExtMoveList;
 const Position = position.Position;
 
 const verbose: bool = true;
-const do_engine_test: bool = false; // Very volatile when working on the engine.
 
 test "perft" {
     try lib.initialize();
@@ -222,7 +221,9 @@ test "see" {
 }
 
 test "engine" {
-    if (!do_engine_test) {
+    // This test is just there to check if I did not mess up during a refactor.
+    // When working on the strategy of the engine, this test is useless.
+    if (false) {
         if (verbose) print_yellow("engine test skipped\n", .{});
         return;
     }
@@ -233,34 +234,34 @@ test "engine" {
     defer engine.destroy();
 
     var params: uci.Go = .empty;
-    params.depth = 9;
+    params.depth = 10;
     var search_stats: search.TestStats = undefined;
     var expected_stats: search.TestStats = undefined;
 
-    // info depth 9 seldepth 13 score cp 24 nodes 5539 qnodes 6% time 20 nps 266129 cps 628783 eff 60% pv d2d4 e7e6 g1f3 b8c6 e2e3 g8f6 b1c3 d7d6
+    // info depth 10 seldepth 19 score cp 16 nodes 14307 qnodes 10% time 55 nps 257171 cps 602907 eff 61% pv d2d4 g8f6 g1f3 e7e6 e2e3 b8c6 b1c3 f8b4 c1d2 h7h6 f1b5 d7d5
     search_stats = try engine.test_run(consts.startpos, &params);
-    expected_stats = .{ .seldepth = 13, .score = 24,  .nodes = 5539, .bestmove = .init(.d2, .d4, Move.double_push), };
+    expected_stats = .{ .seldepth = 19, .score = 16,  .nodes = 14307, .bestmove = .init(.d2, .d4, Move.double_push), };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
-    // info depth 9 seldepth 16 score cp -18 nodes 11297 qnodes 48% time 39 nps 284204 cps 612762 eff 61% pv e2a6 b4c3 d2c3 h3g2 f3g2 e6d5 e5g4 d5e4
+    // info depth 10 seldepth 20 score cp -16 nodes 20954 qnodes 38% time 76 nps 273118 cps 595401 eff 63% pv e2a6 e6d5 e5g6 f7g6 c3b5 d5e4 f3g3 h3g2 g3g6
     search_stats = try engine.test_run(consts.kiwi, &params);
-    expected_stats = .{ .seldepth = 16 , .score = -18, .nodes = 11297, .bestmove = .init(.e2, .a6, Move.capture) };
+    expected_stats = .{ .seldepth = 20 , .score = -16, .nodes = 20954, .bestmove = .init(.e2, .a6, Move.capture) };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
-    // info depth 9 seldepth 3 score mate 2 nodes 3196 qnodes 0% time 6 nps 516216 cps 1194760 eff 73% pv d2g2 f8e8 g2g8
+    // info depth 10 seldepth 3 score mate 2 nodes 2787 qnodes 0% time 5 nps 483577 cps 1100237 eff 75% pv d2g2 f8e8 g2g8
     search_stats = try engine.test_run("5k2/8/4K3/8/8/8/3R4/8 w - - 0 1", &params);
-    expected_stats = .{ .seldepth = 3 , .score = scoring.mate - 3, .nodes = 3196, .bestmove = .init(.d2, .g2, Move.silent) };
+    expected_stats = .{ .seldepth = 3 , .score = scoring.mate - 3, .nodes = 2787, .bestmove = .init(.d2, .g2, Move.silent) };
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
-    // info depth 9 seldepth 11 score cp -31 nodes 4109 qnodes 17% time 16 nps 253754 cps 579825 eff 62% pv e8g8 b2b4 d7d6 b4b5 c7c5 e1g1 c5d4 e3d4
+    // info depth 10 seldepth 19 score cp -17 nodes 22048 qnodes 23% time 91 nps 240870 cps 561753 eff 63% pv d7d6 e1g1 b8d7 e4e5 d6e5 d3e4 b7e4 c3e4 e5d4
     search_stats = try engine.test_run("rn1qk2r/pbppnpbp/1p2p1p1/8/2PPP3/2NBBN2/PP3PPP/R2QK2R b KQkq - 3 7", &params);
-    expected_stats = .{ .seldepth = 11, .score = -31, .nodes = 4109, .bestmove = .init(.e8, .h8, Move.castle_short)};
+    expected_stats = .{ .seldepth = 19, .score = -17, .nodes = 22048, .bestmove = .init(.d7, .d6, Move.silent)};
     try std.testing.expect(std.meta.eql(expected_stats, search_stats));
 
-    // info depth 9 seldepth 16 score cp 65 nodes 11315 qnodes 36% time 43 nps 259399 cps 599657 eff 64% pv g5h4 c5b6 e4f5 d6d5 d3d4 e5d4 f3d4 d7e5 h4g3
+    // info depth 10 seldepth 19 score cp 76 nodes 28629 qnodes 32% time 112 nps 255045 cps 586126 eff 63% pv e4f5 h7h6 g5h4 d6d5 h4g3 g8h8 f3e5 d7e5 g3e5 c8f5
     search_stats = try engine.test_run("r1bq1rk1/pp1n2pp/2pp1n2/2b1ppB1/4P3/P1NP1N2/1PP1BPPP/R2Q1RK1 w - - 4 9", &params);
-    expected_stats = .{ .seldepth = 16, .score = 65, .nodes = 11315, .bestmove = .init(.g5, .h4, Move.silent)};
-    try std.testing.expect(std.meta.eql(expected_stats, search_stats));
+    expected_stats = .{ .seldepth = 19, .score = 76, .nodes = 28629, .bestmove = .init(.e4, .f5, Move.capture)};
+    try std.testing.expectEqual(expected_stats, search_stats);
 
     if (verbose) print_success("engine ok\n", .{});
 }
@@ -396,7 +397,7 @@ fn print_error(comptime str: []const u8, args: anytype) void {
 }
 
 fn print_yellow(comptime str: []const u8, args: anytype) void {
-    std.debug.print("\x1b[33m", .{}); // red
+    std.debug.print("\x1b[33m", .{}); // yellow
     std.debug.print(str, args);
     std.debug.print("\x1b[0m", .{}); // reset
 }

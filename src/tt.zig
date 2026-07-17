@@ -19,7 +19,7 @@ const Color = types.Color;
 const Move = types.Move;
 const ScorePair = types.ScorePair;
 
-const tuned = searchterms.tuned;
+const terms = searchterms.terms;
 
 /// Entries per bucket (2 or 3).
 pub const EPB: usize = 2;
@@ -121,12 +121,9 @@ pub const Entry = struct {
     /// Score for TT entry replacement. Lower is less valuable.
     fn get_replacement_value(self: *const Entry, current_age: i32) i32 {
         const age_penalty: i32 = (current_age - self.flags.age) & 31;
-        const score: i32 =
-            tuned.tt_entry_depth_weight * self.depth -
-            tuned.tt_entry_age_penalty_weight * age_penalty;
+        const score: i32 = terms.tt_entry.depth_weight * self.depth - terms.tt_entry.age_penalty_weight * age_penalty;
         return score;
     }
-
 };
 
 inline fn compress_key(key: u64) u16 {

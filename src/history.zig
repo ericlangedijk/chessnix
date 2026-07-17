@@ -28,12 +28,12 @@ const Nodes = search.Nodes;
 const Node = search.Node;
 const MovePicker = search.MovePicker;
 
-const tuned = searchterms.tuned;
+const terms = searchterms.terms;
 
 const HistCalc = struct {
     /// depth & scale
     fn get_bonus(depth: i32) i16 {
-        return @intCast(clamp(depth * tuned.history_scale, -tuned.history_max_bonus, tuned.history_max_bonus));
+        return @intCast(clamp(depth * terms.history_math.scale, -terms.history_math.max_bonus, terms.history_math.max_bonus));
     }
 
     /// Add scaled bonus to the entry.
@@ -44,7 +44,7 @@ const HistCalc = struct {
     /// `bonus - score * abs(bonus) / max_score`.
     fn scale_bonus(score: i16, bonus: i16) i16 {
         const s: i32 = score;
-        return @intCast(bonus - @divTrunc(s * @abs(bonus), tuned.history_max_score));
+        return @intCast(bonus - @divTrunc(s * @abs(bonus), terms.history_math.max_score));
     }
 };
 
@@ -251,7 +251,7 @@ pub const CorrectionHistory = struct {
             return;
         }
 
-        const scaled_err: i32 = err * tuned.corr_hist_scale;
+        const scaled_err: i32 = err * terms.correction_history.scale;
         const weight: i32 = @min(1 + depth, 16) * 2;
 
         const pawn_entry: *i16 = &self.pawn_table[us.u][pos.pawnkey % table_size];
@@ -275,16 +275,17 @@ pub const CorrectionHistory = struct {
         const m1: i32 = self.minor_table[us.u][pos.minorkey % table_size];
         const m2: i32 = self.major_table[us.u][pos.majorkey % table_size];
 
-        var correction: i32 = @divTrunc(p + w + b + m1 + m2, tuned.corr_hist_scale);
+        var correction: i32 = @divTrunc(p + w + b + m1 + m2, terms.correction_history.scale);
 
-        correction = clamp(correction, -tuned.corr_hist_max_applied_correction, tuned.corr_hist_max_applied_correction);
+        correction = clamp(correction, -terms.correction_history.max_applied_correction, terms.correction_history.max_applied_correction);
         return clamp(static_eval + correction, -scoring.mate_threshold + 1, scoring.mate_threshold - 1);
     }
 
     fn update_entry(entry: *i16, scaled_err: i32, weight: i32) void {
-        const max: i32 = tuned.corr_hist_scale * tuned.corr_hist_max_entry_bonus;
+        const ch = terms.correction_history;
+        const max: i32 = ch.scale * ch.max_entry_bonus;
         var score: i32 = entry.*;
-        score = @divTrunc(score * (tuned.corr_hist_scale - weight) + (scaled_err * weight), tuned.corr_hist_scale);
+        score = @divTrunc(score * (ch.scale - weight) + (scaled_err * weight), ch.scale);
         score = clamp(score, -max, max);
         entry.* = @intCast(score);
     }

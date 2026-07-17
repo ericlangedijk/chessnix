@@ -12,7 +12,7 @@ pub fn main() !void {
 
     try lib.initialize();
     defer lib.finalize();
-    //try @import("./local/misc.zig").test_threats(); if (true) return;
+
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();

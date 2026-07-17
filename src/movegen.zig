@@ -80,7 +80,6 @@ fn gen(pos: *const Position, comptime gen_flags: u4, noalias storage: anytype) v
     const bb_not_us: u64 = ~bb_us;
     const king_sq: Square = pos.king_square(us);
 
-    //var bb: u64 = undefined;
     var iter: bitboards.BitboardIterator = undefined;
 
     const pins_diag: u64 = if (has_pins) pos.pins_diag[us.u] else 0;
