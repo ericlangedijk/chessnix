@@ -37,6 +37,17 @@ pub const terms = struct {
         pub const eval_stability_slack_depth_divider: u8 = 12;
     };
 
+    pub const reversed_futility_pruning = struct {
+        /// Maximum depth for applying.
+        pub const max_depth: i32 = 6;
+        /// Base margin for eval beating beta.
+        pub const min_margin: i32 = 21;
+        /// Delta for margin when eval is improving:
+        pub const improving_margin: i32 = 40;
+        /// Delta for margin wher eval is not improving:
+        pub const not_improving_margin: i32 = 74;
+    };
+
     pub const futility_pruning = struct {
         /// The maximum depth for applying.
         pub const max_depth: i32 = 8;
@@ -84,17 +95,6 @@ pub const terms = struct {
         pub const mult: i32 = 220;
         /// Razoring:
         pub const quad: i32 = 96;
-    };
-
-    pub const reversed_futility_pruning = struct {
-        /// Maximum depth for applying.
-        pub const max_depth: i32 = 6;
-        /// Base margin for eval beating beta.
-        pub const min_margin: i32 = 21;
-        /// Delta for margin when eval is improving:
-        pub const improving_margin: i32 = 40;
-        /// Delta for margin wher eval is not improving:
-        pub const not_improving_margin: i32 = 74;
     };
 
     /// The list sizes for moves that did not beat alpha.

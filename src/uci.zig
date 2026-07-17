@@ -10,7 +10,6 @@ const position = @import("position.zig");
 const search = @import("search.zig");
 const tt = @import("tt.zig");
 const perft = @import("perft.zig");
-//const tests = @import("tests.zig");
 const Position = position.Position;
 const Engine = search.Engine;
 const hce = @import("hce.zig");
