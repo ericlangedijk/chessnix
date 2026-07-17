@@ -1106,7 +1106,7 @@ pub const Searcher = struct {
 
         var movepicker: MovePicker(.quiescence, us) = .init(pos, self, node, tt_move, gen_all);
         var moves_seen: u8 = 0;
-        const qs_futility_score: i32 = best_score + terms.quiscence_futility_pruning.margin;
+        const qs_futility_score: i32 = best_score + terms.quiescence_futility_pruning.margin;
 
         // Move loop.
         moveloop: while (movepicker.next()) |ex| {

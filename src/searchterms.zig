@@ -68,7 +68,7 @@ pub const terms = struct {
         pub const history_noisy_divider: i32 = 14035; // 1 score of max 16384
     };
 
-    pub const quiscence_futility_pruning = struct {
+    pub const quiescence_futility_pruning = struct {
         /// The margin added to the initial best score to allow pruning.
         pub const margin: i32 = 101;
     };
@@ -87,42 +87,36 @@ pub const terms = struct {
     };
 
     pub const reversed_futility_pruning = struct {
-        /// Reversed Futility Pruning: maximum depth applying rfp.
+        /// Maximum depth for applying.
         pub const max_depth: i32 = 6;
-        /// Reversed Futility Pruning: base margin for eval beating beta.
+        /// Base margin for eval beating beta.
         pub const min_margin: i32 = 21;
-        /// Reversed Futility Pruning:
+        /// Delta for margin when eval is improving:
         pub const improving_margin: i32 = 40;
-        /// Reversed Futility Pruning:
+        /// Delta for margin wher eval is not improving:
         pub const not_improving_margin: i32 = 74;
-        /// Reversed Futility Pruning: (not used).
-        pub const complex_margin_delta: i32 = 10;
-        /// Reversed Futility Pruning: (not used).
-        pub const cutnode_margin_delta: i32 = 10;
     };
 
+    /// The list sizes for moves that did not beat alpha.
+    /// The idea is to not punish very late moves even more. It also saves stack space and processing.
     pub const search_historylist_size = struct {
-        /// The list size for quiet moves that did not beat alpha.
-        /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
         pub const for_quiets: u8 = 18;
-        /// The list size for capture moves that did not beat alpha.
-        /// The idea is to not punish very late moves even more. It also saves a lot of stack space.
         pub const for_noisies: u8 = 10;
     };
 
     pub const see_pruning = struct {
-        /// SEE pruning: Maximum depth for applying.
+        /// Maximum depth for applying.
         pub const max_depth: i32 = 8;
-        /// SEE pruning: Depth multiplier for quiet moves.
+        /// Depth multiplier for quiet moves.
         pub const quiet_mult: i32 = -68;
-        /// SEE pruning: Depth multiplier for noisy moves.
+        /// Depth multiplier for noisy moves.
         pub const noisy_mult: i32 = -123;
     };
 
     pub const tt_entry = struct {
-        /// TT Entry value: weight of depth.
+        /// Weight of TT entry depth.
         pub const depth_weight: i32 = 1024;
-        /// TT Entry value: weight of age.
+        /// Weight of TT Entry age (penalty).
         pub const age_penalty_weight: i32 = 1024;
     };
 };
