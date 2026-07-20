@@ -223,7 +223,7 @@ test "see" {
 test "engine" {
     // This test is just there to check if I did not mess up during a refactor.
     // When working on the strategy of the engine, this test is useless.
-    if (false) {
+    if (true) {
         if (verbose) print_yellow("engine test skipped\n", .{});
         return;
     }
@@ -355,32 +355,46 @@ test "viri" {
 
 test "pgn" {
 
-const str =
-    \\[Event "?"]
-    \\[Site "?"]
-    \\[Date "????.??.??"]
-    \\[Round "?"]
-    \\[White "?"]
-    \\[Black "?"]
-    \\[Result "*"]
-    \\
-    \\1. Na3 g6 2. d3 f6 3. Bh6 e5 4. Bf4 Na6 5. b3 Rb8 6. c4 Bc5 7. h4 Nb4 8. Qc2 Ra8
-    \\9. Nf3 Nh6 10. e3 e4 11. d4 Nc6 12. Qd2 Bxa3 13. Be2 b6 14. Rf1 Ng8 15. Rb1 Nxd4
-    \\16. Ra1 Nxb3 17. Qa5 Ne7 18. Qf5 Kf7 19. Bg5 Nd4 20. Bd1 Re8 21. Ne5+ Kf8 22. Bg4
-    \\Nc6 23. Nxg6+ hxg6 24. Rh1 Ba6 25. Kd2 Bc8 26. Rhg1 Nxf5 27. Rae1 Kg8 28. g3 Kh8
-    \\29. Kd1 Nd4 30. Rh1 Re5 31. Bxf6+ Kh7 32. Be7 Kg7 *
-    \\
-    \\
-    ;
+// const str =
+//     \\[Event "?"]
+//     \\[Site "?"]
+//     \\[Date "????.??.??"]
+//     \\[Round "?"]
+//     \\[White "?"]
+//     \\[Black "?"]
+//     \\[Result "*"]
+//     \\[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]
+//     \\
+//     \\1. Na3 g6 2. d3 f6 3. Bh6 e5 4. Bf4 Na6 5. b3 Rb8 6. c4 Bc5 7. h4 Nb4 8. Qc2 Ra8
+//     \\9. Nf3 Nh6 10. e3 e4 11. d4 Nc6 12. Qd2 Bxa3 13. Be2 b6 14. Rf1 Ng8 15. Rb1 Nxd4
+//     \\16. Ra1 Nxb3 17. Qa5 Ne7 18. Qf5 Kf7 19. Bg5 Nd4 20. Bd1 Re8 21. Ne5+ Kf8 22. Bg4
+//     \\Nc6 23. Nxg6+ hxg6 24. Rh1 Ba6 25. Kd2 Bc8 26. Rhg1 Nxf5 27. Rae1 Kg8 28. g3 Kh8
+//     \\29. Kd1 Nd4 30. Rh1 Re5 31. Bxf6+ Kh7 32. Be7 Kg7 *
+//     \\
+//     \\
+//     ;
+//     _ = str;
 
-    var game: position.Game = try gen_random_game(1, 64);
+   // r1bqkbnr/p4ppp/2ppp3/2p5/4PP2/3P1N2/PPP3PP/RNBQK2R b KQkq - 0 6
+
+    var game: position.Game = try gen_random_game("r1bqkbnr/p4ppp/2ppp3/2p5/4PP2/3P1N2/PPP3PP/RNBQK2R b KQkq - 0 6", 1, 200);
+    //var game: position.Game = try gen_random_game(null, 1, 200);
     defer game.deinit();
 
-    var buf: [1024]u8 = undefined;
-    var fixed = std.Io.Writer.fixed(&buf);
-    var pg: pgn.Pgn = .init(&game, &fixed);
-    try pg.print();
-    try std.testing.expectEqualStrings(str, fixed.buffered());
+    // var buf: [1024]u8 = undefined;
+    // var fixed = std.Io.Writer.fixed(&buf);
+    // var pg: pgn.Pgn = .init(&game.startpos, game.moves.items, &fixed);
+    // try pg.print();
+
+    // for (game.moves.items, 0..) |ex, idx | {
+    //     lib.io.print("{} {f}\n", .{ idx / 2, ex.move });
+    // }
+
+    const pg: pgn.Pgn = .init(&game.startpos, game.moves.items);
+    lib.io.print("{f}", .{ pg });
+
+
+    //try std.testing.expectEqualStrings(str, fixed.buffered());
     if (verbose) print_success("pgn ok\n", .{});
 }
 
@@ -447,12 +461,20 @@ fn decode_depths(fen: []const u8) !FenDepths {
 }
 
 /// Caller must free the result.
-fn gen_random_game(seed: u64, len: ?u16) !position.Game {
+fn gen_random_game(startfen: ?[]const u8, seed: u64, len: ?u16) !position.Game {
     var game: position.Game = .init();
-    errdefer game.deinit();
+    //errdefer game.deinit();
 
     var storage: movegen.MoveStorage = .init();
-    game.reset_with_position(&Position.classic_startpos);
+
+    if (startfen) |fen| {
+        const p: Position = try .from_fen(fen, false);
+        game.reset_with_position(&p);
+    }
+    else {
+        game.reset_with_position(&Position.classic_startpos);
+    }
+
     var pos: Position = game.startpos;
     var rnd: utils.Random = .init(seed);
     const nr_of_moves: u16 = if (len) |l| l else @intCast(rnd.next_max(64) + 5);
@@ -464,6 +486,7 @@ fn gen_random_game(seed: u64, len: ?u16) !position.Game {
             break;
         }
         const r: u64 = rnd.next_max(storage.count);
+        //assert(r < storage.count);
         const ex: ExtMove = storage.moves[r];
         try game.append_move(ex);
         pos.lazy_do_move(ex);

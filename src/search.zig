@@ -46,10 +46,10 @@ const Stage = movepick.Stage;
 const TimeManager = time.TimeManager;
 
 const terms = searchterms.terms;
+
 const max_game_length: u16 = types.max_game_length;
 const max_move_count: u8 = types.max_move_count;
 const max_search_depth: u8 = types.max_search_depth;
-
 const null_score = scoring.null_score;
 const infinity = scoring.infinity;
 const mate = scoring.mate;
@@ -424,7 +424,8 @@ pub const Searcher = struct {
             }
 
             // Time management: Keep track of the evaluation stability.
-            if (score > average_score - terms.iterative_deepening.eval_stability_margin - slack and score < average_score + terms.iterative_deepening.eval_stability_margin + slack) {
+            const idp = terms.iterative_deepening;
+            if (score > average_score - idp.eval_stability_margin.val - slack and score < average_score + idp.eval_stability_margin.val + slack) {
                 eval_stability = @min(4, eval_stability + 1);
             }
             else {
@@ -684,35 +685,42 @@ pub const Searcher = struct {
             // The values are currently just based on a few bullet tests.
             pos.ensure_threats();
             const threat_value: i32 = get_forward_pruning_threat_value(pos, us);
-            const rfp_safety_margin: i32 = if (threat_value < 0) (depth * -threat_value) else 0;
-            const razor_safety_margin: i32 = if (threat_value < 0) (depth * -threat_value) else 0;
+            const rfp_safety_margin: i32 = if (threat_value > 0) (depth * threat_value) else 0;
+            const razor_safety_margin: i32 = if (threat_value > 0) (depth * threat_value) else 0;
+            // TODO: use history score of the parentnode
 
             // Reversed Futility Pruning (beta pruning).
             const rfp = terms.reversed_futility_pruning;
-            if (depth <= rfp.max_depth and node.eval < mate_threshold and node.eval - rfp.min_margin >= beta) {
+            if (
+                node.eval < mate_threshold and
+                depth <= rfp.max_depth.val and
+                node.eval - rfp.base_margin.val >= beta
+            ) {
                 // If we are improving, the margin to beat beta can be smaller.
                 // If the opponent is worsening, the margin to beat beta can also be smaller.
-                var mult: i32 = if (is_improving) rfp.improving_margin else rfp.not_improving_margin;
+                var mul: i32 = if (is_improving) rfp.improving_margin.val else rfp.not_improving_margin.val;
                 if (is_opponent_worsening) {
-                    mult -= 8;
+                    mul -= 8;
                 }
-                const rfp_margin: i32 = (depth * mult) + rfp_safety_margin;
+                const rfp_margin: i32 = (depth * mul) + rfp_safety_margin;
                 if (node.eval - rfp_margin >= beta) {
                     return node.eval;
                 }
             }
 
             // Razoring (alpha pruning).
-            const razoring = terms.razoring;
-            const depth_3: i32 = @max(0, depth - 3);
-            if (node.static_eval + razoring.base + depth * razoring.mult + depth_3 * depth_3 * razoring.quad + razor_safety_margin <= alpha) {
+            const razor = terms.razoring;
+            const d3: i32 = @max(0, depth - 3);
+            const r_margin: i32 =
+                razor.base_margin.val +
+                razor.mul.val * depth +
+                razor.quad.val * d3 * d3 +
+                razor_safety_margin;
+
+            if (node.static_eval + r_margin <= alpha) {
                 const r_score = self.quiescence_search(us, mode, pos, node, alpha, alpha + 1);
-                if (self.stopped) {
-                    return 0;
-                }
-                if (r_score <= alpha) {
-                    return r_score;
-                }
+                if (self.stopped) return 0;
+                if (r_score <= alpha) return r_score;
             }
 
             // Null Move Pruning: are we still good if we let the opponent play another move?
@@ -787,27 +795,49 @@ pub const Searcher = struct {
 
                 // Futility Pruning (fp).
                 const fp = terms.futility_pruning;
-                const fp_margin: i32 = fp.margin_base + (depth * fp.depth_mult);
-                if (!is_check and is_quiet_move and depth <= fp.max_depth and node.eval != null_score and node.eval + fp_margin < alpha) {
+                const fp_margin: i32 = fp.margin_base.val + (depth * fp.depth_mul.val);
+                if (
+                    !is_check and
+                    is_quiet_move and
+                    depth <= fp.max_depth.val and
+                    node.eval != null_score and
+                    node.eval + fp_margin < alpha
+                ) {
                     movepicker.skip_quiets();
-                    continue :moveloop;
-                }
-
-                // SEE pruning.
-                const sp = terms.see_pruning;
-                const see_threshold: i32 = if (is_quiet_move) depth * sp.quiet_mult else depth * sp.noisy_mult;
-                if (depth <= sp.max_depth and moves_seen >= 1 and !see.evaluate(pos, ex.move, see_threshold, .default)) {
                     continue :moveloop;
                 }
 
                 // History Pruning (hp).
                 const hp = terms.history_pruning;
-                if (is_quiet_move and depth <= hp.max_depth) {
-                    if (history_score < hp.quiet_offset - (depth * hp.quiet_mult)) {
+                if (is_quiet_move and depth <= hp.max_depth.val) {
+                    if (history_score < hp.quiet_offset.val - (depth * hp.quiet_mul.val)) {
                         movepicker.skip_quiets();
                         continue :moveloop;
                     }
                 }
+
+                // SEE pruning (sp). // better inside loop down here.
+                const sp = terms.see_pruning;
+                const see_threshold: i32 =
+                    if (is_quiet_move)
+                        (depth * sp.quiet_mul.val) - (depth * @divTrunc(history_score, sp.quiet_history_div.val))
+                    else
+                        (depth * sp.noisy_mul.val) - (depth * @divTrunc(history_score, sp.noisy_history_div.val));
+                if (depth <= sp.max_depth.val and moves_seen >= 1 and !see.evaluate(pos, ex.move, see_threshold, .default)) {
+                    continue :moveloop;
+                }
+
+                // const sp = terms.see_pruning;
+                // if (depth <= sp.max_depth.val and moves_seen >= 1) {
+                //     const see_threshold: i32 = switch(is_quiet_move) {
+                //         true  => (depth * sp.quiet_mult.val) - (depth * @divTrunc(history_score, sp.quiet_history_divider.val)),
+                //         false => (depth * sp.noisy_mult.val) - (depth * @divTrunc(history_score, sp.noisy_history_divider.val)),
+                //     };
+                //     if (!see.evaluate(pos, ex.move, see_threshold, .default)) {
+                //         continue :moveloop;
+                //     }
+                // }
+
             }
 
             // Determine extension + reduction.
@@ -874,7 +904,7 @@ pub const Searcher = struct {
             // Late Move Reduction (lmr). First try a reduced search on late moves.
             const lmr = terms.late_move_reduction;
             const lmr_move_threshold: i32 = if (is_root) 3 else 1;
-            if (depth >= lmr.min_depth and moves_seen >= lmr_move_threshold) {
+            if (depth >= lmr.min_depth.val and moves_seen >= lmr_move_threshold) {
 
                 // Retrieve default reduction from the lmr table.
                 reduction = get_lmr(is_quiet_move, depth, moves_seen);
@@ -894,10 +924,10 @@ pub const Searcher = struct {
 
                 // History reduction.
                 if (is_quiet_move) {
-                    reduction -= @divTrunc(history_score, lmr.history_quiet_divider);
+                    reduction -= @divTrunc(history_score, lmr.history_quiet_div.val);
                 }
                 else {
-                    reduction -= @divTrunc(history_score, lmr.history_noisy_divider);
+                    reduction -= @divTrunc(history_score, lmr.history_noisy_div.val);
                 }
 
                 // And reduce less in these cases.
@@ -967,7 +997,7 @@ pub const Searcher = struct {
                     }
 
                     // Alpha Raise Reduction.
-                    if (depth >= lmr.min_depth) {
+                    if (depth >= lmr.min_depth.val) {
                         alpha_raises += 1;
                     }
                 }
@@ -1383,11 +1413,10 @@ pub const Options = struct {
     }
 };
 
-const threat_value_pawn: i32 = 1;
-const threat_value_minor: i32 = 3;
-const threat_value_rook: i32 = 5;
-const threat_value_queen: i32 = 9;
-
+const threat_value_pawn: i32 = 10;
+const threat_value_minor: i32 = 30;
+const threat_value_rook: i32 = 50;
+const threat_value_queen: i32 = 90;
 /// Returns a simple score of lesser valued pieces attacking higher valued ones.
 /// Result is negative if we are threatened.
 pub fn get_forward_pruning_threat_value(pos: *Position, comptime us: Color) i32 {
@@ -1400,13 +1429,13 @@ pub fn get_forward_pruning_threat_value(pos: *Position, comptime us: Color) i32 
     const m_r: u64 = (threats.by_knights | threats.by_bishops) & (pos.rooks(us));
     const m_q: u64 = (threats.by_knights | threats.by_bishops) & (pos.queens(us));
     const r_q: u64 = (threats.by_rooks) & (pos.queens(us));
-    if (p_m != 0) result -= threat_value_minor - threat_value_pawn;
-    if (p_r != 0) result -= threat_value_rook - threat_value_pawn;
-    if (p_q != 0) result -= threat_value_queen - threat_value_pawn;
-    if (m_r != 0) result -= threat_value_rook - threat_value_minor;
-    if (m_q != 0) result -= threat_value_queen - threat_value_minor;
-    if (r_q != 0) result -= threat_value_queen - threat_value_rook;
-    return clamp(result, -16, 16);
+    if (p_m != 0) result += threat_value_minor;// - threat_value_pawn;
+    if (p_r != 0) result += threat_value_rook;// - threat_value_pawn;
+    if (p_q != 0) result += threat_value_queen;// - threat_value_pawn;
+    if (m_r != 0) result += threat_value_rook - threat_value_minor;
+    if (m_q != 0) result += threat_value_queen - threat_value_minor;
+    if (r_q != 0) result += threat_value_queen - threat_value_rook;
+    return clamp(result, 0, threat_value_queen);
 }
 
 /// Retrieve default reduction from the lmr table. Access is safely restricted.

@@ -1,122 +1,153 @@
 // zig fmt: off
 
-//! Search algorithm constants. Will be tunable later on.
+//! Search algorithm constants.
 
 const std = @import("std");
-const types = @import("types.zig");
 
-pub const terms = struct {
+pub const spsa: bool = false;
 
-    pub const late_move_reduction_table_computing = struct {
-        pub const noisy_base: f32 = -0.24;
-        pub const noisy_divider: f32 = 2.60;
-        pub const quiet_base: f32 = 0.80;
-        pub const quiet_divider: f32 = 2.04;
-    };
+pub const terms = if (spsa) &tunable_terms else &default_terms;
+const default_terms: Terms = std.mem.zeroInit(Terms, .{});
+var tunable_terms: Terms = if (spsa) default_terms else @compileError("Using tunable_terms");
 
-    pub const history_math = struct {
+pub const Terms = struct {
+
+    late_move_reduction_table_computing: struct {
+        comptime noisy_base: f32 = -0.24,
+        comptime noisy_divider: f32 = 2.60,
+        comptime quiet_base: f32 = 0.80,
+        comptime quiet_divider: f32 = 2.04,
+    },
+
+    history_math: struct {
         /// depth multiplier.
-        pub const scale: i16 = 146;
+        comptime scale: i16 = 146,
         /// Maximum of 1 bonus.
-        pub const max_bonus: i16 = 1282;
+        comptime max_bonus: i16 = 1282,
         /// Maximum history score of one entry.
-        pub const max_score: i16 = 16384;
-    };
+        comptime max_score: i16 = 16384,
+    },
 
-    pub const correction_history = struct {
-        pub const scale: i32 = 256;
-        pub const max_entry_bonus: i32 = 32;
-        pub const max_applied_correction: i32 = 160;
-        pub const is_big_correction_margin: i32 = 120;
-    };
+    correction_history: struct {
+        comptime scale: i32 = 256,
+        comptime max_entry_bonus: i32 = 32,
+        comptime max_applied_correction: i32 = 160,
+        comptime is_big_correction_margin: i32 = 120,
+    },
 
-    pub const iterative_deepening = struct {
+    iterative_deepening: struct {
         /// The margin used to establish the average stability of a search score.
-        pub const eval_stability_margin: i32 = 10;
+        eval_stability_margin: Tunable(i32) = tunable(i32, 10, 10, 10, 0),
         /// The depth divider to give stability some slack.
-        pub const eval_stability_slack_depth_divider: u8 = 12;
-    };
+        comptime eval_stability_slack_depth_divider: u8 = 12,
+    },
 
-    pub const reversed_futility_pruning = struct {
-        /// Maximum depth for applying.
-        pub const max_depth: i32 = 6;
-        /// Base margin for eval beating beta.
-        pub const min_margin: i32 = 21;
-        /// Delta for margin when eval is improving:
-        pub const improving_margin: i32 = 40;
-        /// Delta for margin wher eval is not improving:
-        pub const not_improving_margin: i32 = 74;
-    };
-
-    pub const futility_pruning = struct {
-        /// The maximum depth for applying.
-        pub const max_depth: i32 = 8;
-        /// Default margin.
-        pub const margin_base: i32 = 196;
-        /// Depth multiplier.
-        pub const depth_mult: i32 = 96;
-    };
-
-    pub const history_pruning = struct {
-        /// The maximum depth for applying.
-        pub const max_depth: i32 = 5;
-        /// Offset for quiet move.
-        pub const quiet_offset: i32 = -518;
-        /// Depth multiplier for quiet move.
-        pub const quiet_mult: i32 = 1830;
-    };
-
-    pub const internal_iterative_deepening  = struct {
+    internal_iterative_deepening: struct {
         /// Minimum depth for applying.
-        pub const min_depth: i32 = 8;
-    };
+        min_depth: i32 = 8,
+    },
 
-    pub const late_move_reduction = struct {
-        /// The minimum depth for applying lmr.
-        pub const min_depth: i32 = 3;
-        /// Divider for calculating extra reduction (or negative reduction) based on a move's history score.
-        pub const history_quiet_divider: i32 = 14035; // Currently 4 scores of max 16384
-        pub const history_noisy_divider: i32 = 14035; // 1 score of max 16384
-    };
-
-    pub const quiescence_futility_pruning = struct {
-        /// The margin added to the initial best score to allow pruning.
-        pub const margin: i32 = 101;
-    };
-
-    pub const razoring = struct {
-        /// The maximum depth for applying.
-        pub const max_depth: i32 = 4;
-        /// The depth multiplier when applying.
-        pub const depth_mult: i32 = 550;
-        /// Razoring:
-        pub const base: i32 = 50;
-        /// Razoring:
-        pub const mult: i32 = 220;
-        /// Razoring:
-        pub const quad: i32 = 96;
-    };
-
-    /// The list sizes for moves that did not beat alpha.
-    /// The idea is to not punish very late moves even more. It also saves stack space and processing.
-    pub const search_historylist_size = struct {
-        pub const for_quiets: u8 = 18;
-        pub const for_noisies: u8 = 10;
-    };
-
-    pub const see_pruning = struct {
+    reversed_futility_pruning: struct {
         /// Maximum depth for applying.
-        pub const max_depth: i32 = 8;
-        /// Depth multiplier for quiet moves.
-        pub const quiet_mult: i32 = -68;
-        /// Depth multiplier for noisy moves.
-        pub const noisy_mult: i32 = -123;
-    };
+        max_depth: Tunable(i32) = tunable(i32, 6, 4, 8, 1),
+        /// Base margin for eval beating beta.
+        base_margin: Tunable(i32) = tunable(i32, 21, 10, 40, 10),
+        /// Delta for margin when eval is improving:
+        improving_margin: Tunable(i32) = tunable(i32, 40, 10, 100, 10),
+        /// Delta for margin wher eval is not improving:
+        not_improving_margin: Tunable(i32) = tunable(i32, 74, 10, 100, 10),
+    },
 
-    pub const tt_entry = struct {
+    razoring: struct {
+        /// Base value to add to eval.
+        base_margin: Tunable(i32) = tunable(i32, 50, 50, 50, 0),
+        /// Depth multiplier.
+        mul: Tunable(i32) = tunable(i32, 220, 220, 220, 0),
+        /// Depth quadratic multiplier.
+        quad: Tunable(i32) = tunable(i32, 96, 96, 96, 0),
+    },
+
+    futility_pruning: struct {
+        /// The maximum depth for applying.
+        max_depth: Tunable(i32) = tunable(i32, 8, 9, 8, 0),
+        /// Default margin.
+        margin_base: Tunable(i32) = tunable(i32, 196, 196, 196, 0),
+        /// Depth multiplier.
+        depth_mul: Tunable(i32) = tunable(i32, 96, 96, 96, 0),
+    },
+
+    history_pruning: struct {
+        /// The maximum depth for applying.
+        max_depth: Tunable(i32) = tunable(i32, 5, 5, 5, 0),
+        /// Offset for quiet move.
+        quiet_offset: Tunable(i32) = tunable(i32, -518, -518, -518, 0),
+        /// Depth multiplier for quiet move.
+        quiet_mul: Tunable(i32) = tunable(i32, 1830, 1830, 1830, 0),
+    },
+
+    see_pruning: struct {
+        /// Maximum depth for applying.
+        max_depth: Tunable(i32) = tunable(i32, 8, 8, 8, 0),
+        /// Depth multiplier for quiet moves.
+        quiet_mul: Tunable(i32) = tunable(i32, -60, -60, -60, 0),
+        /// Depth multiplier for noisy moves.
+        noisy_mul: Tunable(i32) = tunable(i32, -95, -95, -95, 0),
+        /// Prune more or less using move history score.
+        quiet_history_div: Tunable(i32) = tunable(i32, 2621, 2621, 2621, 0),
+        /// Prune more or less using move history score.
+        noisy_history_div: Tunable(i32) = tunable(i32, 546, 546, 546, 0),
+    },
+
+    late_move_reduction: struct {
+        /// The minimum depth for applying lmr.
+        min_depth: Tunable(i32) = tunable(i32, 3, 3, 3, 0),
+        /// Divider for calculating extra reduction (or negative reduction) based on a move's history score.
+        history_quiet_div: Tunable(i32) = tunable(i32, 14035, 14035, 14035, 0), // Currently 4 scores of max 16384
+        history_noisy_div: Tunable(i32) = tunable(i32, 14035, 14035, 14035, 0), // 1 score of max 16384
+    },
+
+    quiescence_futility_pruning: struct {
+        /// The margin added to the initial best score to allow pruning.
+        margin: i32 = 101,
+    },
+
+    search_historylist_size: struct {
+        /// The list sizes for moves that did not beat alpha.
+        /// The idea is to not punish very late moves even more. It also saves stack space and processing.
+        comptime for_quiets: u8 = 18,
+        comptime for_noisies: u8 = 10,
+    },
+
+    tt_entry: struct {
         /// Weight of TT entry depth.
-        pub const depth_weight: i32 = 1024;
+        depth_weight: i32 = 1024,
         /// Weight of TT Entry age (penalty).
-        pub const age_penalty_weight: i32 = 1024;
-    };
+        age_penalty_weight: i32 = 1024,
+    },
 };
+
+fn tunable(comptime T: type, comptime value: T, min: T, max: T, step: T) Tunable(T) {
+    comptime if (spsa) {
+        return .{ .val = value, .min = min, .max = max, .step = step };
+    } else {
+        return .{ .val = value };
+    };
+}
+
+pub fn Tunable(T: type) type {
+    comptime if (spsa) {
+        return struct {
+            val: T,
+            min: T,
+            max: T,
+            step: T,
+        };
+    } else {
+        return struct {
+            val: T,
+        };
+    };
+}
+
+
+

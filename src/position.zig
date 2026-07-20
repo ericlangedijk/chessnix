@@ -485,7 +485,7 @@ pub const Position = struct {
         return self.by_type(.king) & self.by_color(us);
     }
 
-    pub fn pieces(self: *const Position, comptime pt: PieceType, us: Color) u64 {
+    pub fn pieces(self: *const Position, pt: PieceType, us: Color) u64 {
         return self.bitboards_by_type[pt.u] & self.bitboards_by_color[us.u];
     }
 
@@ -719,24 +719,35 @@ pub const Position = struct {
         self.bitboards_by_color[us.u] ^= xor_mask;
     }
 
-    /// First creates an ExtMove.
-    pub fn lazy_do_raw_move(self: *Position, m: Move) void {
-        switch (self.stm.e) {
-            .white => self.do_raw_move(.white, m),
-            .black => self.do_raw_move(.black, m),
-        }
-    }
+    // /// First creates an ExtMove.
+    // pub fn lazy_do_raw_move(self: *Position, m: Move) void {
+    //     switch (self.stm.e) {
+    //         .white => self.do_raw_move(.white, m),
+    //         .black => self.do_raw_move(.black, m),
+    //     }
+    // }
 
-    /// First creates an ExtMove.
-    pub fn do_raw_move(self: *Position, comptime us: Color, m: Move) void {
-        const them: Color = us.opp();
-        const piece: Piece = self.get(m.from);
-        const captured: Piece = switch (m.simple_kind()) {
-            .default, .promotion => self.get(m.to),
-            .ep => .init(.pawn, them),
+    // /// First creates an ExtMove.
+    // pub fn do_raw_move(self: *Position, comptime us: Color, m: Move) void {
+    //     const them: Color = us.opp();
+    //     const piece: Piece = self.get(m.from);
+    //     const captured: Piece = switch (m.simple_kind()) {
+    //         .default, .promotion => self.get(m.to),
+    //         .ep => .init(.pawn, them),
+    //         .castle => .no_piece,
+    //     };
+    //     self.do_move(us, ExtMove.from_move(m, piece, captured));
+    // }
+
+    /// Don't use in speed critical code.
+    pub fn convert_raw_move(self: *const Position, move: Move) ExtMove {
+        const piece: Piece = self.get(move.from);
+        const captured: Piece = switch (move.simple_kind()) {
+            .default, .promotion => self.get(move.to),
+            .ep => .init(.pawn, self.stm.opp()),
             .castle => .no_piece,
         };
-        self.do_move(us, ExtMove.from_move(m, piece, captured));
+        return ExtMove.from_move(move, piece, captured);
     }
 
     pub fn lazy_do_move(self: *Position, ex: ExtMove) void {

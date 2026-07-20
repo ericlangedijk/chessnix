@@ -44,7 +44,7 @@ pub const Terms = extern struct {
 /// When tuning mutable otherwise const.
 pub const terms = if (lib.is_tuning) &tunable_terms else &default_terms;
 
-var tunable_terms: Terms = default_terms;
+var tunable_terms: Terms = default_terms; // TODO: compileerror if not tuning
 
 const default_terms: Terms = .{
     .material_table = .{

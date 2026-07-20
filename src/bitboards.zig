@@ -135,9 +135,9 @@ pub const bb_northwest: [Square.count]u64 = compute_direction_bitboards(.north_w
 pub const bb_southeast: [Square.count]u64 = compute_direction_bitboards(.south_east);
 pub const bb_northeast: [Square.count]u64 = compute_direction_bitboards(.north_east);
 pub const bb_southwest: [Square.count]u64 = compute_direction_bitboards(.south_west);
-pub const bb_bishop: [Square.count]u64 = compute_bishop_bitboards();
-pub const bb_rook: [Square.count]u64 = compute_rook_bitboards();
-pub const bb_queen: [Square.count]u64 = compute_queen_bitboards();
+//pub const bb_bishop: [Square.count]u64 = compute_bishop_bitboards();
+//pub const bb_rook: [Square.count]u64 = compute_rook_bitboards();
+//pub const bb_queen: [Square.count]u64 = compute_queen_bitboards();
 
 pub const adjacent_square_masks: [Square.count]u64 = compute_adjacent_square_masks();
 pub const passed_pawn_masks_white: [Square.count]u64 = compute_passed_pawn_masks_white();
@@ -327,31 +327,31 @@ fn compute_direction_bitboards(comptime dir: Direction) [Square.count]u64 {
     return bb;
 }
 
-fn compute_bishop_bitboards() [Square.count]u64 {
-    var bb: [Square.count]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
-    }
-    return bb;
-}
+// fn compute_bishop_bitboards() [Square.count]u64 {
+//     var bb: [Square.count]u64 = @splat(0);
+//     for (Square.all) |sq| {
+//         bb[sq.u] = bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u];
+//     }
+//     return bb;
+// }
 
-fn compute_rook_bitboards() [Square.count]u64 {
-    var bb: [Square.count]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
-    }
-    return bb;
-}
+// fn compute_rook_bitboards() [Square.count]u64 {
+//     var bb: [Square.count]u64 = @splat(0);
+//     for (Square.all) |sq| {
+//         bb[sq.u] = bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
+//     }
+//     return bb;
+// }
 
-fn compute_queen_bitboards() [Square.count]u64 {
-    var bb: [Square.count]u64 = @splat(0);
-    for (Square.all) |sq| {
-        bb[sq.u] =
-            bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] |
-            bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
-    }
-    return bb;
-}
+// fn compute_queen_bitboards() [Square.count]u64 {
+//     var bb: [Square.count]u64 = @splat(0);
+//     for (Square.all) |sq| {
+//         bb[sq.u] =
+//             bb_northeast[sq.u] | bb_northwest[sq.u] | bb_southeast[sq.u] | bb_southwest[sq.u] |
+//             bb_north[sq.u] | bb_south[sq.u] | bb_east[sq.u] | bb_west[sq.u];
+//     }
+//     return bb;
+// }
 
 fn compute_passed_pawn_masks_white() [Square.count]u64 {
     var pp: [Square.count]u64 = @splat(0);

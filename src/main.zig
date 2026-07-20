@@ -13,6 +13,9 @@ pub fn main() !void {
     try lib.initialize();
     defer lib.finalize();
 
+    //const s = @import("searchterms.zig");
+    //std.debug.print("{any}\n\n", .{ s.TT });
+
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();

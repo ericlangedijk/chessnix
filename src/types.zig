@@ -366,7 +366,6 @@ pub const Piece = packed union {
             .white_rook => 'R',
             .white_queen => 'Q',
             .white_king => 'K',
-
             .black_pawn => 'p',
             .black_knight => 'n',
             .black_bishop => 'b',
@@ -375,18 +374,6 @@ pub const Piece = packed union {
             .black_king => 'k',
             .no_piece => '?',
         };
-
-        // var ch: u8 = switch(self.piecetype().e) {
-        //     .pawn => 'P',
-        //     .knight => 'N',
-        //     .bishop => 'B',
-        //     .rook => 'R',
-        //     .queen => 'Q',
-        //     .king => 'K',
-        //     .none => '?',
-        // };
-        // if (self.color().e == .black) ch = std.ascii.toLower(ch);
-        // return ch;
     }
 
     pub fn to_char(self: Piece) u8 {
@@ -782,24 +769,9 @@ pub const Move = packed struct(u16) {
             silent, double_push, capture => .default,
             castle_short, castle_long => .castle,
             ep => .ep,
+            unreachable_10, unreachable_11 => unreachable,
             else => .promotion,
         };
-
-    // pub const silent                   : u4 = 0b0000; // 0
-    // pub const double_push              : u4 = 0b0001; // 1
-    // pub const castle_short             : u4 = 0b0010; // 2
-    // pub const castle_long              : u4 = 0b0011; // 3
-
-    //     return switch (self.kind) {
-    //         ep =>
-    //             .ep,
-    //         castle_short, castle_long =>
-    //             .castle,
-    //         knight_promotion, bishop_promotion, rook_promotion, queen_promotion,
-    //         knight_promotion_capture, bishop_promotion_capture, rook_promotion_capture, queen_promotion_capture =>
-    //             .promotion,
-    //         else => .default,
-    //     };
     }
 
     /// Prints uci move to stdout.
