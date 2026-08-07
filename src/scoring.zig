@@ -58,6 +58,13 @@ pub fn is_matescore(score: i32) bool {
     return @abs(score) >= mate_threshold;
 }
 
+pub fn is_very_high_score(score: i32) bool {
+    if (lib.is_paranoid) {
+        assert(score > -infinity and score < infinity);
+    }
+    return @abs(score) >= 24001;//mate_threshold;
+}
+
 pub fn is_nullscore(score: i32) bool {
     return score == null_score;
 }

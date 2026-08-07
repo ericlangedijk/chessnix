@@ -34,13 +34,12 @@ fn compilation_check() void {
 // --- Globals ---
 pub const Program = enum {
     uci,
-    hcetuner,
-    lichess_dataset_conversion,
+    tune_hce,
+    tune_search,
+    convert_lichess_dataset,
 };
 
- pub const program: Program = .uci;
-//pub const program: Program = .hcetuner;
-//pub const program: Program = .lichess_dataset_conversion;
+pub const program: Program = .uci;
 
 pub const version = "1.5";
 pub const builddate = "2026-07-16";
@@ -48,8 +47,9 @@ pub const is_test: bool = builtin.is_test;
 pub const is_debug: bool = builtin.mode == .Debug;
 pub const is_release_safe: bool = builtin.mode == .ReleaseSafe;
 pub const is_release: bool = builtin.mode == .ReleaseFast;
-pub const is_tuning: bool = !is_test and program == .hcetuner;
 pub const is_paranoid: bool = is_test or is_debug or is_release_safe;
+pub const is_tuning_hce: bool = !is_test and program == .tune_hce;
+pub const is_tuning_search: bool = !is_test and program == .tune_search;
 
 // --- Io and memory ---
 pub const ctx: *const MemoryContext = &memory_context;
@@ -142,8 +142,8 @@ pub inline fn not_in_release() void {
     if (is_release) @compileError("not in release!");
 }
 
-pub inline fn only_when_tuning() void {
-    if (!is_tuning) @compileError("only when tuning!");
+pub inline fn only_when_tuning_hce() void {
+    if (!is_tuning_hce) @compileError("only when tuning hce!");
 }
 
 pub inline fn only_in_comptime() void {

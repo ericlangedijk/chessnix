@@ -28,11 +28,17 @@ pub const SanMove = struct {
     state: State,
 
     pub const State = enum {
-        default, check, mate, stalemate,
+        default,
+        check,
+        mate,
+        stalemate,
     };
 
     pub const Disambiguation = enum {
-        none, file, rank, both,
+        none,
+        file,
+        rank,
+        both,
     };
 
     pub fn from_extmove(pos: *const Position, ex: ExtMove, known_moves_from_this_position: ?[]const ExtMove) SanMove {

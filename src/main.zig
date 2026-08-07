@@ -13,17 +13,17 @@ pub fn main() !void {
     try lib.initialize();
     defer lib.finalize();
 
-    //const s = @import("searchterms.zig");
-    //std.debug.print("{any}\n\n", .{ s.TT });
-
     switch (lib.program) {
         .uci => {
             try @import("uci.zig").run();
         },
-        .hcetuner => {
+        .tune_hce => {
             try @import("hcetuner.zig").run();
         },
-        .lichess_dataset_conversion => {
+        .tune_search => {
+            try @import("local/searchtuner.zig").run();
+        },
+        .convert_lichess_dataset => {
             try @import("lichess.zig").convert_lichess_dataset_to_viri();
         },
     }

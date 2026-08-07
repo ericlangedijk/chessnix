@@ -13,7 +13,7 @@ pub fn run() !void {
 
 /// Evaluator calls this for each used scorepair.
 pub fn register_scorepair_usage(sp: *ScorePair, multiply: u8, us: Color, debugargs: anytype) void {
-    lib.only_when_tuning();
+    lib.only_when_tuning_hce();
     _ = sp;
     _ = multiply;
     _ = us;
@@ -22,7 +22,7 @@ pub fn register_scorepair_usage(sp: *ScorePair, multiply: u8, us: Color, debugar
 
 /// Evaluator calls this just before returning its result.
 pub fn register_final_result(hce_pair: ScorePair, eval: i32) void {
-    lib.only_when_tuning();
+    lib.only_when_tuning_hce();
     _ = hce_pair;
     _ = eval;
 }

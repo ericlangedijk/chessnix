@@ -306,6 +306,7 @@ pub const Position = struct {
         }
     }
 
+    /// TODO: restrict the value here! we never need something > 24
     pub fn phase(self: *const Position) u8 {
         return self.phase_by_color[0] + self.phase_by_color[1];
     }

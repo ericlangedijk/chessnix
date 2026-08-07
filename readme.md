@@ -15,10 +15,13 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 
 ## Version 1.5 Work In Progress...
 - Compiler: Zig 0.15.2.
+- I stopped with chessnix for now. Reasons:
+  - I cannot understand the math behind tuning / training.
+  - It is more about statistics now. Not really interested anymore.
+- The current version in incomplete. Not worthy of a 1.5 zet.
 - Insane amount of refactorings
 - Additions: lichess eval json conversion, viriformat, pgn output, some zig-style tests.
 - Current Early Experimental Status:
-    - HCE Tuning skeleton. Don't know how to. Math drama.
     - Divfloor drama: changed div-floors into div-truncs. Slightly affects static evaluation and some other calculations.
     - Load on demand threats in position.
     - Threats balance, used for RFP and razoring.
@@ -31,7 +34,6 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
     - Slightly increased see pruning constants.
     - Doubled the size of correction history.
     - If we have a quiet tt-move in quiescence search, generate all moves.
-
 ## Version 1.4
 - Compiler: Zig 0.15.2.
 - Stronger: ~3351 ELO (blitz ~3382) on first CCRL entry.

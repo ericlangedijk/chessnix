@@ -48,12 +48,15 @@ const HistCalc = struct {
     }
 };
 
+
 /// Container for all history heuristics.
 pub const History = struct {
     quiet: QuietHistory,
     noisy: NoisyHistory,
     continuation: ContinuationHistory,
     correction: CorrectionHistory,
+
+    const nr_of_quiet_history_terms: u8 = 1 + ContinuationHistory.depths_delta.len;
 
     pub fn init() History {
         return std.mem.zeroes(History);
@@ -78,8 +81,10 @@ pub const History = struct {
     }
 
     /// Returns the history score of a quiet move. Used for move ordering and pruning decisions.
+    /// We take the average of the summed scores, to have easier and more logical calculations on both quiet and noisy history scores.
     pub fn get_quiet_score(self: *const History, ex: ExtMove, ply: u16, nodes: []const Node) i32 {
-        return self.quiet.get_score(ex) + ContinuationHistory.get_score(ply, ex, nodes);
+        return @divTrunc(self.quiet.get_score(ex) + ContinuationHistory.get_score(ply, ex, nodes), nr_of_quiet_history_terms);
+        //return div(self.quiet.get_score(ex) + ContinuationHistory.get_score(ply, ex, nodes), nr_of_quiet_history_terms);
     }
 
     /// Returns the history score of a noisy move. Used for move ordering and pruning decisions.
@@ -251,7 +256,7 @@ pub const CorrectionHistory = struct {
             return;
         }
 
-        const scaled_err: i32 = err * terms.correction_history.scale;
+        const scaled_err: i32 = err * terms.correction_history_math.scale;
         const weight: i32 = @min(1 + depth, 16) * 2;
 
         const pawn_entry: *i16 = &self.pawn_table[us.u][pos.pawnkey % table_size];
@@ -275,17 +280,18 @@ pub const CorrectionHistory = struct {
         const m1: i32 = self.minor_table[us.u][pos.minorkey % table_size];
         const m2: i32 = self.major_table[us.u][pos.majorkey % table_size];
 
-        var correction: i32 = @divTrunc(p + w + b + m1 + m2, terms.correction_history.scale);
+        const math = terms.correction_history_math;
+        var correction: i32 = @divTrunc(p + w + b + m1 + m2, math.scale);
 
-        correction = clamp(correction, -terms.correction_history.max_applied_correction, terms.correction_history.max_applied_correction);
+        correction = clamp(correction, -math.max_applied_correction, math.max_applied_correction);
         return clamp(static_eval + correction, -scoring.mate_threshold + 1, scoring.mate_threshold - 1);
     }
 
     fn update_entry(entry: *i16, scaled_err: i32, weight: i32) void {
-        const ch = terms.correction_history;
-        const max: i32 = ch.scale * ch.max_entry_bonus;
+        const math = terms.correction_history_math;
+        const max: i32 = math.scale * math.max_entry_bonus;
         var score: i32 = entry.*;
-        score = @divTrunc(score * (ch.scale - weight) + (scaled_err * weight), ch.scale);
+        score = @divTrunc(score * (math.scale - weight) + (scaled_err * weight), math.scale);
         score = clamp(score, -max, max);
         entry.* = @intCast(score);
     }

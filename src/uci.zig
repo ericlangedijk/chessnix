@@ -307,9 +307,9 @@ const TTY = struct {
 /// The possible parameters for the go command.
 pub const Go = struct {
     /// The white and black time left.
-    time: [2]?i64,
+    time: [types.Color.count]?i64,
     /// The white and black increment per move.
-    increment: [2]?i64,
+    increment: [types.Color.count]?i64,
     /// The number of moves until the next time control.
     movestogo: ?i64,
     /// The maximum depth to search.

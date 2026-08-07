@@ -1063,5 +1063,4 @@ pub fn phased_score(phase: u8, score: ScorePair) i32 {
     const mg: i32 = score.mg;
     const eg: i32 = score.eg;
     return @divTrunc(mg * ph + eg * (max_phase - ph), max_phase);
-//    return @divFloor(mg * ph + eg * (max_phase - ph), max_phase);
 }
