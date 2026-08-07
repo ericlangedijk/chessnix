@@ -18,7 +18,7 @@ It uses 'HCE' (hand crafted evaluation) to guide the search.
 - I stopped with chessnix for now. Reasons:
   - I cannot understand the math behind tuning / training.
   - It is more about statistics now. Not really interested anymore.
-- The current version in incomplete. Not worthy of a 1.5 zet.
+- The current version in incomplete. Not worthy of a 1.5 yet.
 - Insane amount of refactorings
 - Additions: lichess eval json conversion, viriformat, pgn output, some zig-style tests.
 - Current Early Experimental Status:
